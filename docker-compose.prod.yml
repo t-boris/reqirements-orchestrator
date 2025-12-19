@@ -1,0 +1,119 @@
+# =============================================================================
+# MARO Production Docker Compose
+# Optimized for e2-small VM (2GB RAM)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: maro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-maro_secure_password}
+      POSTGRES_DB: maro
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maro"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Redis Cache
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: maro-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+  # ---------------------------------------------------------------------------
+  # Backend API + Slack Bot
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maro:${POSTGRES_PASSWORD:-maro_secure_password}@postgres:5432/maro
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Nginx serving static files)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: maro-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # Database migrations (run once)
+  # ---------------------------------------------------------------------------
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-migrations
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maro:${POSTGRES_PASSWORD:-maro_secure_password}@postgres:5432/maro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+volumes:
+  postgres_data:
+  redis_data:

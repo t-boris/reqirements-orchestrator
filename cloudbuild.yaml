@@ -1,0 +1,134 @@
+# =============================================================================
+# Cloud Build configuration for MARO
+# Deploys backend and frontend to Cloud Run
+# =============================================================================
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Build Backend Image
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/maro-backend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/maro-backend:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+    id: 'build-backend'
+
+  # ---------------------------------------------------------------------------
+  # Build Frontend Image
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/maro-frontend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/maro-frontend:latest'
+      - '-f'
+      - 'web/Dockerfile'
+      - 'web'
+    id: 'build-frontend'
+
+  # ---------------------------------------------------------------------------
+  # Push Backend Image
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/maro-backend:$COMMIT_SHA']
+    id: 'push-backend'
+    waitFor: ['build-backend']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/maro-backend:latest']
+    waitFor: ['build-backend']
+
+  # ---------------------------------------------------------------------------
+  # Push Frontend Image
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/maro-frontend:$COMMIT_SHA']
+    id: 'push-frontend'
+    waitFor: ['build-frontend']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/maro-frontend:latest']
+    waitFor: ['build-frontend']
+
+  # ---------------------------------------------------------------------------
+  # Deploy Backend to Cloud Run
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'maro-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/maro-backend:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'DATABASE_URL=${_DATABASE_URL},REDIS_URL=${_REDIS_URL}'
+      - '--set-secrets'
+      - 'OPENAI_API_KEY=openai-api-key:latest,SLACK_BOT_TOKEN=slack-bot-token:latest,SLACK_SIGNING_SECRET=slack-signing-secret:latest,JIRA_API_TOKEN=jira-api-token:latest'
+    id: 'deploy-backend'
+    waitFor: ['push-backend']
+
+  # ---------------------------------------------------------------------------
+  # Deploy Frontend to Cloud Run
+  # ---------------------------------------------------------------------------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'maro-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/maro-frontend:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '256Mi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '5'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend', 'deploy-backend']
+
+# Substitution variables (override in trigger or command line)
+substitutions:
+  _REGION: 'us-central1'
+  _DATABASE_URL: ''
+  _REDIS_URL: ''
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Images to store in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/maro-backend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/maro-backend:latest'
+  - 'gcr.io/$PROJECT_ID/maro-frontend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/maro-frontend:latest'

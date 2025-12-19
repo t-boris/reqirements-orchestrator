@@ -1,0 +1,100 @@
+version: "3.9"
+
+services:
+  # ===========================================================================
+  # PostgreSQL - Primary database for events, graphs, configs, audit
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: maro-postgres
+    environment:
+      POSTGRES_USER: maro
+      POSTGRES_PASSWORD: maro
+      POSTGRES_DB: maro
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Redis - Caching and task queue
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: maro-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # MARO Backend - FastAPI application
+  # ===========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maro:maro@postgres:5432/maro
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+
+  # ===========================================================================
+  # MARO Frontend - React dashboard
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: maro-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+
+  # ===========================================================================
+  # RQ Worker - Background job processing
+  # ===========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-worker
+    command: python -m rq.cli worker --url redis://redis:6379/0 maro-queue
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maro:maro@postgres:5432/maro
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
