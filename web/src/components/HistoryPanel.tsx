@@ -42,7 +42,7 @@ export function HistoryPanel({ channelId, onClose }: HistoryPanelProps) {
     async function load() {
       try {
         setLoading(true);
-        const data = await fetchHistory(channelId, 50);
+        const data = await fetchHistory(channelId as string, 50);
         setEvents(data.events);
         setTotalEvents(data.total_events);
       } catch (e) {

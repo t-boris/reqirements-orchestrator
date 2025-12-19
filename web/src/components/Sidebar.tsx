@@ -52,12 +52,12 @@ export function Sidebar({ node, onClose }: SidebarProps) {
             <h3 className="text-sm font-medium text-gray-400 mb-1">
               Description
             </h3>
-            <p className="text-sm text-gray-300">{node.description}</p>
+            <p className="text-sm text-gray-300">{String(node.description)}</p>
           </div>
         )}
 
         {/* Acceptance Criteria */}
-        {node.attributes.acceptance_criteria && (
+        {node.attributes?.acceptance_criteria && (
           <div>
             <h3 className="text-sm font-medium text-gray-400 mb-1">
               Acceptance Criteria
@@ -76,29 +76,29 @@ export function Sidebar({ node, onClose }: SidebarProps) {
         )}
 
         {/* Actor */}
-        {node.attributes.actor && (
+        {node.attributes?.actor && (
           <div>
             <h3 className="text-sm font-medium text-gray-400 mb-1">Actor</h3>
             <p className="text-sm text-gray-300">
-              {node.attributes.actor as string}
+              {String(node.attributes.actor)}
             </p>
           </div>
         )}
 
         {/* Priority */}
-        {node.attributes.priority && (
+        {node.attributes?.priority && (
           <div>
             <h3 className="text-sm font-medium text-gray-400 mb-1">Priority</h3>
             <span
               className={`px-2 py-1 text-xs rounded ${
-                node.attributes.priority === 'critical'
+                node.attributes?.priority === 'critical'
                   ? 'bg-red-500/20 text-red-400'
-                  : node.attributes.priority === 'high'
+                  : node.attributes?.priority === 'high'
                   ? 'bg-orange-500/20 text-orange-400'
                   : 'bg-gray-700 text-gray-300'
               }`}
             >
-              {node.attributes.priority as string}
+              {String(node.attributes?.priority)}
             </span>
           </div>
         )}

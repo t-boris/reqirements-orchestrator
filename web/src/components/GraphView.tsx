@@ -36,12 +36,11 @@ const STATUS_COLORS: Record<NodeStatus, string> = {
 
 // Custom node types
 const nodeTypes: NodeTypes = {
-  requirement: RequirementNode,
+  requirement: RequirementNode as NodeTypes['requirement'],
 };
 
 // Layout constants
 const NODE_WIDTH = 200;
-const NODE_HEIGHT = 80;
 const LAYER_SPACING = 150;
 const NODE_SPACING = 50;
 
@@ -140,7 +139,7 @@ export function GraphView({ nodes, edges, onNodeClick }: GraphViewProps) {
       <Background color="#374151" gap={20} />
       <Controls />
       <MiniMap
-        nodeColor={(node) => node.data?.color || '#6b7280'}
+        nodeColor={(node) => (node.data?.color as string) || '#6b7280'}
         maskColor="rgba(0, 0, 0, 0.8)"
       />
     </ReactFlow>

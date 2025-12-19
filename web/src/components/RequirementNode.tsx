@@ -3,7 +3,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
 import { clsx } from 'clsx';
 import {
   Target,
@@ -39,7 +39,11 @@ interface NodeData {
   color: string;
 }
 
-export const RequirementNode = memo(({ data }: NodeProps<NodeData>) => {
+interface RequirementNodeProps {
+  data: NodeData;
+}
+
+export const RequirementNode = memo(({ data }: RequirementNodeProps) => {
   const Icon = TYPE_ICONS[data.type] || FileText;
 
   return (
