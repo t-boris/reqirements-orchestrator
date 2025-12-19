@@ -12,7 +12,7 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
 
     # AutoGen for multi-agent orchestration
-    "pyautogen>=0.2.0",
+    "pyautogen[autobuild]>=0.2.0,<0.4.0",
 
     # Graph processing
     "networkx>=3.2",
