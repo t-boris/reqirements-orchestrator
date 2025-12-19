@@ -15,7 +15,7 @@ export function Sidebar({ node, onClose }: SidebarProps) {
     <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
       {/* Header */}
       <div className="h-14 px-4 flex items-center justify-between border-b border-gray-700">
-        <h2 className="font-semibold text-white truncate">{node.title}</h2>
+        <h2 className="font-semibold text-white truncate">{String(node.title)}</h2>
         <button
           onClick={onClose}
           className="p-1 hover:bg-gray-700 rounded"
@@ -29,7 +29,7 @@ export function Sidebar({ node, onClose }: SidebarProps) {
         {/* Type & Status */}
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded uppercase">
-            {node.type}
+            {String(node.type)}
           </span>
           <span
             className={`px-2 py-1 text-xs rounded ${
@@ -42,7 +42,7 @@ export function Sidebar({ node, onClose }: SidebarProps) {
                 : 'bg-yellow-500/20 text-yellow-400'
             }`}
           >
-            {node.status}
+            {String(node.status)}
           </span>
         </div>
 
