@@ -19,7 +19,7 @@ import {
 import type { NodeType } from '../types';
 
 // Icon mapping for node types
-const TYPE_ICONS: Record<NodeType, React.ComponentType<{ className?: string }>> = {
+const TYPE_ICONS: Record<NodeType, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   goal: Target,
   epic: Layers,
   story: FileText,
