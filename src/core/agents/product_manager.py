@@ -25,16 +25,19 @@ class ProductManager:
     def __init__(
         self,
         llm_config: dict,
+        system_prompt: str | None = None,
     ) -> None:
         """
         Initialize Product Manager agent.
 
         Args:
             llm_config: AutoGen LLM configuration.
+            system_prompt: Custom system prompt (uses default if None).
         """
+        prompt = system_prompt if system_prompt else PRODUCT_MANAGER_PROMPT
         self._agent = autogen.AssistantAgent(
             name="ProductManager",
-            system_message=PRODUCT_MANAGER_PROMPT,
+            system_message=prompt,
             llm_config={
                 **llm_config,
                 "functions": [t["function"] for t in TOOL_DEFINITIONS],

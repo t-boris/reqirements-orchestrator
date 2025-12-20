@@ -29,6 +29,7 @@ class GraphAdmin:
         channel_id: str,
         user_id: str,
         llm_config: dict | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         """
         Initialize Graph Admin agent.
@@ -38,6 +39,7 @@ class GraphAdmin:
             channel_id: Slack channel ID.
             user_id: Slack user ID for attribution.
             llm_config: AutoGen LLM configuration.
+            system_prompt: Custom system prompt (uses default if None).
         """
         self._graph_service = graph_service
         self._channel_id = channel_id
@@ -46,10 +48,13 @@ class GraphAdmin:
         # Create bound tool functions
         self._tools = create_agent_tools(graph_service, channel_id, user_id)
 
+        # Use custom prompt or default
+        prompt = system_prompt if system_prompt else GRAPH_ADMIN_PROMPT
+
         # Create AutoGen agent
         self._agent = autogen.UserProxyAgent(
             name="GraphAdmin",
-            system_message=GRAPH_ADMIN_PROMPT,
+            system_message=prompt,
             human_input_mode="NEVER",
             code_execution_config=False,
             llm_config=llm_config,

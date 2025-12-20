@@ -8,10 +8,16 @@ message routing from Slack.
 import structlog
 import autogen
 
+from src.adapters.slack.config import ChannelConfig, ChannelSettings
 from src.core.agents.graph_admin import GraphAdmin
 from src.core.agents.architect import SoftwareArchitect
 from src.core.agents.product_manager import ProductManager
-from src.core.agents.prompts import CONTEXT_INJECTION_TEMPLATE
+from src.core.agents.prompts import (
+    CONTEXT_INJECTION_TEMPLATE,
+    PRODUCT_MANAGER_PROMPT,
+    SOFTWARE_ARCHITECT_PROMPT,
+    GRAPH_ADMIN_PROMPT,
+)
 from src.core.services.graph_service import GraphService
 from src.core.services.summarization_service import SummarizationService
 from src.config.settings import Settings
@@ -36,6 +42,7 @@ class AgentOrchestrator:
         graph_service: GraphService,
         summarization_service: SummarizationService,
         settings: Settings,
+        channel_config: ChannelConfig | None = None,
     ) -> None:
         """
         Initialize the orchestrator.
@@ -44,13 +51,15 @@ class AgentOrchestrator:
             graph_service: Service for graph operations.
             summarization_service: Service for context summarization.
             settings: Application settings.
+            channel_config: Channel configuration for per-channel settings.
         """
         self._graph_service = graph_service
         self._summarization_service = summarization_service
         self._settings = settings
+        self._channel_config = channel_config or ChannelConfig()
 
-        # LLM configuration for AutoGen
-        self._llm_config = {
+        # Default LLM configuration for AutoGen
+        self._default_llm_config = {
             "config_list": [
                 {
                     "model": settings.llm_model_main,
@@ -62,6 +71,75 @@ class AgentOrchestrator:
 
         # Active sessions: channel_id -> session components
         self._sessions: dict[str, dict] = {}
+
+    def _get_llm_config(self, channel_settings: ChannelSettings | None) -> dict:
+        """
+        Get LLM config for a channel, using channel settings if available.
+
+        Args:
+            channel_settings: Channel-specific settings or None.
+
+        Returns:
+            LLM configuration dict for AutoGen.
+        """
+        if not channel_settings or not channel_settings.llm_model:
+            return self._default_llm_config
+
+        # Determine API key based on provider
+        provider = channel_settings.llm_provider or "openai"
+        if provider == "anthropic":
+            api_key = self._settings.anthropic_api_key
+        elif provider == "google":
+            api_key = self._settings.google_api_key
+        else:
+            api_key = self._settings.openai_api_key
+
+        # Convert temperature from 0-100 to 0.0-1.0
+        temperature = channel_settings.temperature / 100.0
+
+        return {
+            "config_list": [
+                {
+                    "model": channel_settings.llm_model,
+                    "api_key": api_key,
+                }
+            ],
+            "temperature": temperature,
+        }
+
+    def _get_prompts(self, channel_settings: ChannelSettings | None) -> dict[str, str]:
+        """
+        Get agent prompts for a channel, with personality modifiers.
+
+        Args:
+            channel_settings: Channel-specific settings or None.
+
+        Returns:
+            Dict with prompt keys: pm, architect, graph_admin.
+        """
+        base_pm = PRODUCT_MANAGER_PROMPT
+        base_arch = SOFTWARE_ARCHITECT_PROMPT
+        base_admin = GRAPH_ADMIN_PROMPT
+
+        if channel_settings:
+            # Use custom prompts if set
+            if channel_settings.prompt_product_manager:
+                base_pm = channel_settings.prompt_product_manager
+            if channel_settings.prompt_architect:
+                base_arch = channel_settings.prompt_architect
+            if channel_settings.prompt_graph_admin:
+                base_admin = channel_settings.prompt_graph_admin
+
+            # Add personality modifier
+            personality = channel_settings.get_personality_modifier()
+            base_pm = base_pm + "\n" + personality
+            base_arch = base_arch + "\n" + personality
+
+        return {
+            "pm": base_pm,
+            "architect": base_arch,
+            "graph_admin": base_admin,
+        }
 
     def get_or_create_session(
         self,
@@ -95,16 +173,43 @@ class AgentOrchestrator:
         """
         logger.info("creating_agent_session", channel_id=channel_id)
 
-        # Create agents
+        # Get channel-specific settings
+        channel_settings = self._channel_config.get_channel(channel_id)
+
+        # Get LLM config and prompts for this channel
+        llm_config = self._get_llm_config(channel_settings)
+        prompts = self._get_prompts(channel_settings)
+
+        logger.info(
+            "session_config",
+            channel_id=channel_id,
+            model=llm_config["config_list"][0]["model"],
+            has_custom_prompts=bool(
+                channel_settings and (
+                    channel_settings.prompt_product_manager or
+                    channel_settings.prompt_architect or
+                    channel_settings.prompt_graph_admin
+                )
+            ) if channel_settings else False,
+        )
+
+        # Create agents with channel-specific prompts
         graph_admin = GraphAdmin(
             graph_service=self._graph_service,
             channel_id=channel_id,
             user_id=user_id,
-            llm_config=self._llm_config,
+            llm_config=llm_config,
+            system_prompt=prompts["graph_admin"],
         )
 
-        architect = SoftwareArchitect(llm_config=self._llm_config)
-        pm = ProductManager(llm_config=self._llm_config)
+        architect = SoftwareArchitect(
+            llm_config=llm_config,
+            system_prompt=prompts["architect"],
+        )
+        pm = ProductManager(
+            llm_config=llm_config,
+            system_prompt=prompts["pm"],
+        )
 
         # Create group chat
         group_chat = autogen.GroupChat(
@@ -116,7 +221,7 @@ class AgentOrchestrator:
 
         manager = autogen.GroupChatManager(
             groupchat=group_chat,
-            llm_config=self._llm_config,
+            llm_config=llm_config,
         )
 
         return {

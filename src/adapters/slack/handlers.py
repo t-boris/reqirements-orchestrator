@@ -8,7 +8,7 @@ import structlog
 from typing import Callable, Any
 
 from src.adapters.slack.formatter import SlackFormatter
-from src.adapters.slack.config import ChannelConfig
+from src.adapters.slack.config import ChannelConfig, ChannelSettings
 from src.core.agents.orchestrator import AgentOrchestrator
 from src.core.services.graph_service import GraphService
 from src.core.graph.models import NodeType
@@ -302,3 +302,34 @@ class SlackHandlers:
         except Exception as e:
             logger.error("reset_command_error", error=str(e))
             await say(text=f"Error resetting knowledge base: {str(e)}")
+
+    def get_channel_settings(self, channel_id: str) -> ChannelSettings | None:
+        """
+        Get current settings for a channel.
+
+        Args:
+            channel_id: Slack channel ID.
+
+        Returns:
+            Channel settings or None if not configured.
+        """
+        return self._channel_config.get_channel(channel_id)
+
+    def update_channel_settings(self, channel_id: str, **updates: Any) -> ChannelSettings:
+        """
+        Update channel settings.
+
+        Args:
+            channel_id: Slack channel ID.
+            **updates: Fields to update.
+
+        Returns:
+            Updated channel settings.
+        """
+        settings = self._channel_config.update_channel(channel_id, **updates)
+        logger.info("channel_settings_updated", channel_id=channel_id, updates=list(updates.keys()))
+
+        # Clear agent session so new settings take effect
+        self._orchestrator.clear_session(channel_id)
+
+        return settings
