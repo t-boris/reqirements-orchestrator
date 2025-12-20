@@ -185,18 +185,13 @@ class SlackBot:
             self._handlers.update_channel_settings(channel_id, **updates)
             logger.info("personality_updated", channel_id=channel_id, updates=updates)
 
-        @self._app.view_regex(r"prompt_editor_submit_.*")
-        async def handle_prompt_submit(ack, body, view, client) -> None:
-            """Handle prompt editor modal submission."""
+        # Helper function for prompt submission
+        async def _handle_prompt_submit(ack, view, prompt_type: str) -> None:
             await ack()
             channel_id = view["private_metadata"]
-            callback_id = view["callback_id"]
-            prompt_type = callback_id.replace("prompt_editor_submit_", "")
             values = view["state"]["values"]
-
             prompt_content = values["prompt_content"]["prompt_input"].get("value", "") or ""
 
-            # Map prompt type to field name
             field_map = {
                 "product_manager": "prompt_product_manager",
                 "architect": "prompt_architect",
@@ -207,6 +202,18 @@ class SlackBot:
             if field_name:
                 self._handlers.update_channel_settings(channel_id, **{field_name: prompt_content})
                 logger.info("prompt_updated", channel_id=channel_id, prompt_type=prompt_type)
+
+        @self._app.view("prompt_editor_submit_product_manager")
+        async def handle_pm_prompt_submit(ack, body, view, client) -> None:
+            await _handle_prompt_submit(ack, view, "product_manager")
+
+        @self._app.view("prompt_editor_submit_architect")
+        async def handle_arch_prompt_submit(ack, body, view, client) -> None:
+            await _handle_prompt_submit(ack, view, "architect")
+
+        @self._app.view("prompt_editor_submit_graph_admin")
+        async def handle_admin_prompt_submit(ack, body, view, client) -> None:
+            await _handle_prompt_submit(ack, view, "graph_admin")
 
         # Action handlers for navigation buttons
 
