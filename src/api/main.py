@@ -4,6 +4,7 @@ FastAPI Application - Main entry point.
 Provides REST API for the web dashboard and external integrations.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import structlog
@@ -13,8 +14,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes import graphs, channels, health
 from src.config.settings import get_settings
 from src.adapters.persistence.database import init_database
+from src.adapters.slack.bot import SlackBot
+from src.adapters.slack.handlers import SlackHandlers
+from src.adapters.slack.formatter import SlackFormatter
+from src.adapters.slack.config import ChannelConfig
+from src.core.agents.orchestrator import AgentOrchestrator
+from src.core.services.graph_service import GraphService
+from src.core.services.summarization_service import SummarizationService
+from src.core.events.store import EventStore
 
 logger = structlog.get_logger()
+
+# Global references for cleanup
+_slack_task = None
 
 
 @asynccontextmanager
@@ -24,16 +36,53 @@ async def lifespan(app: FastAPI):
 
     Initializes and cleans up resources on startup/shutdown.
     """
+    global _slack_task
+
     settings = get_settings()
 
     # Initialize database
     logger.info("initializing_database")
     database = await init_database(settings)
 
+    # Initialize services
+    logger.info("initializing_services")
+    event_store = EventStore()
+    graph_service = GraphService(event_store=event_store)
+    summarization_service = SummarizationService(settings=settings)
+    channel_config = ChannelConfig()
+
+    # Initialize agent orchestrator
+    orchestrator = AgentOrchestrator(
+        graph_service=graph_service,
+        summarization_service=summarization_service,
+        settings=settings,
+        channel_config=channel_config,
+    )
+
+    # Initialize Slack components
+    formatter = SlackFormatter(dashboard_url=f"http://localhost:{settings.port}")
+    handlers = SlackHandlers(
+        orchestrator=orchestrator,
+        graph_service=graph_service,
+        channel_config=channel_config,
+        formatter=formatter,
+    )
+    slack_bot = SlackBot(settings=settings, handlers=handlers)
+
+    # Start Slack bot in background
+    logger.info("starting_slack_bot")
+    _slack_task = asyncio.create_task(slack_bot.start_socket_mode())
+
     yield
 
     # Cleanup
     logger.info("shutting_down")
+    if _slack_task:
+        _slack_task.cancel()
+        try:
+            await _slack_task
+        except asyncio.CancelledError:
+            pass
     await database.close()
 
 
