@@ -22,6 +22,7 @@ from src.core.agents.orchestrator import AgentOrchestrator
 from src.core.services.graph_service import GraphService
 from src.core.services.summarization_service import SummarizationService
 from src.core.events.store import EventStore
+from src.adapters.llm.factory import create_summarization_client
 
 logger = structlog.get_logger()
 
@@ -48,7 +49,11 @@ async def lifespan(app: FastAPI):
     logger.info("initializing_services")
     event_store = EventStore()
     graph_service = GraphService(event_store=event_store)
-    summarization_service = SummarizationService(settings=settings)
+    llm_client = create_summarization_client(settings)
+    summarization_service = SummarizationService(
+        llm_client=llm_client,
+        context_threshold_percent=settings.context_threshold_percent,
+    )
     channel_config = ChannelConfig()
 
     # Initialize agent orchestrator
