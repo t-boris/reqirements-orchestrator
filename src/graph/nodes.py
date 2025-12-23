@@ -24,6 +24,41 @@ settings = get_settings()
 
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+def parse_llm_json_response(response) -> dict:
+    """
+    Parse JSON from LLM response, handling various content formats.
+
+    Args:
+        response: LLM response object with .content attribute.
+
+    Returns:
+        Parsed JSON as dict.
+
+    Raises:
+        json.JSONDecodeError: If JSON parsing fails.
+    """
+    content = response.content
+
+    # Handle list content format (Google Gemini)
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", str(part)) if isinstance(part, dict) else str(part)
+            for part in content
+        )
+
+    # Extract JSON from markdown code blocks
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0]
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0]
+
+    return json.loads(content.strip())
+
+
+# =============================================================================
 # LLM Factory
 # =============================================================================
 
@@ -176,23 +211,7 @@ async def intent_classifier_node(state: RequirementState) -> dict:
 
     try:
         response = await llm.ainvoke(messages)
-
-        # Handle different content formats (string vs list)
-        content = response.content
-        if isinstance(content, list):
-            # Google Gemini returns list of content parts
-            content = "".join(
-                part.get("text", str(part)) if isinstance(part, dict) else str(part)
-                for part in content
-            )
-
-        # Extract JSON from response (may be wrapped in markdown)
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
-
-        result = json.loads(content.strip())
+        result = parse_llm_json_response(response)
 
         intent = result.get("intent", "general")
         confidence = result.get("confidence", 0.5)
@@ -354,7 +373,7 @@ async def conflict_detection_node(state: RequirementState) -> dict:
 
     try:
         response = await llm.ainvoke(messages)
-        result = json.loads(response.content)
+        result = parse_llm_json_response(response)
 
         conflicts = result.get("conflicts", [])
         logger.info("conflicts_detected", count=len(conflicts))
@@ -434,7 +453,7 @@ async def draft_node(state: RequirementState) -> dict:
 
     try:
         response = await llm.ainvoke(messages)
-        result = json.loads(response.content)
+        result = parse_llm_json_response(response)
 
         draft = {
             "title": result.get("title", ""),
@@ -518,7 +537,7 @@ async def critique_node(state: RequirementState) -> dict:
 
     try:
         response = await llm.ainvoke(messages)
-        result = json.loads(response.content)
+        result = parse_llm_json_response(response)
 
         is_acceptable = result.get("is_acceptable", False)
         issues = result.get("issues", [])
