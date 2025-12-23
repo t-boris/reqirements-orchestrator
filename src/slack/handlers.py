@@ -387,7 +387,7 @@ def register_handlers(app: AsyncApp) -> None:
             parts.append("\n*Dashboards*")
             langsmith_url = f"https://smith.langchain.com/o/default/projects/p/{settings.langchain_project}"
             parts.append(f"• <{langsmith_url}|LangSmith ({settings.langchain_project})> - Tracing & Monitoring")
-            parts.append(f"• Zep Memory - internal service at `{settings.zep_api_url}`")
+            parts.append(f"• <https://docs.getzep.com|Zep Memory Docs> - Long-term memory (API only, no web UI)")
 
             text = "\n".join(parts)
 
