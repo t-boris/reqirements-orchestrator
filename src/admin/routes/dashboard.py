@@ -1,4 +1,4 @@
-"""Admin routes."""
+"""Admin routes - Dashboard."""
 
 from typing import Any
 
@@ -6,7 +6,10 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 
+from src.config.settings import get_settings
+
 logger = structlog.get_logger()
+settings = get_settings()
 
 router = APIRouter()
 
