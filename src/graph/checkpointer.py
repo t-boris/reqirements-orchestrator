@@ -100,7 +100,7 @@ class PostgresCheckpointer(BaseCheckpointSaver):
             await conn.execute(CREATE_WRITES_TABLE)
             logger.info("checkpointer_tables_created")
 
-    async def aget(self, config: dict) -> CheckpointTuple | None:
+    async def aget_tuple(self, config: dict) -> CheckpointTuple | None:
         """
         Get the latest checkpoint for a thread.
 
@@ -111,35 +111,60 @@ class PostgresCheckpointer(BaseCheckpointSaver):
             CheckpointTuple if found, None otherwise.
         """
         thread_id = config["configurable"]["thread_id"]
+        checkpoint_id = config["configurable"].get("checkpoint_id")
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT checkpoint_id, parent_checkpoint_id, checkpoint, metadata
-                FROM langgraph_checkpoints
-                WHERE thread_id = $1
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                thread_id,
-            )
+            if checkpoint_id:
+                # Get specific checkpoint
+                row = await conn.fetchrow(
+                    """
+                    SELECT checkpoint_id, parent_checkpoint_id, checkpoint, metadata
+                    FROM langgraph_checkpoints
+                    WHERE thread_id = $1 AND checkpoint_id = $2
+                    """,
+                    thread_id,
+                    checkpoint_id,
+                )
+            else:
+                # Get latest checkpoint
+                row = await conn.fetchrow(
+                    """
+                    SELECT checkpoint_id, parent_checkpoint_id, checkpoint, metadata
+                    FROM langgraph_checkpoints
+                    WHERE thread_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    thread_id,
+                )
 
             if not row:
                 return None
 
-            checkpoint = Checkpoint(**json.loads(row["checkpoint"]))
-            metadata = CheckpointMetadata(**json.loads(row["metadata"]))
+            checkpoint_data = json.loads(row["checkpoint"])
+            metadata_data = json.loads(row["metadata"]) if row["metadata"] else {}
 
             return CheckpointTuple(
-                config=config,
-                checkpoint=checkpoint,
-                metadata=metadata,
+                config={
+                    "configurable": {
+                        "thread_id": thread_id,
+                        "checkpoint_id": row["checkpoint_id"],
+                    }
+                },
+                checkpoint=checkpoint_data,
+                metadata=metadata_data,
                 parent_config=(
                     {"configurable": {"thread_id": thread_id, "checkpoint_id": row["parent_checkpoint_id"]}}
                     if row["parent_checkpoint_id"]
                     else None
                 ),
+                pending_writes=[],
             )
+
+    # Alias for backward compatibility
+    async def aget(self, config: dict) -> CheckpointTuple | None:
+        """Alias for aget_tuple."""
+        return await self.aget_tuple(config)
 
     async def aput(
         self,
@@ -290,9 +315,13 @@ class PostgresCheckpointer(BaseCheckpointSaver):
                 )
 
     # Sync methods required by base class (delegate to async)
+    def get_tuple(self, config: dict) -> CheckpointTuple | None:
+        """Sync wrapper for aget_tuple."""
+        return asyncio.get_event_loop().run_until_complete(self.aget_tuple(config))
+
     def get(self, config: dict) -> CheckpointTuple | None:
         """Sync wrapper for aget."""
-        return asyncio.get_event_loop().run_until_complete(self.aget(config))
+        return self.get_tuple(config)
 
     def put(
         self,
