@@ -112,6 +112,16 @@ def register_handlers(app: AsyncApp) -> None:
             await progress_reporter.start("Processing your request...")
 
             # Create initial state for the graph
+            # Create thread ID for checkpointing
+            thread_id = create_thread_id(channel_id, thread_ts)
+            print(f"[DEBUG] Thread ID: {thread_id}")
+
+            # Load existing state from checkpointer (if any)
+            from src.graph.checkpointer import get_thread_state
+            existing_state = await get_thread_state(thread_id)
+            print(f"[DEBUG] Existing state loaded: phase={existing_state.get('current_phase') if existing_state else None}, has_arch_options={bool(existing_state.get('architecture_options')) if existing_state else False}")
+
+            # Create initial state with new message data
             print("[DEBUG] Creating initial state...")
             state = create_initial_state(
                 channel_id=channel_id,
@@ -123,16 +133,27 @@ def register_handlers(app: AsyncApp) -> None:
                 channel_config=config.to_dict(),
             )
 
+            # Merge existing state (preserve workflow context)
+            if existing_state:
+                # Preserve important workflow state fields
+                preserve_fields = [
+                    "current_phase", "phase_history", "architecture_options",
+                    "selected_architecture", "chosen_architecture", "current_goal",
+                    "discovered_requirements", "clarifying_questions", "user_answers",
+                    "epics", "stories", "tasks", "validation_report",
+                    "zep_facts", "zep_session_id", "related_jira_issues",
+                ]
+                for field in preserve_fields:
+                    if field in existing_state and existing_state[field] is not None:
+                        state[field] = existing_state[field]
+                print(f"[DEBUG] Merged existing state: phase={state.get('current_phase')}, arch_options={len(state.get('architecture_options', []))}")
+
             # Add progress message info to state if we started progress tracking
             if progress_reporter and progress_reporter.message_ts:
                 state["progress_message_ts"] = progress_reporter.message_ts
                 state["progress_steps"] = progress_reporter.steps
 
             print(f"[DEBUG] State created, message length={len(message_text)}")
-
-            # Create thread ID for checkpointing
-            thread_id = create_thread_id(channel_id, thread_ts)
-            print(f"[DEBUG] Thread ID: {thread_id}")
 
             # Node name to display name mapping for progress updates
             node_display_names = {
