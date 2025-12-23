@@ -82,10 +82,28 @@ async def lifespan(fastapi_app: FastAPI):
     """
     FastAPI lifespan context manager.
 
-    Starts Socket Mode on startup and cleans up on shutdown.
+    Initializes stores and starts Socket Mode on startup, cleans up on shutdown.
     """
     # Startup
     logger.info("application_starting")
+
+    # Initialize database stores
+    from src.slack.approval_store import init_approval_store
+    from src.slack.channel_config_store import init_channel_config_store
+    from src.slack.knowledge_store import init_knowledge_store
+    from src.personas import load_personas
+
+    await init_approval_store()
+    logger.info("approval_store_initialized")
+
+    await init_channel_config_store()
+    logger.info("channel_config_store_initialized")
+
+    await init_knowledge_store()
+    logger.info("knowledge_store_initialized")
+
+    await load_personas()
+    logger.info("personas_loaded")
 
     # Start Socket Mode in background
     socket_task = asyncio.create_task(start_socket_mode())
