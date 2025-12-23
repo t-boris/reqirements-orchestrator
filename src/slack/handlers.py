@@ -385,8 +385,8 @@ def register_handlers(app: AsyncApp) -> None:
 
             # Add dashboard links
             parts.append("\n*Dashboards*")
-            langsmith_url = f"https://smith.langchain.com/o/default/projects/p/{settings.langchain_project}"
-            parts.append(f"• <{langsmith_url}|LangSmith ({settings.langchain_project})> - Tracing & Monitoring")
+            # LangSmith URL - link to main page, user can find project there
+            parts.append(f"• <https://smith.langchain.com/|LangSmith ({settings.langchain_project})> - Tracing & Monitoring")
 
             # Admin API endpoints
             parts.append(f"• <{settings.external_url}/admin/dashboard|Admin Dashboard> - Zep & LangGraph status")
