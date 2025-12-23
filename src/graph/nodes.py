@@ -603,20 +603,32 @@ User's answers: {user_answers}
 ## Your Task
 Based on the current state:
 1. Analyze if we have enough information to create high-quality requirements
-2. If not, generate 2-4 focused clarifying questions
+2. If not, generate 2-4 focused clarifying questions WITH suggested answers
 3. If we have enough, summarize the complete requirements
+4. ALWAYS explain your reasoning for what information is missing
 
 ## Question Guidelines
 - Focus on ONE aspect per question
 - Be specific, not vague
 - Prioritize: user roles, use cases, constraints, integrations
-- Avoid yes/no questions when possible
+- ALWAYS provide 2-4 suggested answers for each question
+- Include a "Skip / Use defaults" option if reasonable defaults exist
 
+## Response Format
 Respond in JSON format:
 {{
     "enough_info": <true/false>,
     "discovery_phase_complete": <true/false>,
-    "new_questions": ["<question 1>", ...],
+    "missing_info_explanation": "<explain WHY you need more info and what happens if user proceeds without it>",
+    "can_proceed_anyway": <true/false - can we make reasonable assumptions?>,
+    "questions_with_options": [
+        {{
+            "question": "<the question>",
+            "why_needed": "<brief explanation why this matters>",
+            "suggested_answers": ["<option 1>", "<option 2>", "<option 3>"],
+            "default_if_skipped": "<what we'll assume if user skips>"
+        }}
+    ],
     "updated_requirements": [
         {{
             "type": "<feature|constraint|integration|user_story>",
@@ -689,16 +701,21 @@ async def discovery_node(state: RequirementState) -> dict:
         result = parse_llm_json_response(response)
 
         enough_info = result.get("enough_info", False)
+        questions_with_options = result.get("questions_with_options", [])
+        # Fallback for old format
         new_questions = result.get("new_questions", [])
         updated_requirements = result.get("updated_requirements", [])
         summary = result.get("summary", "")
         next_action = result.get("next_action", "ask_questions")
+        missing_explanation = result.get("missing_info_explanation", "")
+        can_proceed = result.get("can_proceed_anyway", True)
 
         logger.info(
             "discovery_complete",
             enough_info=enough_info,
-            new_questions_count=len(new_questions),
+            questions_count=len(questions_with_options) or len(new_questions),
             next_action=next_action,
+            can_proceed_anyway=can_proceed,
         )
 
         # Merge new requirements with existing
@@ -709,17 +726,47 @@ async def discovery_node(state: RequirementState) -> dict:
         if WorkflowPhase.DISCOVERY.value not in phase_history:
             phase_history.append(WorkflowPhase.DISCOVERY.value)
 
-        # Build response if we need to ask questions
+        # Build response with status, questions, and options
         response_text = None
-        if not enough_info and new_questions:
-            response_text = "I have a few questions to ensure I capture everything correctly:\n\n"
-            for i, q in enumerate(new_questions, 1):
-                response_text += f"{i}. {q}\n"
+        if not enough_info and (questions_with_options or new_questions):
+            # Status header
+            response_text = f"📍 *Phase: Discovery*\n"
+            response_text += f"_{summary}_\n\n"
+
+            # Explanation of what's missing
+            if missing_explanation:
+                response_text += f"💡 *Why I'm asking:* {missing_explanation}\n\n"
+
+            # Questions with suggested answers
+            if questions_with_options:
+                for i, q in enumerate(questions_with_options, 1):
+                    response_text += f"*{i}. {q.get('question', '')}*\n"
+                    if q.get('why_needed'):
+                        response_text += f"   _{q['why_needed']}_\n"
+                    if q.get('suggested_answers'):
+                        response_text += "   Suggested answers:\n"
+                        for opt in q['suggested_answers']:
+                            response_text += f"   • {opt}\n"
+                    if q.get('default_if_skipped'):
+                        response_text += f"   _Default if skipped: {q['default_if_skipped']}_\n"
+                    response_text += "\n"
+            else:
+                # Fallback to old format
+                for i, q in enumerate(new_questions, 1):
+                    response_text += f"{i}. {q}\n"
+
+            # Proceed anyway option
+            if can_proceed:
+                response_text += "\n---\n"
+                response_text += "💨 *Want to skip?* Say `proceed` or `continue` to move to Architecture with defaults.\n"
+
+        # Extract just the question texts for state
+        question_texts = [q.get('question', '') for q in questions_with_options] if questions_with_options else new_questions
 
         return {
             "current_phase": WorkflowPhase.DISCOVERY.value,
             "phase_history": phase_history,
-            "clarifying_questions": new_questions,
+            "clarifying_questions": question_texts,
             "discovered_requirements": all_requirements,
             "current_goal": summary if summary else state.get("current_goal"),
             "response": response_text,
