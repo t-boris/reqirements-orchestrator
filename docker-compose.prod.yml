@@ -1,0 +1,111 @@
+version: "3.8"
+
+services:
+  # ==========================================================================
+  # MARO Application
+  # ==========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-app
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+asyncpg://maro:${POSTGRES_PASSWORD}@postgres:5432/maro
+      - ZEP_API_URL=http://zep:8000
+      - JIRA_MCP_URL=http://jira-mcp:3000/sse
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zep:
+        condition: service_started
+      jira-mcp:
+        condition: service_started
+    networks:
+      - maro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: maro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: maro
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - maro-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maro"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Zep Memory Server
+  # ==========================================================================
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    container_name: maro-zep
+    restart: unless-stopped
+    environment:
+      - ZEP_STORE_TYPE=postgres
+      - ZEP_STORE_POSTGRES_DSN=postgres://maro:${POSTGRES_PASSWORD}@postgres:5432/zep?sslmode=disable
+      - ZEP_NLP_SERVER_URL=http://zep-nlp:5000
+      - ZEP_EXTRACTORS_DOCUMENTS_EMBEDDINGS_SERVICE=openai
+      - ZEP_EXTRACTORS_MESSAGES_EMBEDDINGS_SERVICE=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maro-network
+
+  # ==========================================================================
+  # Zep NLP Server (for local embedding if needed)
+  # ==========================================================================
+  zep-nlp:
+    image: ghcr.io/getzep/zep-nlp:latest
+    container_name: maro-zep-nlp
+    restart: unless-stopped
+    networks:
+      - maro-network
+
+  # ==========================================================================
+  # Jira MCP Server
+  # ==========================================================================
+  jira-mcp:
+    image: node:20-alpine
+    container_name: maro-jira-mcp
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm install -g @anthropic-ai/mcp-server-jira &&
+             mcp-server-jira"
+    environment:
+      - JIRA_URL=${JIRA_URL}
+      - JIRA_USERNAME=${JIRA_USER}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN}
+    networks:
+      - maro-network
+
+networks:
+  maro-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

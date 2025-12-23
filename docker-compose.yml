@@ -1,0 +1,97 @@
+version: "3.9"
+
+services:
+  # ===========================================================================
+  # PostgreSQL - Checkpoints, approvals, application data
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: maro-postgres
+    environment:
+      POSTGRES_USER: maro
+      POSTGRES_PASSWORD: maro
+      POSTGRES_DB: maro
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Zep - Long-term memory with temporal knowledge graph
+  # ===========================================================================
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    container_name: maro-zep
+    environment:
+      ZEP_STORE_POSTGRES_DSN: postgres://maro:maro@postgres:5432/maro?sslmode=disable
+      ZEP_NLP_SERVER_URL: ""
+      ZEP_EXTRACTORS_DOCUMENTS_EMBEDDINGS_ENABLED: "true"
+      ZEP_EXTRACTORS_MESSAGES_SUMMARIZER_ENABLED: "true"
+      ZEP_EXTRACTORS_MESSAGES_ENTITIES_ENABLED: "true"
+      ZEP_EXTRACTORS_MESSAGES_INTENT_ENABLED: "true"
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Jira MCP Server - Model Context Protocol for Jira integration
+  # ===========================================================================
+  jira-mcp:
+    image: node:20-alpine
+    container_name: maro-jira-mcp
+    working_dir: /app
+    command: >
+      sh -c "npm install -g @anthropic/mcp-server-jira || npm install -g jira-mcp &&
+             npx jira-mcp --stdio"
+    environment:
+      JIRA_URL: ${JIRA_URL}
+      JIRA_USER: ${JIRA_USER}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
+    volumes:
+      - jira_mcp_cache:/app/node_modules
+
+  # ===========================================================================
+  # MARO Backend - LangGraph agent application
+  # ===========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maro-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://maro:maro@postgres:5432/maro
+      ZEP_API_URL: http://zep:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zep:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+      - ./personas:/app/personas:ro
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  jira_mcp_cache:
