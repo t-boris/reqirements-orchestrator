@@ -5,7 +5,7 @@ services:
   # PostgreSQL - Checkpoints, approvals, application data
   # ===========================================================================
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: maro-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-maro}
