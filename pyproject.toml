@@ -15,8 +15,7 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-mcp-adapters>=0.1.0",
 
-    # Memory (1.x for self-hosted Zep CE, 2.x is for Zep Cloud)
-    "zep-python>=1.5.0,<2.0.0",
+    # Memory - using direct HTTP for Zep CE (no zep-python due to httpx conflicts)
 
     # Slack
     "slack-bolt>=1.18.0",
@@ -36,7 +35,7 @@ dependencies = [
     "structlog>=24.0.0",
 
     # Utilities
-    "httpx>=0.24.0",
+    "httpx>=0.27.0",
     "python-multipart>=0.0.9",
     "aiohttp>=3.9.0",
 ]
