@@ -88,6 +88,7 @@ def build_main_config_modal(channel_id: str, settings: ChannelSettings | None) -
         {
             "type": "input",
             "block_id": "llm_provider",
+            "dispatch_action": True,
             "element": {
                 "type": "static_select",
                 "action_id": "llm_provider_select",
