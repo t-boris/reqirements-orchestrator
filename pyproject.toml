@@ -15,8 +15,7 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-mcp-adapters>=0.1.0",
 
-    # Memory - zep-python 2.x works with self-hosted Zep 0.26+
-    "zep-python>=2.0.0",
+    # Memory - using direct HTTP for Zep CE (zep-python 2.x uses /api/v2 which CE doesn't have)
 
     # Slack
     "slack-bolt>=1.18.0",
