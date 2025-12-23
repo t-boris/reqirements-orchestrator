@@ -176,7 +176,23 @@ async def intent_classifier_node(state: RequirementState) -> dict:
 
     try:
         response = await llm.ainvoke(messages)
-        result = json.loads(response.content)
+
+        # Handle different content formats (string vs list)
+        content = response.content
+        if isinstance(content, list):
+            # Google Gemini returns list of content parts
+            content = "".join(
+                part.get("text", str(part)) if isinstance(part, dict) else str(part)
+                for part in content
+            )
+
+        # Extract JSON from response (may be wrapped in markdown)
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
+
+        result = json.loads(content.strip())
 
         intent = result.get("intent", "general")
         confidence = result.get("confidence", 0.5)
