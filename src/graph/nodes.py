@@ -23,7 +23,7 @@ from src.graph.state import (
     WorkflowPhase,
     ProgressStepStatus,
 )
-from src.slack.channel_config_store import get_model_provider
+# Note: get_model_provider imported lazily inside get_llm() to avoid circular import
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -82,6 +82,9 @@ def get_llm_for_state(state: RequirementState, temperature: float = 0.3) -> Base
     Returns:
         Configured LLM instance.
     """
+    # Lazy import to avoid circular dependency
+    from src.slack.channel_config_store import get_model_provider
+
     config = state.get("channel_config", {})
     model_name = config.get("default_model", settings.default_llm_model)
     provider = get_model_provider(model_name)
