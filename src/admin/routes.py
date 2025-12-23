@@ -172,30 +172,28 @@ async def list_graph_threads() -> dict[str, Any]:
         if checkpointer is None:
             return {"threads": [], "error": "Checkpointer not initialized"}
 
-        # Get connection from pool
+        # Get connection from pool (asyncpg uses acquire(), not connection())
         pool = checkpointer.pool
         if pool is None:
             return {"threads": [], "error": "Pool not available"}
 
-        async with pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("""
-                    SELECT DISTINCT thread_id, MAX(checkpoint_ts) as last_updated
-                    FROM checkpoints
-                    GROUP BY thread_id
-                    ORDER BY last_updated DESC
-                    LIMIT 100
-                """)
-                rows = await cur.fetchall()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DISTINCT thread_id, MAX(created_at) as last_updated
+                FROM langgraph_checkpoints
+                GROUP BY thread_id
+                ORDER BY last_updated DESC
+                LIMIT 100
+            """)
 
-                threads = []
-                for row in rows:
-                    threads.append({
-                        "thread_id": row[0],
-                        "last_updated": row[1].isoformat() if row[1] else None,
-                    })
+            threads = []
+            for row in rows:
+                threads.append({
+                    "thread_id": row["thread_id"],
+                    "last_updated": row["last_updated"].isoformat() if row["last_updated"] else None,
+                })
 
-                return {"threads": threads, "count": len(threads)}
+            return {"threads": threads, "count": len(threads)}
 
     except Exception as e:
         logger.error("graph_threads_error", error=str(e))
@@ -316,12 +314,10 @@ async def admin_dashboard() -> dict[str, Any]:
 
         checkpointer = await get_checkpointer()
         if checkpointer and checkpointer.pool:
-            async with checkpointer.pool.connection() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("SELECT COUNT(DISTINCT thread_id) FROM checkpoints")
-                    row = await cur.fetchone()
-                    count = row[0] if row else 0
-                    dashboard["graph"] = {"status": "connected", "threads": count}
+            async with checkpointer.pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT COUNT(DISTINCT thread_id) FROM langgraph_checkpoints")
+                count = row[0] if row else 0
+                dashboard["graph"] = {"status": "connected", "threads": count}
         else:
             dashboard["graph"] = {"status": "no_pool"}
     except Exception as e:
