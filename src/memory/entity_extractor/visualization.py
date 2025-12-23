@@ -10,7 +10,8 @@ from src.memory.entity_extractor.types import RELATIONSHIP_COLORS, TYPE_COLORS
 
 
 def build_knowledge_graph_data(
-    knowledge_by_session: dict[str, dict[str, Any]]
+    knowledge_by_session: dict[str, dict[str, Any]],
+    include_session_nodes: bool = False,
 ) -> dict[str, Any]:
     """
     Build knowledge graph structure from extracted knowledge.
@@ -20,6 +21,8 @@ def build_knowledge_graph_data(
             - entities: list of entity dicts
             - relationships: list of relationship dicts
             - knowledge_gaps: list of gap dicts
+        include_session_nodes: If True, include session nodes and edges to them.
+            Defaults to False as session nodes clutter the visualization.
 
     Returns:
         Graph data with nodes and edges for D3.js visualization.
@@ -34,15 +37,15 @@ def build_knowledge_graph_data(
         relationships = knowledge.get("relationships", [])
         gaps = knowledge.get("knowledge_gaps", [])
 
-        # Add session node
-        if session_id not in node_id_set:
+        # Optionally add session node (disabled by default)
+        if include_session_nodes and session_id not in node_id_set:
             nodes.append({
                 "id": session_id,
                 "label": session_id.replace("channel-", ""),
                 "type": "session",
                 "description": "Conversation session",
                 "color": TYPE_COLORS["session"],
-                "size": 15,  # Larger node for sessions
+                "size": 15,
             })
             node_id_set.add(session_id)
 
@@ -68,15 +71,16 @@ def build_knowledge_graph_data(
                 })
                 node_id_set.add(entity_id)
 
-            # Add edge from session to entity
-            edges.append({
-                "source": session_id,
-                "target": entity_id,
-                "type": "contains",
-                "label": "contains",
-                "color": RELATIONSHIP_COLORS["contains"],
-                "strength": 0.3,
-            })
+            # Optionally add edge from session to entity
+            if include_session_nodes:
+                edges.append({
+                    "source": session_id,
+                    "target": entity_id,
+                    "type": "contains",
+                    "label": "contains",
+                    "color": RELATIONSHIP_COLORS["contains"],
+                    "strength": 0.3,
+                })
 
         # Add relationship edges
         for rel in relationships:
@@ -112,7 +116,7 @@ def build_knowledge_graph_data(
                     "gap_type": gap.get("gap_type"),
                     "color": TYPE_COLORS["gap"],
                     "size": 8,
-                    "dashed": True,  # Visual hint for gaps
+                    "dashed": True,
                 })
                 node_id_set.add(gap_id)
 
@@ -127,17 +131,8 @@ def build_knowledge_graph_data(
                     "strength": 0.5,
                     "dashed": True,
                 })
-            else:
-                # Connect to session if no specific entity
-                edges.append({
-                    "source": session_id,
-                    "target": gap_id,
-                    "type": "has_gap",
-                    "label": "has gap",
-                    "color": RELATIONSHIP_COLORS["has_gap"],
-                    "strength": 0.3,
-                    "dashed": True,
-                })
+            # If no specific entity, gap remains unconnected (floating)
+            # This is cleaner than connecting to session node
 
     return {
         "nodes": nodes,
