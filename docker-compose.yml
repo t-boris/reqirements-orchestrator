@@ -30,6 +30,7 @@ services:
     env_file:
       - .env
     environment:
+      ZEP_STORE_TYPE: postgres
       ZEP_STORE_POSTGRES_DSN: postgres://maro:maro@postgres:5432/maro?sslmode=disable
       ZEP_NLP_SERVER_URL: ""
       ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
