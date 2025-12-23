@@ -34,12 +34,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    restart: unless-stopped
 
   # ===========================================================================
   # Jira MCP Server - Model Context Protocol for Jira integration
@@ -79,16 +74,12 @@ services:
       postgres:
         condition: service_healthy
       zep:
-        condition: service_healthy
+        condition: service_started
+    restart: unless-stopped
     volumes:
       - ./src:/app/src:ro
       - ./personas:/app/personas:ro
       - ./config:/app/config:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 volumes:
   postgres_data:
