@@ -165,6 +165,10 @@ def intake_router(state: RequirementState) -> str:
 
     intent = state.get("intent")
 
+    # Proceed intent - skip discovery and go directly to architecture
+    if intent == IntentType.PROCEED.value:
+        return "architecture"
+
     # Jira command intents (CRUD)
     if intent == IntentType.JIRA_SYNC.value:
         return "jira_write"

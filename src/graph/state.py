@@ -23,6 +23,7 @@ class RequirementStatus(str, Enum):
 class IntentType(str, Enum):
     """Classified intent of user message."""
 
+    PROCEED = "proceed"  # Skip questions and proceed to next phase
     REQUIREMENT = "requirement"  # New or updated requirement
     MODIFICATION = "modification"  # Change to existing requirements (needs impact analysis)
     QUESTION = "question"  # Question about requirements

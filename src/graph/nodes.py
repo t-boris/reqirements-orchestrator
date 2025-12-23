@@ -342,6 +342,7 @@ Analyze the user's message and extract:
 4. Any Jira issue keys referenced (format: PROJECT-123)
 
 ## Intent Types
+- proceed: User wants to skip questions and proceed to the next phase (e.g., "create architecture", "proceed", "continue", "go ahead", "just do it", "enough questions", "let's move on", "skip", "start building")
 - requirement: New feature, story, bug, or requirement description (when no existing epics/stories)
 - modification: Change to EXISTING requirements (when epics/stories already exist and user wants to change architecture, scope, stories, etc.)
 - question: Question about requirements, architecture, or the project
@@ -353,6 +354,8 @@ Analyze the user's message and extract:
 - jira_delete: Request to delete a Jira issue (e.g., "delete PROJ-123", "remove that issue")
 - general: Project-related conversation
 - off_topic: Unrelated to requirements/project
+
+IMPORTANT: When user says things like "create architecture", "design the system", "proceed", "continue", "go ahead", "enough questions" - classify as "proceed", NOT as "requirement". The user wants to skip discovery and move to the next phase.
 
 NOTE: Use "modification" when the user wants to change the architecture, add/remove epics, change scope,
 reprioritize stories, etc. - changes that might cascade through the requirements. Use "jira_update" for
