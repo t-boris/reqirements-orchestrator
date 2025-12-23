@@ -7,7 +7,7 @@ Provides:
 - Fact extraction and retrieval
 - Semantic search across memories
 
-Note: zep-python 2.0+ uses AsyncZep instead of ZepClient.
+Note: Using zep-python 1.x for self-hosted Zep Community Edition.
 """
 
 from typing import Any
@@ -37,14 +37,8 @@ async def get_zep_client() -> "ZepMemoryClient":
     global _client
 
     if _client is None:
-        try:
-            # zep-python 2.0+ uses AsyncZep
-            from zep_python import AsyncZep
-            _client = AsyncZep(base_url=settings.zep_api_url)
-        except ImportError:
-            # Fallback for older versions
-            from zep_python import ZepClient
-            _client = ZepClient(base_url=settings.zep_api_url)
+        from zep_python import ZepClient
+        _client = ZepClient(base_url=settings.zep_api_url)
         logger.info("zep_client_initialized", url=settings.zep_api_url)
 
     return ZepMemoryClient(_client)
@@ -60,7 +54,7 @@ class ZepMemoryClient:
     Wrapper around Zep client with convenience methods for requirements workflow.
 
     Handles session management, message storage, and semantic search.
-    Compatible with zep-python 2.0+ API.
+    Uses zep-python 1.x API for self-hosted Zep.
     """
 
     def __init__(self, client):
@@ -68,7 +62,7 @@ class ZepMemoryClient:
         Initialize the memory client.
 
         Args:
-            client: Zep AsyncZep or ZepClient instance.
+            client: Zep ZepClient instance.
         """
         self.client = client
         self.memory = MemoryOperations(client)
@@ -87,15 +81,17 @@ class ZepMemoryClient:
         Returns:
             Session ID.
         """
+        from zep_python import Session
+
         session_id = f"channel-{channel_id}"
 
         try:
             # Try to get existing session
-            await self.client.memory.get_session(session_id)
+            await self.client.aget_session(session_id)
         except Exception:
             # Session doesn't exist, create it
             try:
-                await self.client.memory.add_session(
+                session = Session(
                     session_id=session_id,
                     metadata={
                         "channel_id": channel_id,
@@ -103,6 +99,7 @@ class ZepMemoryClient:
                         "type": "slack_channel",
                     },
                 )
+                await self.client.aadd_session(session)
                 logger.info("zep_session_created", session_id=session_id)
             except Exception as e:
                 # Session might already exist from another request
@@ -124,7 +121,7 @@ class ZepMemoryClient:
 class MemoryOperations:
     """
     Memory operations for storing and retrieving conversation history.
-    Compatible with zep-python 2.0+ API.
+    Uses zep-python 1.x API for self-hosted Zep.
     """
 
     def __init__(self, client):
@@ -142,20 +139,21 @@ class MemoryOperations:
             session_id: Zep session ID.
             messages: List of message dicts with role, content, and optional metadata.
         """
+        from zep_python import Memory, Message
+
         try:
-            # zep-python 2.0+ API
-            await self.client.memory.add(
-                session_id=session_id,
-                messages=[
-                    {
-                        "role": msg.get("role", "user"),
-                        "role_type": msg.get("role", "user"),
-                        "content": msg.get("content", ""),
-                        "metadata": msg.get("metadata", {}),
-                    }
-                    for msg in messages
-                ],
-            )
+            zep_messages = [
+                Message(
+                    role=msg.get("role", "user"),
+                    role_type=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                    metadata=msg.get("metadata", {}),
+                )
+                for msg in messages
+            ]
+
+            memory = Memory(messages=zep_messages)
+            await self.client.aadd_memory(session_id, memory)
 
             logger.debug(
                 "memory_added",
@@ -181,16 +179,15 @@ class MemoryOperations:
             List of message dicts.
         """
         try:
-            # zep-python 2.0+ API
-            memory = await self.client.memory.get(session_id=session_id)
+            memory = await self.client.aget_memory(session_id)
 
             messages = []
-            msgs = getattr(memory, 'messages', []) or []
+            msgs = memory.messages or []
             for msg in msgs[-limit:]:
                 messages.append({
-                    "role": getattr(msg, 'role', 'user'),
-                    "content": getattr(msg, 'content', ''),
-                    "metadata": getattr(msg, 'metadata', {}) or {},
+                    "role": msg.role,
+                    "content": msg.content,
+                    "metadata": msg.metadata or {},
                     "created_at": getattr(msg, 'created_at', None),
                 })
 
@@ -216,23 +213,21 @@ class MemoryOperations:
         Returns:
             List of search results with relevance scores.
         """
+        from zep_python import MemorySearchPayload
+
         try:
-            # zep-python 2.0+ API
-            results = await self.client.memory.search(
-                session_id=session_id,
-                text=text,
-                limit=limit,
-            )
+            payload = MemorySearchPayload(text=text, metadata={})
+            results = await self.client.asearch_memory(session_id, payload, limit=limit)
 
             memories = []
             for result in results or []:
-                msg = getattr(result, 'message', None)
+                msg = result.message
                 if msg:
                     memories.append({
-                        "content": getattr(msg, 'content', ''),
-                        "role": getattr(msg, 'role', 'user'),
-                        "score": getattr(result, 'score', 0.0),
-                        "metadata": getattr(msg, 'metadata', {}) or {},
+                        "content": msg.content,
+                        "role": msg.role,
+                        "score": result.score or 0.0,
+                        "metadata": msg.metadata or {},
                         "created_at": getattr(msg, 'created_at', None),
                     })
 
@@ -252,8 +247,7 @@ class MemoryOperations:
             True if successful.
         """
         try:
-            # zep-python 2.0+ API
-            await self.client.memory.delete(session_id=session_id)
+            await self.client.adelete_memory(session_id)
             logger.info("memory_cleared", session_id=session_id)
             return True
         except Exception:
@@ -270,7 +264,7 @@ class FactOperations:
     Fact operations for the temporal knowledge graph.
 
     Facts are extracted entities and relationships from conversations.
-    Compatible with zep-python 2.0+ API.
+    Uses zep-python 1.x API.
     """
 
     def __init__(self, client):
@@ -290,15 +284,13 @@ class FactOperations:
             List of fact dicts.
         """
         try:
-            # zep-python 2.0+ API
-            memory = await self.client.memory.get(session_id=session_id)
+            memory = await self.client.aget_memory(session_id)
 
             facts = []
-            facts_list = getattr(memory, 'facts', []) or []
-            for fact in facts_list:
+            for fact in memory.facts or []:
                 facts.append({
-                    "content": getattr(fact, 'fact', getattr(fact, 'content', '')),
-                    "created_at": getattr(fact, 'created_at', None),
+                    "content": fact.fact,
+                    "created_at": fact.created_at,
                 })
 
             return facts
@@ -323,18 +315,20 @@ class FactOperations:
             fact_content: The fact to add.
             metadata: Optional metadata.
         """
-        # zep-python 2.0+ API - Add as a system message that will be processed by Zep
-        await self.client.memory.add(
-            session_id=session_id,
+        from zep_python import Memory, Message
+
+        # Add as a system message that will be processed by Zep
+        memory = Memory(
             messages=[
-                {
-                    "role": "system",
-                    "role_type": "system",
-                    "content": f"[FACT] {fact_content}",
-                    "metadata": metadata or {},
-                }
-            ],
+                Message(
+                    role="system",
+                    role_type="system",
+                    content=f"[FACT] {fact_content}",
+                    metadata=metadata or {},
+                )
+            ]
         )
+        await self.client.aadd_memory(session_id, memory)
 
         logger.debug("fact_added", session_id=session_id, fact=fact_content[:50])
 

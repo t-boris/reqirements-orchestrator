@@ -15,8 +15,8 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-mcp-adapters>=0.1.0",
 
-    # Memory
-    "zep-python>=2.0.0",
+    # Memory (1.x for self-hosted Zep CE, 2.x is for Zep Cloud)
+    "zep-python>=1.5.0,<2.0.0",
 
     # Slack
     "slack-bolt>=1.18.0",
