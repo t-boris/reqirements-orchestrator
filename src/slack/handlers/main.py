@@ -29,7 +29,7 @@ from src.slack.knowledge_store import (
     clear_channel_knowledge,
 )
 from src.slack.formatter import format_response, format_error
-from src.slack.handlers import (
+from src.slack.handlers.helpers import (
     _get_bot_user_id,
     _process_attachments,
     _format_status,
