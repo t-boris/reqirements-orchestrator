@@ -12,6 +12,7 @@ from src.memory.entity_extractor.extraction import (
 )
 from src.memory.entity_extractor.graph import (
     KnowledgeGraph,
+    _knowledge_graphs,
     clear_knowledge_graph,
     get_knowledge_graph,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "build_knowledge_graph_data",
     # Graph
     "KnowledgeGraph",
+    "_knowledge_graphs",
     "get_knowledge_graph",
     "clear_knowledge_graph",
 ]
