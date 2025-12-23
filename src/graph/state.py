@@ -261,6 +261,8 @@ class RequirementState(TypedDict, total=False):
     # -------------------------------------------------------------------------
     architecture_options: list[dict[str, Any]]  # [{name, description, pros, cons, estimate}]
     chosen_architecture: str | None  # Selected option name
+    selected_option: str | None  # User's selection input (e.g., "A", "Option B")
+    selected_architecture: dict[str, Any] | None  # Full selected option details
 
     # -------------------------------------------------------------------------
     # Hierarchy (Epics → Stories → Tasks)

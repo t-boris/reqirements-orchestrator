@@ -458,21 +458,41 @@ async def intake_node(state: RequirementState) -> dict:
     proceed_keywords = ["proceed", "continue", "go ahead", "yes", "ok", "okay", "sure", "do it", "create", "build", "start"]
     message_lower = message.lower().strip()
 
+    # Check for option selection patterns (e.g., "A", "Option A", "Option 1", "B", "1", "2")
+    import re
+    option_pattern = re.compile(r'^(option\s*)?([abc123])\s*$', re.IGNORECASE)
+    is_option_selection = bool(option_pattern.match(message_lower))
+
+    print(f"[DEBUG] intake_node: current_phase={current_phase}, message={message_lower[:50]}, is_option={is_option_selection}")
+
     if current_phase in phases_past_discovery:
         # If user is responding in a phase past discovery, default to proceeding
         # unless they explicitly ask questions or provide new requirements
         is_short_response = len(message.split()) <= 10
         has_proceed_keyword = any(kw in message_lower for kw in proceed_keywords)
 
-        if is_short_response or has_proceed_keyword:
-            logger.info("intake_phase_continue", phase=current_phase, action="proceed")
+        if is_short_response or has_proceed_keyword or is_option_selection:
+            logger.info("intake_phase_continue", phase=current_phase, action="proceed", is_option=is_option_selection)
             return {
                 "intent": "proceed",
                 "intent_confidence": 0.9,
                 "should_respond": True,
                 "current_phase": current_phase,
                 "clarifying_questions": [],  # Don't ask more questions
+                # Store the selected option for architecture node
+                "selected_option": message.strip() if is_option_selection else None,
             }
+
+    # Also check for option selection even if phase is not set (state may not be loaded yet)
+    if is_option_selection:
+        logger.info("intake_option_selection", option=message.strip())
+        return {
+            "intent": "proceed",
+            "intent_confidence": 0.9,
+            "should_respond": True,
+            "clarifying_questions": [],
+            "selected_option": message.strip(),
+        }
 
     llm = get_llm_for_state(state, temperature=0.1)
 
@@ -846,6 +866,41 @@ async def architecture_exploration_node(state: RequirementState) -> dict:
 
     This is Phase 3 of the multi-phase workflow.
     """
+    # Check if user has selected an option
+    selected_option = state.get("selected_option")
+    existing_options = state.get("architecture_options", [])
+
+    if selected_option and existing_options:
+        # User is selecting from existing options
+        import re
+        match = re.match(r'^(option\s*)?([abc123])\s*$', selected_option.lower())
+        if match:
+            selection = match.group(2).upper()
+            option_map = {"A": 0, "B": 1, "C": 2, "1": 0, "2": 1, "3": 2}
+            idx = option_map.get(selection, 0)
+
+            if idx < len(existing_options):
+                chosen = existing_options[idx]
+                logger.info(
+                    "architecture_option_selected",
+                    option=selection,
+                    name=chosen.get("name", "Unknown"),
+                )
+
+                # Update phase history
+                phase_history = list(state.get("phase_history", []))
+
+                return {
+                    "current_phase": WorkflowPhase.ARCHITECTURE.value,
+                    "phase_history": phase_history,
+                    "selected_architecture": chosen,
+                    "response": f"✅ *Selected: {chosen.get('name', 'Option ' + selection)}*\n\n"
+                               f"_{chosen.get('description', '')}_\n\n"
+                               f"Moving to scope definition...",
+                    "should_respond": True,
+                    "active_persona": "architect",
+                }
+
     logger.info(
         "architecture_exploration",
         channel_id=state.get("channel_id"),
