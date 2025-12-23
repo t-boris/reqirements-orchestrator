@@ -107,10 +107,9 @@ def register_handlers(app: AsyncApp) -> None:
             config = await get_channel_config(channel_id)
             print(f"[DEBUG] Config loaded: model={config.default_model}")
 
-            # For @mentions, show immediate progress feedback
-            if is_mention:
-                progress_reporter = ProgressReporter(client, channel_id, thread_ts)
-                await progress_reporter.start("Processing your request...")
+            # Always show progress feedback when processing
+            progress_reporter = ProgressReporter(client, channel_id, thread_ts)
+            await progress_reporter.start("Processing your request...")
 
             # Create initial state for the graph
             print("[DEBUG] Creating initial state...")
