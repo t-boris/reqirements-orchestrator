@@ -27,9 +27,12 @@ services:
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: maro-zep
+    env_file:
+      - .env
     environment:
       ZEP_STORE_POSTGRES_DSN: postgres://maro:maro@postgres:5432/maro?sslmode=disable
       ZEP_NLP_SERVER_URL: ""
+      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
       ZEP_EXTRACTORS_DOCUMENTS_EMBEDDINGS_ENABLED: "true"
       ZEP_EXTRACTORS_MESSAGES_SUMMARIZER_ENABLED: "true"
       ZEP_EXTRACTORS_MESSAGES_ENTITIES_ENABLED: "true"
@@ -52,6 +55,8 @@ services:
     image: node:20-alpine
     container_name: maro-jira-mcp
     working_dir: /app
+    env_file:
+      - .env
     command: >
       sh -c "npm install -g @anthropic/mcp-server-jira || npm install -g jira-mcp &&
              npx jira-mcp --stdio"
