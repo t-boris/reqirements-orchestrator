@@ -2281,22 +2281,48 @@ def _format_final_summary(
 
 async def memory_node(state: RequirementState) -> dict:
     """
-    Retrieve relevant context from Zep memory.
+    Store current message and retrieve relevant context from Zep memory.
 
-    Fetches facts, entities, and previous conversations related to the message.
+    1. Ensures session exists for this channel
+    2. Stores the current user message
+    3. Fetches facts and previous conversations related to the message
     """
     from src.memory.zep_client import get_zep_client
 
-    logger.info("retrieving_memory", channel_id=state.get("channel_id"))
+    channel_id = state.get("channel_id")
+    message = state.get("message", "")
+    user_id = state.get("user_id")
+
+    logger.info("memory_node_start", channel_id=channel_id)
 
     try:
         zep = await get_zep_client()
-        session_id = f"channel-{state.get('channel_id')}"
 
-        # Search for relevant memories
+        # 1. Ensure session exists (creates if not)
+        session_id = await zep.ensure_session(channel_id, user_id)
+
+        # 2. Store the incoming user message
+        if message:
+            await zep.memory.add(
+                session_id=session_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": message,
+                        "metadata": {
+                            "user_id": user_id,
+                            "channel_id": channel_id,
+                            "is_mention": state.get("is_mention", False),
+                        },
+                    }
+                ],
+            )
+            logger.debug("message_stored_to_memory", session_id=session_id)
+
+        # 3. Search for relevant memories
         results = await zep.memory.search(
             session_id=session_id,
-            text=state.get("message", ""),
+            text=message,
             limit=10,
         )
 
@@ -2309,7 +2335,7 @@ async def memory_node(state: RequirementState) -> dict:
                 "timestamp": result.get("created_at"),
             })
 
-        logger.info("memory_retrieved", fact_count=len(facts))
+        logger.info("memory_retrieved", fact_count=len(facts), session_id=session_id)
 
         return {
             "zep_facts": facts,
@@ -2317,10 +2343,10 @@ async def memory_node(state: RequirementState) -> dict:
         }
 
     except Exception as e:
-        logger.warning("memory_retrieval_failed", error=str(e))
+        logger.warning("memory_node_failed", error=str(e))
         return {
             "zep_facts": [],
-            "zep_session_id": f"channel-{state.get('channel_id')}",
+            "zep_session_id": f"channel-{channel_id}",
         }
 
 
