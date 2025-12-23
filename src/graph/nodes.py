@@ -432,12 +432,47 @@ async def intake_node(state: RequirementState) -> dict:
     This is Phase 1 of the new multi-phase workflow.
     """
     message = state.get("message", "")
+    current_phase = state.get("current_phase")
 
     logger.info(
         "intake_processing",
         channel_id=state.get("channel_id"),
         message_length=len(message),
+        current_phase=current_phase,
     )
+
+    # If we're already past discovery phase, treat user's response as "proceed"
+    # unless it's clearly a new requirement or command
+    phases_past_discovery = [
+        WorkflowPhase.ARCHITECTURE.value,
+        WorkflowPhase.SCOPE.value,
+        WorkflowPhase.STORIES.value,
+        WorkflowPhase.TASKS.value,
+        WorkflowPhase.ESTIMATION.value,
+        WorkflowPhase.SECURITY.value,
+        WorkflowPhase.VALIDATION.value,
+        WorkflowPhase.REVIEW.value,
+    ]
+
+    # Quick check for proceed/continue commands
+    proceed_keywords = ["proceed", "continue", "go ahead", "yes", "ok", "okay", "sure", "do it", "create", "build", "start"]
+    message_lower = message.lower().strip()
+
+    if current_phase in phases_past_discovery:
+        # If user is responding in a phase past discovery, default to proceeding
+        # unless they explicitly ask questions or provide new requirements
+        is_short_response = len(message.split()) <= 10
+        has_proceed_keyword = any(kw in message_lower for kw in proceed_keywords)
+
+        if is_short_response or has_proceed_keyword:
+            logger.info("intake_phase_continue", phase=current_phase, action="proceed")
+            return {
+                "intent": "proceed",
+                "intent_confidence": 0.9,
+                "should_respond": True,
+                "current_phase": current_phase,
+                "clarifying_questions": [],  # Don't ask more questions
+            }
 
     llm = get_llm_for_state(state, temperature=0.1)
 
@@ -449,6 +484,10 @@ async def intake_node(state: RequirementState) -> dict:
         )
     else:
         context = "No previous context available."
+
+    # Add current phase info to context
+    if current_phase:
+        context += f"\n\nCurrent workflow phase: {current_phase}"
 
     prompt = ChatPromptTemplate.from_template(INTAKE_PROMPT)
     messages = prompt.format_messages(
