@@ -15,16 +15,14 @@ RUN pip install uv
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy all application code first
 COPY pyproject.toml README.md ./
-
-# Install dependencies
-RUN uv pip install --system -e .
-
-# Copy application code
 COPY src/ ./src/
 COPY personas/ ./personas/
 COPY config/ ./config/
+
+# Install dependencies and package
+RUN uv pip install --system .
 
 # Expose port
 EXPOSE 8000
