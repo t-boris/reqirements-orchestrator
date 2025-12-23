@@ -178,6 +178,7 @@ class GraphState:
     # -------------------------------------------------------------------------
     response: str | None  # Response to send to Slack
     should_respond: bool  # Should bot respond to this message?
+    response_target: str  # Where to respond: "thread", "channel", "broadcast"
     error: str | None  # Error message if something failed
 
 
@@ -239,6 +240,7 @@ class RequirementState(TypedDict, total=False):
     # Output
     response: str | None
     should_respond: bool
+    response_target: str | None  # "thread", "channel", or "broadcast"
     error: str | None
 
     # -------------------------------------------------------------------------
@@ -373,6 +375,7 @@ def create_initial_state(
         # Output
         response=None,
         should_respond=False,
+        response_target="thread",  # Default to thread, decision node can change
         error=None,
         # Workflow Progress
         current_phase=None,
