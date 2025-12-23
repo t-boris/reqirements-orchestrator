@@ -38,7 +38,7 @@ async def get_zep_client() -> "ZepMemoryClient":
     global _client
 
     if _client is None:
-        from zep_python import AsyncZep
+        from zep_python.client import AsyncZep
 
         # For self-hosted Zep: pass base_url and api_key=None
         _client = AsyncZep(
