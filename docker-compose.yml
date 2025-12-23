@@ -28,15 +28,9 @@ services:
     image: ghcr.io/getzep/zep:latest
     container_name: maro-zep
     environment:
-      ZEP__OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ZEP__STORE__TYPE: "postgres"
-      ZEP__STORE__POSTGRES__DSN: "postgres://maro:maro@postgres:5432/maro?sslmode=disable"
-      ZEP__LLM__MODEL: "gpt-4o-mini"
-      ZEP__EXTRACTORS__DOCUMENTS__EMBEDDINGS__ENABLED: "true"
-      ZEP__EXTRACTORS__DOCUMENTS__EMBEDDINGS__SERVICE: "openai"
-      ZEP__EXTRACTORS__MESSAGES__SUMMARIZER__ENABLED: "true"
-      ZEP__EXTRACTORS__MESSAGES__ENTITIES__ENABLED: "true"
-      ZEP__EXTRACTORS__MESSAGES__INTENT__ENABLED: "true"
+      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
+      STORE_TYPE: postgres
+      STORE_POSTGRES_DSN: "postgres://maro:maro@postgres:5432/maro?sslmode=disable"
     ports:
       - "8001:8000"
     depends_on:
@@ -85,8 +79,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      # zep:
-      #   condition: service_healthy
+      zep:
+        condition: service_healthy
     volumes:
       - ./src:/app/src:ro
       - ./personas:/app/personas:ro
