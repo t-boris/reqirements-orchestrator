@@ -49,12 +49,18 @@ async def startup_event():
 
     # Initialize approval store
     from src.slack.approval_store import init_approval_store
-
     await init_approval_store()
+
+    # Initialize channel config store
+    from src.slack.channel_config_store import init_channel_config_store
+    await init_channel_config_store()
+
+    # Initialize knowledge store
+    from src.slack.knowledge_store import init_knowledge_store
+    await init_knowledge_store()
 
     # Load personas
     from src.personas import load_personas
-
     await load_personas()
 
     logger.info("maro_started")

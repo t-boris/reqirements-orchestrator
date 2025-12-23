@@ -9,6 +9,7 @@ import json
 import structlog
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.language_models import BaseChatModel
 
 from src.config.settings import get_settings
 from src.graph.state import (
@@ -16,9 +17,95 @@ from src.graph.state import (
     IntentType,
     RequirementState,
 )
+from src.slack.channel_config_store import get_model_provider
 
 logger = structlog.get_logger()
 settings = get_settings()
+
+
+# =============================================================================
+# LLM Factory
+# =============================================================================
+
+def get_llm_for_state(state: RequirementState, temperature: float = 0.3) -> BaseChatModel:
+    """
+    Get the appropriate LLM based on channel configuration.
+
+    Uses channel_config to determine which model and provider to use.
+    Falls back to default settings if no config.
+
+    Args:
+        state: Current graph state with channel_config.
+        temperature: LLM temperature setting.
+
+    Returns:
+        Configured LLM instance.
+    """
+    config = state.get("channel_config", {})
+    model_name = config.get("default_model", settings.default_llm_model)
+    provider = get_model_provider(model_name)
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(model=model_name, temperature=temperature)
+    elif provider == "google":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+    else:  # Default to OpenAI
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model_name, temperature=temperature)
+
+
+def get_personality_prompt(state: RequirementState) -> str:
+    """
+    Generate personality instructions based on channel config.
+
+    Args:
+        state: Current graph state with channel_config.
+
+    Returns:
+        Personality instruction string to append to prompts.
+    """
+    config = state.get("channel_config", {})
+    personality = config.get("personality", {})
+
+    if not personality:
+        return ""
+
+    humor = personality.get("humor", 0.2)
+    formality = personality.get("formality", 0.6)
+    emoji = personality.get("emoji_usage", 0.2)
+    verbosity = personality.get("verbosity", 0.5)
+
+    instructions = []
+
+    # Humor
+    if humor < 0.3:
+        instructions.append("Be professional and serious.")
+    elif humor > 0.7:
+        instructions.append("Feel free to use appropriate humor and wit.")
+
+    # Formality
+    if formality < 0.3:
+        instructions.append("Use a casual, friendly tone.")
+    elif formality > 0.7:
+        instructions.append("Use formal, professional language.")
+
+    # Emoji
+    if emoji < 0.3:
+        instructions.append("Avoid using emojis.")
+    elif emoji > 0.7:
+        instructions.append("Use emojis where appropriate to be expressive.")
+
+    # Verbosity
+    if verbosity < 0.3:
+        instructions.append("Be very concise and brief.")
+    elif verbosity > 0.7:
+        instructions.append("Provide detailed, thorough explanations.")
+
+    if instructions:
+        return "\n\nCommunication style: " + " ".join(instructions)
+    return ""
 
 
 # =============================================================================
@@ -64,18 +151,13 @@ async def intent_classifier_node(state: RequirementState) -> dict:
 
     Uses LLM to analyze message and return intent type with confidence.
     """
-    from langchain_openai import ChatOpenAI
-
     logger.info(
         "classifying_intent",
         channel_id=state.get("channel_id"),
         message_length=len(state.get("message", "")),
     )
 
-    llm = ChatOpenAI(
-        model=settings.default_llm_model,
-        temperature=0.1,  # Low temperature for classification
-    )
+    llm = get_llm_for_state(state, temperature=0.1)  # Low temperature for classification
 
     # Build context from Zep facts
     context = ""
@@ -226,15 +308,13 @@ async def conflict_detection_node(state: RequirementState) -> dict:
 
     Searches Zep and Jira for related requirements and uses LLM to detect conflicts.
     """
-    from langchain_openai import ChatOpenAI
-
     # Skip if no draft to check
     if not state.get("draft"):
         return {"conflicts": []}
 
     logger.info("detecting_conflicts", channel_id=state.get("channel_id"))
 
-    llm = ChatOpenAI(model=settings.default_llm_model, temperature=0.1)
+    llm = get_llm_for_state(state, temperature=0.1)
 
     # Build existing requirements from memory and Jira
     existing = []
@@ -310,15 +390,13 @@ async def draft_node(state: RequirementState) -> dict:
 
     Uses LLM to structure the requirement properly.
     """
-    from langchain_openai import ChatOpenAI
-
     logger.info(
         "drafting_requirement",
         channel_id=state.get("channel_id"),
         iteration=state.get("iteration_count", 0),
     )
 
-    llm = ChatOpenAI(model=settings.default_llm_model, temperature=0.3)
+    llm = get_llm_for_state(state, temperature=0.3)
 
     # Build context
     context = ""
@@ -401,8 +479,6 @@ async def critique_node(state: RequirementState) -> dict:
 
     Returns whether draft is acceptable or needs refinement.
     """
-    from langchain_openai import ChatOpenAI
-
     draft = state.get("draft")
     if not draft:
         return {"critique_feedback": ["No draft to critique"]}
@@ -413,7 +489,7 @@ async def critique_node(state: RequirementState) -> dict:
         iteration=state.get("iteration_count", 0),
     )
 
-    llm = ChatOpenAI(model=settings.default_llm_model, temperature=0.2)
+    llm = get_llm_for_state(state, temperature=0.2)
 
     prompt = ChatPromptTemplate.from_template(CRITIQUE_PROMPT)
     messages = prompt.format_messages(
@@ -540,9 +616,13 @@ async def jira_write_node(state: RequirementState) -> dict:
     try:
         jira = await get_jira_client()
 
+        # Get project key from channel config
+        config = state.get("channel_config", {})
+        project_key = config.get("jira_project_key", "MARO")
+
         if action == "create":
             result = await jira.create_issue(
-                project_key="MARO",  # TODO: Get from channel config
+                project_key=project_key,
                 issue_type=draft.get("issue_type", "Story"),
                 summary=draft.get("title", ""),
                 description=draft.get("description", ""),
@@ -655,11 +735,9 @@ async def response_node(state: RequirementState) -> dict:
     if state.get("response"):
         return {}
 
-    from langchain_openai import ChatOpenAI
-
     logger.info("generating_response", channel_id=state.get("channel_id"))
 
-    llm = ChatOpenAI(model=settings.default_llm_model, temperature=0.5)
+    llm = get_llm_for_state(state, temperature=0.5)
 
     draft_str = ""
     if state.get("draft"):

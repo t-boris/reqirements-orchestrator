@@ -13,6 +13,20 @@ from slack_bolt.async_app import AsyncApp
 from src.config.settings import get_settings
 from src.graph import create_initial_state, create_thread_id, invoke_graph
 from src.slack.approval import send_approval_request
+from src.slack.channel_config_store import (
+    ChannelConfig,
+    PersonalityConfig,
+    get_channel_config,
+    save_channel_config,
+    delete_channel_config,
+    get_available_models,
+)
+from src.slack.knowledge_store import (
+    get_knowledge_files,
+    save_knowledge_file,
+    delete_knowledge_file,
+    clear_channel_knowledge,
+)
 from src.slack.formatter import format_response, format_error
 
 logger = structlog.get_logger()
@@ -72,6 +86,9 @@ def register_handlers(app: AsyncApp) -> None:
         )
 
         try:
+            # Load channel configuration
+            config = await get_channel_config(channel_id)
+
             # Create initial state for the graph
             state = create_initial_state(
                 channel_id=channel_id,
@@ -80,6 +97,7 @@ def register_handlers(app: AsyncApp) -> None:
                 thread_ts=thread_ts,
                 attachments=attachments,
                 is_mention=is_mention,
+                channel_config=config.to_dict(),
             )
 
             # Create thread ID for checkpointing
@@ -179,7 +197,7 @@ def register_handlers(app: AsyncApp) -> None:
     @app.command("/req-clean")
     async def handle_clean_command(ack, command, client) -> None:
         """
-        Clear memory and graph state for the channel.
+        Clear memory, state, config, and knowledge for the channel.
 
         Usage: /req-clean
         """
@@ -199,9 +217,15 @@ def register_handlers(app: AsyncApp) -> None:
             # Clear Zep memory
             await clear_channel_memory(channel_id)
 
+            # Clear channel config
+            await delete_channel_config(channel_id)
+
+            # Clear knowledge files
+            await clear_channel_knowledge(channel_id)
+
             await client.chat_postMessage(
                 channel=channel_id,
-                text=f"<@{user_id}> Channel memory and state have been cleared.",
+                text=f"<@{user_id}> Channel memory, state, config, and knowledge have been cleared.",
             )
 
             logger.info("channel_cleaned", channel_id=channel_id, user_id=user_id)
@@ -223,10 +247,16 @@ def register_handlers(app: AsyncApp) -> None:
         """
         await ack()
 
+        channel_id = command["channel_id"]
+
+        # Load current config
+        config = await get_channel_config(channel_id)
+        knowledge_files = await get_knowledge_files(channel_id)
+
         # Open configuration modal
         await client.views_open(
             trigger_id=command["trigger_id"],
-            view=_build_config_modal(command["channel_id"]),
+            view=_build_config_modal(config, knowledge_files),
         )
 
     @app.command("/req-approve")
@@ -300,13 +330,59 @@ def register_handlers(app: AsyncApp) -> None:
         channel_id = view.get("private_metadata", "")
         user_id = body.get("user", {}).get("id", "")
 
-        # TODO: Save configuration to database
-        # For now, just confirm
+        try:
+            # Extract form values
+            project_key = values.get("project_key", {}).get("project_key_input", {}).get("value")
+            issue_type = values.get("default_issue_type", {}).get("issue_type_select", {}).get("selected_option", {}).get("value", "Story")
+            model = values.get("llm_model", {}).get("model_select", {}).get("selected_option", {}).get("value", "gpt-5.2")
 
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=f"<@{user_id}> Channel configuration updated.",
-        )
+            # Personality values (0-10 scale, convert to 0.0-1.0)
+            humor = int(values.get("personality_humor", {}).get("humor_input", {}).get("value") or "2") / 10.0
+            formality = int(values.get("personality_formality", {}).get("formality_input", {}).get("value") or "6") / 10.0
+            emoji = int(values.get("personality_emoji", {}).get("emoji_input", {}).get("value") or "2") / 10.0
+            verbosity = int(values.get("personality_verbosity", {}).get("verbosity_input", {}).get("value") or "5") / 10.0
+
+            # Inline knowledge for personas
+            architect_knowledge = values.get("architect_knowledge", {}).get("architect_knowledge_input", {}).get("value") or ""
+            pm_knowledge = values.get("pm_knowledge", {}).get("pm_knowledge_input", {}).get("value") or ""
+            security_knowledge = values.get("security_knowledge", {}).get("security_knowledge_input", {}).get("value") or ""
+
+            # Build config object
+            config = ChannelConfig(
+                channel_id=channel_id,
+                jira_project_key=project_key,
+                jira_default_issue_type=issue_type,
+                default_model=model,
+                personality=PersonalityConfig(
+                    humor=max(0.0, min(1.0, humor)),
+                    formality=max(0.0, min(1.0, formality)),
+                    emoji_usage=max(0.0, min(1.0, emoji)),
+                    verbosity=max(0.0, min(1.0, verbosity)),
+                ),
+                persona_knowledge={
+                    "architect": {"inline": architect_knowledge},
+                    "product_manager": {"inline": pm_knowledge},
+                    "security_analyst": {"inline": security_knowledge},
+                },
+            )
+
+            # Save to database
+            await save_channel_config(config)
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=f"<@{user_id}> Channel configuration saved successfully.\n"
+                     f"• Model: `{model}`\n"
+                     f"• Jira Project: `{project_key or 'Not set'}`",
+            )
+
+        except Exception as e:
+            logger.exception("config_save_failed", error=str(e))
+            await client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text=f"Failed to save configuration: {str(e)}",
+            )
 
     @app.view("edit_requirement_modal")
     async def handle_edit_submit(ack, body, view, client) -> None:
@@ -391,31 +467,67 @@ def _format_status(state: dict) -> str:
     return "\n".join(parts)
 
 
-def _build_config_modal(channel_id: str) -> dict:
-    """Build the channel configuration modal."""
+def _build_config_modal(config: ChannelConfig, knowledge_files: list) -> dict:
+    """Build the channel configuration modal with current values."""
+
+    # Build model options
+    models = get_available_models()
+    model_options = [
+        {"text": {"type": "plain_text", "text": m["label"]}, "value": m["value"]}
+        for m in models
+    ]
+
+    # Find current model option
+    current_model_option = next(
+        (opt for opt in model_options if opt["value"] == config.default_model),
+        model_options[0]  # Default to first option
+    )
+
+    # Issue type options
+    issue_types = ["Story", "Task", "Bug", "Epic"]
+    issue_type_options = [
+        {"text": {"type": "plain_text", "text": t}, "value": t}
+        for t in issue_types
+    ]
+    current_issue_option = next(
+        (opt for opt in issue_type_options if opt["value"] == config.jira_default_issue_type),
+        issue_type_options[0]
+    )
+
+    # Get inline knowledge for personas
+    architect_inline = config.persona_knowledge.get("architect", {}).get("inline", "")
+    pm_inline = config.persona_knowledge.get("product_manager", {}).get("inline", "")
+    security_inline = config.persona_knowledge.get("security_analyst", {}).get("inline", "")
+
+    # Convert personality values to 0-10 scale
+    humor_val = str(int(config.personality.humor * 10))
+    formality_val = str(int(config.personality.formality * 10))
+    emoji_val = str(int(config.personality.emoji_usage * 10))
+    verbosity_val = str(int(config.personality.verbosity * 10))
+
     return {
         "type": "modal",
         "callback_id": "config_modal",
-        "private_metadata": channel_id,
-        "title": {"type": "plain_text", "text": "Channel Configuration"},
+        "private_metadata": config.channel_id,
+        "title": {"type": "plain_text", "text": "Channel Config"},
         "submit": {"type": "plain_text", "text": "Save"},
         "close": {"type": "plain_text", "text": "Cancel"},
         "blocks": [
+            # ===== JIRA SETTINGS =====
             {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*Configure requirements bot for this channel*",
-                },
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Jira Settings"},
             },
             {
                 "type": "input",
                 "block_id": "project_key",
+                "optional": True,
                 "label": {"type": "plain_text", "text": "Jira Project Key"},
                 "element": {
                     "type": "plain_text_input",
                     "action_id": "project_key_input",
                     "placeholder": {"type": "plain_text", "text": "e.g., MARO"},
+                    "initial_value": config.jira_project_key or "",
                 },
             },
             {
@@ -425,13 +537,133 @@ def _build_config_modal(channel_id: str) -> dict:
                 "element": {
                     "type": "static_select",
                     "action_id": "issue_type_select",
-                    "options": [
-                        {"text": {"type": "plain_text", "text": "Story"}, "value": "Story"},
-                        {"text": {"type": "plain_text", "text": "Task"}, "value": "Task"},
-                        {"text": {"type": "plain_text", "text": "Bug"}, "value": "Bug"},
-                        {"text": {"type": "plain_text", "text": "Epic"}, "value": "Epic"},
-                    ],
-                    "initial_option": {"text": {"type": "plain_text", "text": "Story"}, "value": "Story"},
+                    "options": issue_type_options,
+                    "initial_option": current_issue_option,
+                },
+            },
+
+            # ===== LLM MODEL =====
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "LLM Model"},
+            },
+            {
+                "type": "input",
+                "block_id": "llm_model",
+                "label": {"type": "plain_text", "text": "Default Model"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "model_select",
+                    "options": model_options,
+                    "initial_option": current_model_option,
+                },
+            },
+
+            # ===== BOT PERSONALITY =====
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Bot Personality (0-10)"},
+            },
+            {
+                "type": "input",
+                "block_id": "personality_humor",
+                "label": {"type": "plain_text", "text": "Humor Level"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "humor_input",
+                    "initial_value": humor_val,
+                    "placeholder": {"type": "plain_text", "text": "0-10"},
+                },
+                "hint": {"type": "plain_text", "text": "0 = Serious, 10 = Very humorous"},
+            },
+            {
+                "type": "input",
+                "block_id": "personality_formality",
+                "label": {"type": "plain_text", "text": "Formality Level"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "formality_input",
+                    "initial_value": formality_val,
+                    "placeholder": {"type": "plain_text", "text": "0-10"},
+                },
+                "hint": {"type": "plain_text", "text": "0 = Casual, 10 = Very formal"},
+            },
+            {
+                "type": "input",
+                "block_id": "personality_emoji",
+                "label": {"type": "plain_text", "text": "Emoji Usage"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "emoji_input",
+                    "initial_value": emoji_val,
+                    "placeholder": {"type": "plain_text", "text": "0-10"},
+                },
+                "hint": {"type": "plain_text", "text": "0 = No emojis, 10 = Lots of emojis"},
+            },
+            {
+                "type": "input",
+                "block_id": "personality_verbosity",
+                "label": {"type": "plain_text", "text": "Verbosity"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "verbosity_input",
+                    "initial_value": verbosity_val,
+                    "placeholder": {"type": "plain_text", "text": "0-10"},
+                },
+                "hint": {"type": "plain_text", "text": "0 = Concise, 10 = Detailed"},
+            },
+
+            # ===== PERSONA KNOWLEDGE =====
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Custom Knowledge"},
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": "Add custom context for each persona. Use `/req-upload` to add files."},
+                ],
+            },
+            {
+                "type": "input",
+                "block_id": "architect_knowledge",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Architect Knowledge"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "architect_knowledge_input",
+                    "multiline": True,
+                    "initial_value": architect_inline,
+                    "placeholder": {"type": "plain_text", "text": "Custom architecture guidelines..."},
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "pm_knowledge",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Product Manager Knowledge"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "pm_knowledge_input",
+                    "multiline": True,
+                    "initial_value": pm_inline,
+                    "placeholder": {"type": "plain_text", "text": "Product requirements, user story formats..."},
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "security_knowledge",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Security Analyst Knowledge"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "security_knowledge_input",
+                    "multiline": True,
+                    "initial_value": security_inline,
+                    "placeholder": {"type": "plain_text", "text": "Security policies, compliance requirements..."},
                 },
             },
         ],

@@ -135,6 +135,11 @@ class GraphState:
     jira_issue_data: dict[str, Any] | None  # Full issue data
 
     # -------------------------------------------------------------------------
+    # Channel Configuration
+    # -------------------------------------------------------------------------
+    channel_config: dict[str, Any] | None  # Channel-specific settings
+
+    # -------------------------------------------------------------------------
     # Output
     # -------------------------------------------------------------------------
     response: str | None  # Response to send to Slack
@@ -192,6 +197,9 @@ class RequirementState(TypedDict, total=False):
     jira_issue_key: str | None
     jira_issue_data: dict[str, Any] | None
 
+    # Channel Configuration
+    channel_config: dict[str, Any] | None
+
     # Output
     response: str | None
     should_respond: bool
@@ -205,6 +213,7 @@ def create_initial_state(
     thread_ts: str | None = None,
     attachments: list[dict] | None = None,
     is_mention: bool = False,
+    channel_config: dict[str, Any] | None = None,
 ) -> RequirementState:
     """
     Create initial state for a new graph invocation.
@@ -216,6 +225,7 @@ def create_initial_state(
         thread_ts: Slack thread timestamp.
         attachments: List of attachment data.
         is_mention: Whether bot was @mentioned.
+        channel_config: Channel-specific configuration.
 
     Returns:
         Initial RequirementState with defaults.
@@ -253,6 +263,8 @@ def create_initial_state(
         jira_action=None,
         jira_issue_key=None,
         jira_issue_data=None,
+        # Channel Config
+        channel_config=channel_config,
         # Output
         response=None,
         should_respond=False,
