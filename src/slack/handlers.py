@@ -108,7 +108,7 @@ def register_handlers(app: AsyncApp) -> None:
             print(f"[DEBUG] Config loaded: model={config.default_model}")
 
             # For @mentions, show immediate progress feedback
-            if is_mention and len(message_text) > 20:
+            if is_mention:
                 progress_reporter = ProgressReporter(client, channel_id, thread_ts)
                 await progress_reporter.start("Processing your request...")
 
@@ -135,9 +135,84 @@ def register_handlers(app: AsyncApp) -> None:
             thread_id = create_thread_id(channel_id, thread_ts)
             print(f"[DEBUG] Thread ID: {thread_id}")
 
-            # Invoke the graph
+            # Node name to display name mapping for progress updates
+            node_display_names = {
+                "memory": "Loading memory...",
+                "intake": "Analyzing request...",
+                "discovery": "Gathering requirements...",
+                "architecture": "Exploring architecture options...",
+                "scope": "Defining scope...",
+                "stories": "Breaking down stories...",
+                "tasks": "Detailing tasks...",
+                "estimation": "Estimating effort...",
+                "security": "Security review...",
+                "validation": "Validating requirements...",
+                "final_review": "Final review...",
+                "human_approval": "Awaiting approval...",
+                "jira_write": "Writing to Jira...",
+                "jira_read": "Reading from Jira...",
+                "jira_status": "Checking status...",
+                "jira_add": "Adding to Jira...",
+                "jira_update": "Updating Jira...",
+                "jira_delete": "Deleting from Jira...",
+                "impact_analysis": "Analyzing impact...",
+                "memory_update": "Saving to memory...",
+                "response": "Preparing response...",
+            }
+
+            # Progress callback to update Slack message
+            async def on_node_start(node_name: str):
+                if progress_reporter and node_name in node_display_names:
+                    display_name = node_display_names[node_name]
+                    print(f"[DEBUG] Node started: {node_name} -> {display_name}")
+
+                    # Map node to phase for progress update
+                    from src.graph.state import WorkflowPhase, ProgressStepStatus
+                    node_to_phase = {
+                        "intake": WorkflowPhase.INTAKE.value,
+                        "discovery": WorkflowPhase.DISCOVERY.value,
+                        "architecture": WorkflowPhase.ARCHITECTURE.value,
+                        "scope": WorkflowPhase.SCOPE.value,
+                        "stories": WorkflowPhase.STORIES.value,
+                        "tasks": WorkflowPhase.TASKS.value,
+                        "estimation": WorkflowPhase.ESTIMATION.value,
+                        "security": WorkflowPhase.SECURITY.value,
+                        "validation": WorkflowPhase.VALIDATION.value,
+                        "final_review": WorkflowPhase.REVIEW.value,
+                    }
+
+                    phase = node_to_phase.get(node_name)
+                    if phase:
+                        await progress_reporter.start_phase(phase, display_name)
+
+            async def on_node_end(node_name: str, state: dict):
+                if progress_reporter:
+                    from src.graph.state import WorkflowPhase
+                    node_to_phase = {
+                        "intake": WorkflowPhase.INTAKE.value,
+                        "discovery": WorkflowPhase.DISCOVERY.value,
+                        "architecture": WorkflowPhase.ARCHITECTURE.value,
+                        "scope": WorkflowPhase.SCOPE.value,
+                        "stories": WorkflowPhase.STORIES.value,
+                        "tasks": WorkflowPhase.TASKS.value,
+                        "estimation": WorkflowPhase.ESTIMATION.value,
+                        "security": WorkflowPhase.SECURITY.value,
+                        "validation": WorkflowPhase.VALIDATION.value,
+                        "final_review": WorkflowPhase.REVIEW.value,
+                    }
+
+                    phase = node_to_phase.get(node_name)
+                    if phase:
+                        await progress_reporter.complete_phase(phase)
+
+            # Invoke the graph with progress callbacks
             print("[DEBUG] Invoking graph...")
-            result = await invoke_graph(state, thread_id)
+            result = await invoke_graph(
+                state,
+                thread_id,
+                on_node_start=on_node_start if progress_reporter else None,
+                on_node_end=on_node_end if progress_reporter else None,
+            )
             print(f"[DEBUG] Graph result: should_respond={result.get('should_respond')}, error={result.get('error')}, response={result.get('response', '')[:100] if result.get('response') else 'None'}, awaiting_human={result.get('awaiting_human')}")
 
             # Handle response based on graph output
@@ -242,6 +317,21 @@ def register_handlers(app: AsyncApp) -> None:
                     text=f"Sorry, I encountered an error processing your message.",
                     thread_ts=thread_ts,
                 )
+
+    # =========================================================================
+    # App Mention Handler (no-op, handled by message event)
+    # =========================================================================
+
+    @app.event("app_mention")
+    async def handle_app_mention(event: dict, say, client) -> None:
+        """
+        Handle @mentions of the bot.
+
+        Note: Mentions are already handled by the message event handler.
+        This handler exists to prevent "Unhandled request" warnings in logs.
+        """
+        # No-op: The message event handler already processes mentions
+        pass
 
     # =========================================================================
     # Slash Commands

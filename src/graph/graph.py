@@ -675,15 +675,19 @@ async def get_graph() -> StateGraph:
 async def invoke_graph(
     initial_state: RequirementState,
     thread_id: str,
+    on_node_start: callable = None,
+    on_node_end: callable = None,
 ) -> RequirementState:
     """
-    Invoke the graph with initial state.
+    Invoke the graph with initial state, with optional progress callbacks.
 
     This is the main entry point for processing messages.
 
     Args:
         initial_state: Initial state with message and context.
         thread_id: Unique thread ID for state persistence (channel_id + thread_ts).
+        on_node_start: Optional async callback(node_name) when node starts.
+        on_node_end: Optional async callback(node_name, state) when node ends.
 
     Returns:
         Final state after graph execution.
@@ -696,8 +700,28 @@ async def invoke_graph(
         }
     }
 
-    result = await graph.ainvoke(initial_state, config=config)
-    return result
+    # If no callbacks, use simple invoke
+    if not on_node_start and not on_node_end:
+        result = await graph.ainvoke(initial_state, config=config)
+        return result
+
+    # Use streaming to get node-by-node progress
+    result = None
+    async for event in graph.astream(initial_state, config=config, stream_mode="updates"):
+        # event is dict like {"node_name": state_update}
+        for node_name, state_update in event.items():
+            if on_node_start:
+                await on_node_start(node_name)
+
+            # Track final state
+            if result is None:
+                result = dict(initial_state)
+            result.update(state_update)
+
+            if on_node_end:
+                await on_node_end(node_name, result)
+
+    return result or initial_state
 
 
 async def resume_graph(

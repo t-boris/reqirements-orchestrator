@@ -8,6 +8,46 @@ using Slack Block Kit for rich message display.
 from typing import Any
 
 
+SLACK_TEXT_LIMIT = 2900  # Slack limit is 3000, leave margin for safety
+
+
+def _split_text_to_blocks(text: str, limit: int = SLACK_TEXT_LIMIT) -> list[dict]:
+    """
+    Split long text into multiple section blocks.
+
+    Args:
+        text: Text to split.
+        limit: Max characters per block.
+
+    Returns:
+        List of section blocks.
+    """
+    if len(text) <= limit:
+        return [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+
+    blocks = []
+    remaining = text
+
+    while remaining:
+        if len(remaining) <= limit:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": remaining}})
+            break
+
+        # Find a good break point (newline or space)
+        break_point = remaining.rfind("\n", 0, limit)
+        if break_point == -1 or break_point < limit // 2:
+            break_point = remaining.rfind(" ", 0, limit)
+        if break_point == -1 or break_point < limit // 2:
+            break_point = limit
+
+        chunk = remaining[:break_point].rstrip()
+        remaining = remaining[break_point:].lstrip()
+
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": chunk}})
+
+    return blocks
+
+
 def format_response(
     response: str,
     draft: dict[str, Any] | None = None,
@@ -24,12 +64,8 @@ def format_response(
     Returns:
         Block Kit blocks.
     """
-    blocks = [
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": response},
-        },
-    ]
+    # Split long responses into multiple blocks
+    blocks = _split_text_to_blocks(response)
 
     # Add Jira link if available
     if jira_key:
