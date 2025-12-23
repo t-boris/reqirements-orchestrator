@@ -30,14 +30,10 @@ services:
     env_file:
       - .env
     environment:
-      ZEP_STORE_TYPE: postgres
-      ZEP_STORE_POSTGRES_DSN: postgres://maro:maro@postgres:5432/maro?sslmode=disable
-      ZEP_NLP_SERVER_URL: ""
-      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ZEP_EXTRACTORS_DOCUMENTS_EMBEDDINGS_ENABLED: "true"
-      ZEP_EXTRACTORS_MESSAGES_SUMMARIZER_ENABLED: "true"
-      ZEP_EXTRACTORS_MESSAGES_ENTITIES_ENABLED: "true"
-      ZEP_EXTRACTORS_MESSAGES_INTENT_ENABLED: "true"
+      ZEP_CONFIG: /app/config.yaml
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./config/zep.yaml:/app/config.yaml:ro
     ports:
       - "8001:8000"
     depends_on:
