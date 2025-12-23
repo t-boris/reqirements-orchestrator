@@ -24,9 +24,14 @@ class IntentType(str, Enum):
     """Classified intent of user message."""
 
     REQUIREMENT = "requirement"  # New or updated requirement
+    MODIFICATION = "modification"  # Change to existing requirements (needs impact analysis)
     QUESTION = "question"  # Question about requirements
     JIRA_SYNC = "jira_sync"  # Request to sync with Jira
     JIRA_READ = "jira_read"  # Request to re-read Jira issue
+    JIRA_STATUS = "jira_status"  # Show status of thread items
+    JIRA_ADD = "jira_add"  # Add story/task to existing epic
+    JIRA_UPDATE = "jira_update"  # Update specific Jira issue
+    JIRA_DELETE = "jira_delete"  # Delete a Jira issue
     GENERAL = "general"  # General conversation
     OFF_TOPIC = "off_topic"  # Not related to requirements
 
@@ -39,6 +44,34 @@ class HumanDecision(str, Enum):
     EDIT = "edit"
     REJECT = "reject"
     PENDING = "pending"
+
+
+class WorkflowPhase(str, Enum):
+    """Workflow phase for multi-step requirements processing."""
+
+    INTAKE = "intake"
+    DISCOVERY = "discovery"
+    ARCHITECTURE = "architecture"
+    SCOPE = "scope"
+    STORIES = "stories"
+    TASKS = "tasks"
+    ESTIMATION = "estimation"
+    SECURITY = "security"
+    VALIDATION = "validation"
+    REVIEW = "review"
+    JIRA_SYNC = "jira_sync"
+    MONITORING = "monitoring"
+    COMPLETE = "complete"
+
+
+class ProgressStepStatus(str, Enum):
+    """Status of a progress step."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+    SKIPPED = "skipped"
+    WAITING_USER = "waiting_user"
 
 
 @dataclass
@@ -183,6 +216,8 @@ class RequirementState(TypedDict, total=False):
     # Requirement Processing
     current_goal: str | None
     draft: dict[str, Any] | None
+    all_drafts: list[dict[str, Any]] | None  # For complex requirements with multiple items
+    is_complex_requirement: bool  # True if requirement was auto-split
     critique_feedback: list[str]
     iteration_count: int
     conflicts: list[dict[str, Any]]
@@ -204,6 +239,71 @@ class RequirementState(TypedDict, total=False):
     response: str | None
     should_respond: bool
     error: str | None
+
+    # -------------------------------------------------------------------------
+    # Workflow Progress (Phase 0)
+    # -------------------------------------------------------------------------
+    current_phase: str | None  # WorkflowPhase value
+    phase_history: list[str]  # Completed phases
+    progress_message_ts: str | None  # Slack message to update with progress
+    progress_steps: list[dict[str, Any]]  # [{name, status, detail}]
+
+    # -------------------------------------------------------------------------
+    # Discovery Phase
+    # -------------------------------------------------------------------------
+    clarifying_questions: list[str]  # Questions to ask user
+    user_answers: list[dict[str, Any]]  # {question, answer}
+    discovered_requirements: list[dict[str, Any]]  # Gathered requirements
+
+    # -------------------------------------------------------------------------
+    # Architecture Phase
+    # -------------------------------------------------------------------------
+    architecture_options: list[dict[str, Any]]  # [{name, description, pros, cons, estimate}]
+    chosen_architecture: str | None  # Selected option name
+
+    # -------------------------------------------------------------------------
+    # Hierarchy (Epics → Stories → Tasks)
+    # -------------------------------------------------------------------------
+    epics: list[dict[str, Any]]  # Epic definitions
+    stories: list[dict[str, Any]]  # Stories with epic_index
+    tasks: list[dict[str, Any]]  # Tasks with story_index
+
+    # -------------------------------------------------------------------------
+    # Estimation
+    # -------------------------------------------------------------------------
+    total_story_points: int | None
+    total_hours: int | None
+    risk_buffer_percent: int | None
+
+    # -------------------------------------------------------------------------
+    # Validation
+    # -------------------------------------------------------------------------
+    validation_report: dict[str, Any] | None  # {gaps, warnings, passed}
+
+    # -------------------------------------------------------------------------
+    # Jira Sync State
+    # -------------------------------------------------------------------------
+    jira_items: list[dict[str, Any]]  # [{type, key, title, status, last_synced}]
+    pending_jira_updates: list[dict[str, Any]]  # Changes to push
+    external_changes: list[dict[str, Any]]  # Changes from Jira webhooks
+    last_full_sync: str | None  # ISO timestamp
+
+    # -------------------------------------------------------------------------
+    # Jira Command State (for re-read, status, add, update commands)
+    # -------------------------------------------------------------------------
+    jira_command_target: str | None  # Target issue key (e.g., "PROJ-123")
+    jira_command_parent: str | None  # Parent for add operations (e.g., "EPIC-456")
+    jira_command_type: str | None  # Type of item to add ("story", "task")
+    jira_command_updates: dict[str, Any] | None  # Fields to update
+
+    # -------------------------------------------------------------------------
+    # Impact Analysis State
+    # -------------------------------------------------------------------------
+    impact_level: str | None  # architecture, scope, story, task, estimation, text_only
+    impact_confidence: float | None
+    affected_items: list[str]  # Keys or indices of affected items
+    cascade_phases: list[str]  # Phases that need re-evaluation
+    restart_phase: str | None  # Phase to restart from
 
 
 def create_initial_state(
@@ -252,6 +352,8 @@ def create_initial_state(
         # Processing
         current_goal=None,
         draft=None,
+        all_drafts=None,
+        is_complex_requirement=False,
         critique_feedback=[],
         iteration_count=0,
         conflicts=[],
@@ -269,4 +371,42 @@ def create_initial_state(
         response=None,
         should_respond=False,
         error=None,
+        # Workflow Progress
+        current_phase=None,
+        phase_history=[],
+        progress_message_ts=None,
+        progress_steps=[],
+        # Discovery
+        clarifying_questions=[],
+        user_answers=[],
+        discovered_requirements=[],
+        # Architecture
+        architecture_options=[],
+        chosen_architecture=None,
+        # Hierarchy
+        epics=[],
+        stories=[],
+        tasks=[],
+        # Estimation
+        total_story_points=None,
+        total_hours=None,
+        risk_buffer_percent=None,
+        # Validation
+        validation_report=None,
+        # Jira Sync
+        jira_items=[],
+        pending_jira_updates=[],
+        external_changes=[],
+        last_full_sync=None,
+        # Jira Commands
+        jira_command_target=None,
+        jira_command_parent=None,
+        jira_command_type=None,
+        jira_command_updates=None,
+        # Impact Analysis
+        impact_level=None,
+        impact_confidence=None,
+        affected_items=[],
+        cascade_phases=[],
+        restart_phase=None,
     )

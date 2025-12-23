@@ -36,34 +36,8 @@ settings = get_settings()
 app = create_fastapi_app()
 
 
-@app.on_event("startup")
-async def startup_event():
-    """
-    Initialize services on startup.
-    """
-    logger.info(
-        "maro_starting",
-        version="2.0.0",
-        environment=settings.environment,
-    )
-
-    # Initialize approval store
-    from src.slack.approval_store import init_approval_store
-    await init_approval_store()
-
-    # Initialize channel config store
-    from src.slack.channel_config_store import init_channel_config_store
-    await init_channel_config_store()
-
-    # Initialize knowledge store
-    from src.slack.knowledge_store import init_knowledge_store
-    await init_knowledge_store()
-
-    # Load personas
-    from src.personas import load_personas
-    await load_personas()
-
-    logger.info("maro_started")
+# Note: Startup initialization is done in bot.py lifespan context manager
+# @app.on_event("startup") is ignored when lifespan is used
 
 
 if __name__ == "__main__":

@@ -43,8 +43,14 @@ class Settings(BaseSettings):
     # Jira (for MCP server)
     # -------------------------------------------------------------------------
     jira_url: str = Field(default="", description="Jira instance URL")
-    jira_user: str = Field(default="", description="Jira user email")
-    jira_api_token: str = Field(default="", description="Jira API token")
+    # Basic auth (legacy)
+    jira_user: str = Field(default="", description="Jira user email (basic auth)")
+    jira_api_token: str = Field(default="", description="Jira API token (basic auth)")
+    # OAuth2 auth
+    jira_client_id: str = Field(default="", description="Jira OAuth2 client ID")
+    jira_client_secret: str = Field(default="", description="Jira OAuth2 client secret")
+    # Default project
+    jira_default_project: str = Field(default="", description="Default Jira project key")
     jira_mcp_url: str = Field(default="http://localhost:3000/sse", description="Jira MCP server URL")
 
     # -------------------------------------------------------------------------
@@ -81,10 +87,10 @@ class Settings(BaseSettings):
         description="Confidence threshold for main bot to respond",
     )
     confidence_threshold_persona: float = Field(
-        default=0.95,
+        default=0.70,
         ge=0.0,
         le=1.0,
-        description="Confidence threshold for persona bots",
+        description="Confidence threshold for persona bots (architect, PM, security)",
     )
     max_reflexion_iterations: int = Field(
         default=3,

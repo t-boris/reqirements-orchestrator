@@ -11,7 +11,8 @@ import structlog
 from slack_bolt.async_app import AsyncApp
 
 from src.config.settings import get_settings
-from src.graph import create_initial_state, create_thread_id, invoke_graph
+# Note: graph imports are done lazily inside functions to avoid circular imports
+# The import chain graph→nodes→slack→bot→handlers→graph creates a cycle
 from src.slack.approval import send_approval_request
 from src.slack.channel_config_store import (
     ChannelConfig,
@@ -28,6 +29,7 @@ from src.slack.knowledge_store import (
     clear_channel_knowledge,
 )
 from src.slack.formatter import format_response, format_error
+from src.slack.progress import ProgressReporter
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -52,12 +54,22 @@ def register_handlers(app: AsyncApp) -> None:
         Processes messages through the LangGraph workflow and responds
         based on confidence thresholds.
         """
+        # Lazy imports to avoid circular dependency
+        from src.graph.state import create_initial_state
+        from src.graph.checkpointer import create_thread_id
+        from src.graph.graph import invoke_graph
+
+        # Debug: Log that we received any event
+        print(f"[DEBUG] Message event received: subtype={event.get('subtype')}, bot_id={event.get('bot_id')}, text={event.get('text', '')[:50]}")
+
         # Skip bot messages and message changes
         if event.get("subtype") in ("bot_message", "message_changed", "message_deleted"):
+            print(f"[DEBUG] Skipping due to subtype: {event.get('subtype')}")
             return
 
         # Skip messages from this bot
         if event.get("bot_id"):
+            print(f"[DEBUG] Skipping due to bot_id: {event.get('bot_id')}")
             return
 
         channel_id = event.get("channel", "")
@@ -84,12 +96,24 @@ def register_handlers(app: AsyncApp) -> None:
             is_mention=is_mention,
             has_attachments=len(attachments) > 0,
         )
+        print(f"[DEBUG] Processing message from {user_id} in {channel_id}")
+
+        # Initialize progress reporter (will be used for complex operations)
+        progress_reporter: ProgressReporter | None = None
 
         try:
             # Load channel configuration
+            print("[DEBUG] Loading channel config...")
             config = await get_channel_config(channel_id)
+            print(f"[DEBUG] Config loaded: model={config.default_model}")
+
+            # For @mentions, show immediate progress feedback
+            if is_mention and len(message_text) > 20:
+                progress_reporter = ProgressReporter(client, channel_id, thread_ts)
+                await progress_reporter.start("Processing your request...")
 
             # Create initial state for the graph
+            print("[DEBUG] Creating initial state...")
             state = create_initial_state(
                 channel_id=channel_id,
                 user_id=user_id,
@@ -100,25 +124,66 @@ def register_handlers(app: AsyncApp) -> None:
                 channel_config=config.to_dict(),
             )
 
+            # Add progress message info to state if we started progress tracking
+            if progress_reporter and progress_reporter.message_ts:
+                state["progress_message_ts"] = progress_reporter.message_ts
+                state["progress_steps"] = progress_reporter.steps
+
+            print(f"[DEBUG] State created, message length={len(message_text)}")
+
             # Create thread ID for checkpointing
             thread_id = create_thread_id(channel_id, thread_ts)
+            print(f"[DEBUG] Thread ID: {thread_id}")
 
             # Invoke the graph
+            print("[DEBUG] Invoking graph...")
             result = await invoke_graph(state, thread_id)
+            print(f"[DEBUG] Graph result: should_respond={result.get('should_respond')}, error={result.get('error')}, response={result.get('response', '')[:100] if result.get('response') else 'None'}, awaiting_human={result.get('awaiting_human')}")
 
             # Handle response based on graph output
             if result.get("awaiting_human"):
+                # Finish progress before showing approval
+                if progress_reporter:
+                    await progress_reporter.finish(
+                        success=True,
+                        message="Ready for review"
+                    )
+
                 # Send approval request
-                await send_approval_request(
-                    client=client,
-                    channel_id=channel_id,
-                    thread_ts=thread_ts,
-                    draft=result.get("draft", {}),
-                    conflicts=result.get("conflicts", []),
-                    thread_id=thread_id,
-                )
+                print(f"[DEBUG] Sending approval request, draft={result.get('draft')}")
+                try:
+                    await send_approval_request(
+                        client=client,
+                        channel_id=channel_id,
+                        thread_ts=thread_ts,
+                        draft=result.get("draft", {}),
+                        conflicts=result.get("conflicts", []),
+                        thread_id=thread_id,
+                    )
+                    print("[DEBUG] Approval request sent successfully")
+                except Exception as e:
+                    print(f"[DEBUG] Error sending approval request: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             elif result.get("should_respond") and result.get("response"):
+                # For simple responses, remove progress message and just respond
+                if progress_reporter:
+                    # Check if this was a simple question (not a requirement flow)
+                    intent = result.get("intent")
+                    if intent in ("question", "general", "off_topic"):
+                        # Delete progress message for simple responses
+                        try:
+                            await client.chat_delete(
+                                channel=channel_id,
+                                ts=progress_reporter.message_ts,
+                            )
+                        except Exception:
+                            pass  # May not have permission, that's ok
+                    else:
+                        # Finish progress normally
+                        await progress_reporter.finish(success=True)
+
                 # Format and send response
                 blocks = format_response(
                     response=result["response"],
@@ -133,6 +198,13 @@ def register_handlers(app: AsyncApp) -> None:
                 )
 
             elif result.get("error"):
+                # Finish progress with error
+                if progress_reporter:
+                    await progress_reporter.finish(
+                        success=False,
+                        message=f"Error: {result['error']}"
+                    )
+
                 # Send error message
                 blocks = format_error(result["error"])
                 await say(
@@ -140,11 +212,29 @@ def register_handlers(app: AsyncApp) -> None:
                     blocks=blocks,
                     thread_ts=thread_ts,
                 )
-
-            # If should_respond is False, bot stays silent (per design)
+            else:
+                # If should_respond is False, clean up progress if shown
+                if progress_reporter:
+                    try:
+                        await client.chat_delete(
+                            channel=channel_id,
+                            ts=progress_reporter.message_ts,
+                        )
+                    except Exception:
+                        pass
 
         except Exception as e:
+            print(f"[DEBUG] ERROR in message processing: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             logger.exception("message_processing_failed", error=str(e))
+
+            # Clean up progress on error
+            if progress_reporter:
+                await progress_reporter.finish(
+                    success=False,
+                    message="An error occurred while processing"
+                )
 
             # Only respond with error if bot was mentioned
             if is_mention:
@@ -160,7 +250,7 @@ def register_handlers(app: AsyncApp) -> None:
     @app.command("/req-status")
     async def handle_status_command(ack, command, client) -> None:
         """
-        Show current graph state and metrics.
+        Show current graph state, metrics, and dashboard links.
 
         Usage: /req-status
         """
@@ -170,15 +260,25 @@ def register_handlers(app: AsyncApp) -> None:
         thread_ts = None  # Commands run in main channel
 
         try:
-            from src.graph import get_thread_state
+            from src.graph.checkpointer import create_thread_id, get_thread_state
 
             thread_id = create_thread_id(channel_id, thread_ts)
             state = await get_thread_state(thread_id)
 
+            # Build status text
+            parts = []
+
             if state:
-                text = _format_status(state)
+                parts.append(_format_status(state))
             else:
-                text = "No active conversation state in this channel."
+                parts.append("No active conversation state in this channel.")
+
+            # Add dashboard links
+            parts.append("\n*Dashboards*")
+            parts.append(f"• <https://smith.langchain.com|LangSmith> - Tracing & Monitoring")
+            parts.append(f"• <https://docs.getzep.com|Zep Docs> - Memory & Knowledge Graph (internal: {settings.zep_api_url})")
+
+            text = "\n".join(parts)
 
             await client.chat_postEphemeral(
                 channel=channel_id,
@@ -207,7 +307,7 @@ def register_handlers(app: AsyncApp) -> None:
         user_id = command.get("user_id", "")
 
         try:
-            from src.graph import clear_thread
+            from src.graph.checkpointer import clear_thread, create_thread_id
             from src.memory import clear_channel_memory
 
             # Clear graph state

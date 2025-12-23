@@ -10,19 +10,35 @@ from langgraph.graph import END, StateGraph
 
 from src.config.settings import get_settings
 from src.graph.nodes import (
+    architecture_exploration_node,
     conflict_detection_node,
     critique_node,
+    discovery_node,
     draft_node,
+    estimation_node,
+    final_review_node,
     human_approval_node,
+    impact_analysis_node,
+    intake_node,
     intent_classifier_node,
+    jira_add_node,
+    jira_delete_node,
+    jira_read_node,
+    jira_status_node,
+    jira_update_node,
     jira_write_node,
     memory_node,
     memory_update_node,
     no_response_node,
     process_human_decision_node,
     response_node,
+    scope_definition_node,
+    security_review_node,
+    story_breakdown_node,
+    task_breakdown_node,
+    validation_node,
 )
-from src.graph.state import HumanDecision, IntentType, RequirementState
+from src.graph.state import HumanDecision, IntentType, RequirementState, WorkflowPhase
 
 settings = get_settings()
 
@@ -122,6 +138,236 @@ def conflict_router(state: RequirementState) -> str:
     return "no_conflicts"
 
 
+def discovery_router(state: RequirementState) -> str:
+    """
+    Route after discovery based on whether we have enough info.
+
+    Returns:
+        "respond" if we have questions to ask, "draft" if ready to proceed.
+    """
+    # If discovery node set a response (questions to ask), go to response
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # Otherwise proceed to drafting
+    return "draft"
+
+
+def intake_router(state: RequirementState) -> str:
+    """
+    Route after intake based on intent and context sufficiency.
+
+    Returns:
+        Node name to route to.
+    """
+    if not state.get("should_respond", False):
+        return "no_response"
+
+    intent = state.get("intent")
+
+    # Jira command intents (CRUD)
+    if intent == IntentType.JIRA_SYNC.value:
+        return "jira_write"
+    if intent == IntentType.JIRA_READ.value:
+        return "jira_read"
+    if intent == IntentType.JIRA_STATUS.value:
+        return "jira_status"
+    if intent == IntentType.JIRA_ADD.value:
+        return "jira_add"
+    if intent == IntentType.JIRA_UPDATE.value:
+        return "jira_update"
+    if intent == IntentType.JIRA_DELETE.value:
+        return "jira_delete"
+
+    # Modification intent - needs impact analysis
+    if intent == IntentType.MODIFICATION.value:
+        return "impact_analysis"
+
+    # Non-requirement intents go directly to response
+    if intent != IntentType.REQUIREMENT.value:
+        return "response"
+
+    # Requirements: check if we need discovery
+    clarifying_questions = state.get("clarifying_questions", [])
+    if clarifying_questions:
+        return "discovery"
+
+    # Enough context, go to architecture exploration
+    return "architecture"
+
+
+def architecture_router(state: RequirementState) -> str:
+    """
+    Route after architecture options are presented.
+
+    Returns:
+        "respond" to show options, "scope" if architecture already chosen.
+    """
+    # If we have a response ready (architecture options), show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If architecture already chosen, proceed to scope
+    if state.get("chosen_architecture"):
+        return "scope"
+
+    # Default: show options
+    return "respond"
+
+
+def scope_router(state: RequirementState) -> str:
+    """
+    Route after scope is defined.
+
+    Returns:
+        "respond" to show scope for confirmation, "stories" to proceed.
+    """
+    # If we have a response ready (scope), show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If scope is confirmed (epics defined), proceed to stories
+    if state.get("epics"):
+        return "stories"
+
+    return "respond"
+
+
+def story_router(state: RequirementState) -> str:
+    """
+    Route after stories are generated.
+
+    Returns:
+        "respond" to show stories, "tasks" to proceed.
+    """
+    # If we have a response ready (stories), show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If stories are confirmed, proceed to tasks
+    if state.get("stories"):
+        return "tasks"
+
+    return "respond"
+
+
+def task_router(state: RequirementState) -> str:
+    """
+    Route after tasks are generated.
+
+    Returns:
+        "respond" to show tasks, "estimation" to proceed to estimation.
+    """
+    # If we have a response ready (tasks), show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If tasks are confirmed, proceed to estimation
+    if state.get("tasks"):
+        return "estimation"
+
+    return "respond"
+
+
+def estimation_router(state: RequirementState) -> str:
+    """
+    Route after estimation is complete.
+
+    Returns:
+        "respond" to show estimation, "security" to proceed to security review.
+    """
+    # If we have a response ready (estimation), show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If estimation is confirmed, proceed to security review
+    if state.get("total_story_points") is not None:
+        return "security"
+
+    return "respond"
+
+
+def security_router(state: RequirementState) -> str:
+    """
+    Route after security review is complete.
+
+    Returns:
+        "respond" to show review, "validation" to proceed.
+    """
+    # If we have a response ready, show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If security phase complete, proceed to validation
+    current_phase = state.get("current_phase")
+    if current_phase == WorkflowPhase.SECURITY.value:
+        return "validation"
+
+    return "respond"
+
+
+def validation_router(state: RequirementState) -> str:
+    """
+    Route after validation is complete.
+
+    Returns:
+        "respond" to show validation, "final_review" to proceed.
+    """
+    # If we have a response ready, show it
+    if state.get("response") and state.get("should_respond"):
+        return "respond"
+
+    # If validation complete, proceed to final review
+    if state.get("validation_report"):
+        return "final_review"
+
+    return "respond"
+
+
+def final_review_router(state: RequirementState) -> str:
+    """
+    Route after final review - goes to human approval.
+
+    Returns:
+        "human_approval" to await user decision.
+    """
+    # Final review always goes to human approval
+    return "human_approval"
+
+
+def impact_router(state: RequirementState) -> str:
+    """
+    Route after impact analysis based on restart_phase.
+
+    Routes to the appropriate phase to begin re-evaluation,
+    or to response if it's a text-only change.
+
+    Returns:
+        Phase node to restart from, or "response" for text-only changes.
+    """
+    restart_phase = state.get("restart_phase")
+
+    if not restart_phase:
+        # Text-only or no re-evaluation needed
+        return "response"
+
+    # Map phases to node names
+    phase_to_node = {
+        WorkflowPhase.ARCHITECTURE.value: "architecture",
+        WorkflowPhase.SCOPE.value: "scope",
+        WorkflowPhase.STORIES.value: "stories",
+        WorkflowPhase.TASKS.value: "tasks",
+        WorkflowPhase.ESTIMATION.value: "estimation",
+    }
+
+    node = phase_to_node.get(restart_phase)
+    if node:
+        return node
+
+    # Default to response if unknown phase
+    return "response"
+
+
 # =============================================================================
 # Graph Builder
 # =============================================================================
@@ -208,13 +454,25 @@ def create_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:
 
     # Add all nodes
     builder.add_node("memory", memory_node)
-    builder.add_node("intent_classifier", intent_classifier_node)
-    builder.add_node("draft", draft_node)
-    builder.add_node("critique", critique_node)
-    builder.add_node("conflict_detection", conflict_detection_node)
-    builder.add_node("human_approval", human_approval_node)
+    builder.add_node("intake", intake_node)  # Phase 1: Enhanced intake
+    builder.add_node("discovery", discovery_node)  # Phase 2: Clarifying questions
+    builder.add_node("architecture", architecture_exploration_node)  # Phase 3: Architecture options
+    builder.add_node("scope", scope_definition_node)  # Phase 4: Scope definition
+    builder.add_node("stories", story_breakdown_node)  # Phase 5: Story breakdown
+    builder.add_node("tasks", task_breakdown_node)  # Phase 6: Task breakdown
+    builder.add_node("estimation", estimation_node)  # Phase 7: Estimation
+    builder.add_node("security", security_review_node)  # Phase 8: Security review
+    builder.add_node("validation", validation_node)  # Phase 9: Validation
+    builder.add_node("final_review", final_review_node)  # Phase 10: Final review
+    builder.add_node("human_approval", human_approval_node)  # Human approval
     builder.add_node("process_decision", process_human_decision_node)
-    builder.add_node("jira_write", jira_write_node)
+    builder.add_node("jira_write", jira_write_node)  # Phase 11: Jira sync
+    builder.add_node("jira_read", jira_read_node)  # Re-read Jira issue
+    builder.add_node("jira_status", jira_status_node)  # Show thread status
+    builder.add_node("jira_add", jira_add_node)  # Add story/task to epic
+    builder.add_node("jira_update", jira_update_node)  # Update Jira issue
+    builder.add_node("jira_delete", jira_delete_node)  # Delete Jira issue
+    builder.add_node("impact_analysis", impact_analysis_node)  # Impact analysis for modifications
     builder.add_node("memory_update", memory_update_node)
     builder.add_node("response", response_node)
     builder.add_node("no_response", no_response_node)
@@ -222,56 +480,110 @@ def create_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:
     # Set entry point
     builder.set_entry_point("memory")
 
-    # Memory -> Intent
-    builder.add_edge("memory", "intent_classifier")
+    # Memory -> Intake (replaces intent_classifier)
+    builder.add_edge("memory", "intake")
 
-    # Intent -> Conditional based on should_respond and intent type
-    def combined_router(state: RequirementState) -> str:
-        """Combined router for should_respond and intent."""
-        if not state.get("should_respond", False):
-            return "no_response"
-
-        intent = state.get("intent")
-        if intent == IntentType.REQUIREMENT.value:
-            return "draft"
-        elif intent == IntentType.JIRA_SYNC.value:
-            return "jira_write"
-        else:
-            return "response"
-
+    # Intake -> Conditional routing based on intent and context sufficiency
     builder.add_conditional_edges(
-        "intent_classifier",
-        combined_router,
+        "intake",
+        intake_router,
         {
-            "draft": "draft",
-            "jira_write": "jira_write",
-            "response": "response",
-            "no_response": "no_response",
+            "discovery": "discovery",  # Needs clarifying questions
+            "architecture": "architecture",  # Go to architecture exploration
+            "impact_analysis": "impact_analysis",  # Modification - analyze impact first
+            "jira_write": "jira_write",  # Jira sync/create request
+            "jira_read": "jira_read",  # Re-read Jira issue
+            "jira_status": "jira_status",  # Show thread status
+            "jira_add": "jira_add",  # Add story/task to epic
+            "jira_update": "jira_update",  # Update Jira issue
+            "jira_delete": "jira_delete",  # Delete Jira issue
+            "response": "response",  # Questions, general, off-topic
+            "no_response": "no_response",  # Below confidence threshold
         },
     )
 
-    # Draft -> Critique
-    builder.add_edge("draft", "critique")
-
-    # Critique -> Conditional (refine or proceed)
+    # Discovery -> Conditional routing based on whether we have questions
     builder.add_conditional_edges(
-        "critique",
-        critique_router,
+        "discovery",
+        discovery_router,
         {
-            "refine": "draft",  # Loop back for refinement
-            "approve": "conflict_detection",  # Proceed to conflict check
+            "respond": "response",  # Ask clarifying questions
+            "draft": "architecture",  # Have enough info, proceed to architecture
         },
     )
 
-    # Conflict Detection -> Conditional (notify or proceed)
+    # Architecture -> Conditional routing (show options or proceed to scope)
     builder.add_conditional_edges(
-        "conflict_detection",
-        conflict_router,
+        "architecture",
+        architecture_router,
         {
-            "has_conflicts": "response",  # Notify user of conflicts
-            "no_conflicts": "human_approval",  # Proceed to approval
+            "respond": "response",  # Show architecture options
+            "scope": "scope",  # Architecture chosen, proceed to scope
         },
     )
+
+    # Scope -> Conditional routing (show scope or proceed to stories)
+    builder.add_conditional_edges(
+        "scope",
+        scope_router,
+        {
+            "respond": "response",  # Show scope for confirmation
+            "stories": "stories",  # Scope confirmed, proceed to stories
+        },
+    )
+
+    # Stories -> Conditional routing (show stories or proceed to tasks)
+    builder.add_conditional_edges(
+        "stories",
+        story_router,
+        {
+            "respond": "response",  # Show stories for confirmation
+            "tasks": "tasks",  # Stories confirmed, proceed to tasks
+        },
+    )
+
+    # Tasks -> Conditional routing (show tasks or proceed to estimation)
+    builder.add_conditional_edges(
+        "tasks",
+        task_router,
+        {
+            "respond": "response",  # Show tasks for confirmation
+            "estimation": "estimation",  # Tasks confirmed, proceed to estimation
+        },
+    )
+
+    # Estimation -> Conditional routing (show estimation or proceed to security)
+    builder.add_conditional_edges(
+        "estimation",
+        estimation_router,
+        {
+            "respond": "response",  # Show estimation for confirmation
+            "security": "security",  # Estimation confirmed, proceed to security
+        },
+    )
+
+    # Security -> Conditional routing (show review or proceed to validation)
+    builder.add_conditional_edges(
+        "security",
+        security_router,
+        {
+            "respond": "response",  # Show security review
+            "validation": "validation",  # Proceed to validation
+        },
+    )
+
+    # Validation -> Conditional routing (show validation or proceed to final review)
+    builder.add_conditional_edges(
+        "validation",
+        validation_router,
+        {
+            "respond": "response",  # Show validation report
+            "final_review": "final_review",  # Proceed to final review
+        },
+    )
+
+    # Final Review -> Human Approval (interrupt point)
+    builder.add_edge("final_review", "human_approval")
 
     # Human Approval is an interrupt point
     # After human makes decision, process it
@@ -283,7 +595,7 @@ def create_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:
         human_decision_router,
         {
             "write_jira": "jira_write",
-            "edit": "draft",  # Back to drafting with feedback
+            "edit": "discovery",  # Back to discovery to refine requirements
             "reject": "response",  # Respond with rejection message
             "pending": END,  # Edge case - shouldn't happen
         },
@@ -291,6 +603,27 @@ def create_graph(checkpointer: BaseCheckpointSaver | None = None) -> StateGraph:
 
     # Jira Write -> Memory Update
     builder.add_edge("jira_write", "memory_update")
+
+    # Jira Command nodes -> Response (they set their own response)
+    builder.add_edge("jira_read", "response")
+    builder.add_edge("jira_status", "response")
+    builder.add_edge("jira_add", "response")
+    builder.add_edge("jira_update", "response")
+    builder.add_edge("jira_delete", "response")
+
+    # Impact Analysis -> Route to appropriate phase or response
+    builder.add_conditional_edges(
+        "impact_analysis",
+        impact_router,
+        {
+            "architecture": "architecture",  # Re-evaluate from architecture
+            "scope": "scope",  # Re-evaluate from scope
+            "stories": "stories",  # Re-evaluate from stories
+            "tasks": "tasks",  # Re-evaluate from tasks
+            "estimation": "estimation",  # Re-evaluate estimation only
+            "response": "response",  # Text-only change, just respond
+        },
+    )
 
     # Memory Update -> Response
     builder.add_edge("memory_update", "response")

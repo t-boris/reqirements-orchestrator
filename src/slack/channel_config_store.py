@@ -43,7 +43,7 @@ class ChannelConfig:
     jira_default_issue_type: str = "Story"
 
     # LLM settings
-    default_model: str = "gpt-5.2"
+    default_model: str = "gemini-2.5-pro"
 
     # Bot personality
     personality: PersonalityConfig = field(default_factory=PersonalityConfig)
@@ -166,6 +166,13 @@ async def get_channel_config(channel_id: str) -> ChannelConfig:
         )
 
         if row:
+            # Parse persona_knowledge - asyncpg may return JSONB as string
+            persona_knowledge = row["persona_knowledge"]
+            if isinstance(persona_knowledge, str):
+                persona_knowledge = json.loads(persona_knowledge) if persona_knowledge else {}
+            elif persona_knowledge is None:
+                persona_knowledge = {}
+
             return ChannelConfig(
                 channel_id=row["channel_id"],
                 jira_project_key=row["jira_project_key"],
@@ -177,7 +184,7 @@ async def get_channel_config(channel_id: str) -> ChannelConfig:
                     emoji_usage=row["personality_emoji"] or 0.2,
                     verbosity=row["personality_verbosity"] or 0.5,
                 ),
-                persona_knowledge=row["persona_knowledge"] or {},
+                persona_knowledge=persona_knowledge,
             )
 
         # Return default config if not found
@@ -271,24 +278,26 @@ async def delete_channel_config(channel_id: str) -> bool:
 # =============================================================================
 
 AVAILABLE_MODELS = [
-    # OpenAI - GPT-5.2 family (December 2025)
-    {"value": "gpt-5.2", "label": "GPT-5.2 (OpenAI)", "provider": "openai"},
-    {"value": "gpt-5.2-pro", "label": "GPT-5.2 Pro (OpenAI)", "provider": "openai"},
+    # OpenAI (December 2025)
+    {"value": "gpt-5.2", "label": "GPT-5.2 (OpenAI Flagship)", "provider": "openai"},
     {"value": "gpt-5", "label": "GPT-5 (OpenAI)", "provider": "openai"},
     {"value": "gpt-5-mini", "label": "GPT-5 Mini (OpenAI)", "provider": "openai"},
-    {"value": "gpt-4o", "label": "GPT-4o (OpenAI Legacy)", "provider": "openai"},
+    {"value": "o3", "label": "o3 (OpenAI Reasoning)", "provider": "openai"},
+    {"value": "o4-mini", "label": "o4 Mini (OpenAI)", "provider": "openai"},
+    {"value": "gpt-4.1", "label": "GPT-4.1 (OpenAI)", "provider": "openai"},
 
-    # Anthropic - Claude 4.5 family (November 2025)
-    {"value": "claude-opus-4-5-20251124", "label": "Claude Opus 4.5 (Anthropic)", "provider": "anthropic"},
+    # Anthropic (December 2025)
+    {"value": "claude-opus-4-5", "label": "Claude Opus 4.5 (Anthropic)", "provider": "anthropic"},
     {"value": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5 (Anthropic)", "provider": "anthropic"},
-    {"value": "claude-haiku-4-5-20251015", "label": "Claude Haiku 4.5 (Anthropic)", "provider": "anthropic"},
-    {"value": "claude-opus-4-1-20250805", "label": "Claude Opus 4.1 (Anthropic)", "provider": "anthropic"},
+    {"value": "claude-haiku-4-5", "label": "Claude Haiku 4.5 (Anthropic)", "provider": "anthropic"},
+    {"value": "claude-sonnet-4-20250514", "label": "Claude Sonnet 4 (Anthropic)", "provider": "anthropic"},
 
-    # Google - Gemini 3/2.5 family (December 2025)
-    {"value": "gemini-3-pro", "label": "Gemini 3 Pro (Google)", "provider": "google"},
-    {"value": "gemini-3-flash-preview", "label": "Gemini 3 Flash Preview (Google)", "provider": "google"},
+    # Google Gemini (December 2025)
+    {"value": "gemini-3-pro", "label": "Gemini 3 Pro Preview (Google)", "provider": "google"},
+    {"value": "gemini-3-flash", "label": "Gemini 3 Flash Preview (Google)", "provider": "google"},
+    {"value": "gemini-2.5-pro", "label": "Gemini 2.5 Pro (Google)", "provider": "google"},
     {"value": "gemini-2.5-flash", "label": "Gemini 2.5 Flash (Google)", "provider": "google"},
-    {"value": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash Lite (Google)", "provider": "google"},
+    {"value": "gemini-2.0-flash", "label": "Gemini 2.0 Flash (Google)", "provider": "google"},
 ]
 
 

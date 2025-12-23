@@ -1,0 +1,84 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	memory(memory)
+	intake(intake)
+	discovery(discovery)
+	architecture(architecture)
+	scope(scope)
+	stories(stories)
+	tasks(tasks)
+	estimation(estimation)
+	security(security)
+	validation(validation)
+	final_review(final_review)
+	human_approval(human_approval<hr/><small><em>__interrupt = before</em></small>)
+	process_decision(process_decision)
+	jira_write(jira_write)
+	jira_read(jira_read)
+	jira_status(jira_status)
+	jira_add(jira_add)
+	jira_update(jira_update)
+	jira_delete(jira_delete)
+	impact_analysis(impact_analysis)
+	memory_update(memory_update)
+	response(response)
+	no_response(no_response)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> memory;
+	architecture -. &nbsp;respond&nbsp; .-> response;
+	architecture -.-> scope;
+	discovery -. &nbsp;draft&nbsp; .-> architecture;
+	discovery -. &nbsp;respond&nbsp; .-> response;
+	estimation -. &nbsp;respond&nbsp; .-> response;
+	estimation -.-> security;
+	final_review --> human_approval;
+	human_approval --> process_decision;
+	impact_analysis -.-> architecture;
+	impact_analysis -.-> estimation;
+	impact_analysis -.-> response;
+	impact_analysis -.-> scope;
+	impact_analysis -.-> stories;
+	impact_analysis -.-> tasks;
+	intake -.-> architecture;
+	intake -.-> discovery;
+	intake -.-> impact_analysis;
+	intake -.-> jira_add;
+	intake -.-> jira_delete;
+	intake -.-> jira_read;
+	intake -.-> jira_status;
+	intake -.-> jira_update;
+	intake -.-> jira_write;
+	intake -.-> no_response;
+	intake -.-> response;
+	jira_add --> response;
+	jira_delete --> response;
+	jira_read --> response;
+	jira_status --> response;
+	jira_update --> response;
+	jira_write --> memory_update;
+	memory --> intake;
+	memory_update --> response;
+	process_decision -. &nbsp;pending&nbsp; .-> __end__;
+	process_decision -. &nbsp;edit&nbsp; .-> discovery;
+	process_decision -. &nbsp;write_jira&nbsp; .-> jira_write;
+	process_decision -. &nbsp;reject&nbsp; .-> response;
+	scope -. &nbsp;respond&nbsp; .-> response;
+	scope -.-> stories;
+	security -. &nbsp;respond&nbsp; .-> response;
+	security -.-> validation;
+	stories -. &nbsp;respond&nbsp; .-> response;
+	stories -.-> tasks;
+	tasks -.-> estimation;
+	tasks -. &nbsp;respond&nbsp; .-> response;
+	validation -.-> final_review;
+	validation -. &nbsp;respond&nbsp; .-> response;
+	no_response --> __end__;
+	response --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 
 from src.config.settings import get_settings
-from src.graph import resume_graph, HumanDecision
+# Note: graph imports done lazily inside functions to avoid circular imports
 from src.slack.formatter import format_draft_preview, format_conflicts
 
 logger = structlog.get_logger()
@@ -144,6 +144,10 @@ async def handle_approval_action(body: dict, client) -> None:
 
     Resumes the graph with approval decision.
     """
+    # Lazy imports to avoid circular dependency
+    from src.graph.state import HumanDecision
+    from src.graph.graph import resume_graph
+
     action = body.get("actions", [{}])[0]
     action_id = action.get("action_id", "")
     thread_id = action.get("value", "")
@@ -200,6 +204,10 @@ async def handle_reject_action(body: dict, client) -> None:
 
     Resumes the graph with rejection decision.
     """
+    # Lazy imports to avoid circular dependency
+    from src.graph.state import HumanDecision
+    from src.graph.graph import resume_graph
+
     action = body.get("actions", [{}])[0]
     thread_id = action.get("value", "")
     user_id = body.get("user", {}).get("id", "")
@@ -343,6 +351,10 @@ async def process_edit_submission(body: dict, view: dict, client) -> None:
 
     Resumes the graph with edit decision and feedback.
     """
+    # Lazy imports to avoid circular dependency
+    from src.graph.state import HumanDecision
+    from src.graph.graph import resume_graph
+
     thread_id = view.get("private_metadata", "")
     values = view.get("state", {}).get("values", {})
     user_id = body.get("user", {}).get("id", "")

@@ -11,7 +11,9 @@ from src.graph.graph import get_graph, invoke_graph, resume_graph
 from src.graph.state import (
     HumanDecision,
     IntentType,
+    ProgressStepStatus,
     RequirementState,
+    WorkflowPhase,
     create_initial_state,
 )
 
@@ -20,6 +22,8 @@ __all__ = [
     "RequirementState",
     "IntentType",
     "HumanDecision",
+    "WorkflowPhase",
+    "ProgressStepStatus",
     "create_initial_state",
     # Graph
     "get_graph",

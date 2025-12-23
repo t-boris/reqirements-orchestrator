@@ -145,6 +145,10 @@ def create_fastapi_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Register admin routes for Zep and LangGraph debugging
+    from src.admin.routes import router as admin_router
+    fastapi_app.include_router(admin_router)
+
     @fastapi_app.get("/health")
     async def health_check():
         """Health check endpoint for monitoring."""
