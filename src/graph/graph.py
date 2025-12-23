@@ -706,22 +706,21 @@ async def invoke_graph(
         return result
 
     # Use streaming to get node-by-node progress
-    result = None
+    result = dict(initial_state)
     async for event in graph.astream(initial_state, config=config, stream_mode="updates"):
         # event is dict like {"node_name": state_update}
         for node_name, state_update in event.items():
             if on_node_start:
                 await on_node_start(node_name)
 
-            # Track final state
-            if result is None:
-                result = dict(initial_state)
-            result.update(state_update)
+            # Track final state (state_update can be None if node returns nothing)
+            if state_update:
+                result.update(state_update)
 
             if on_node_end:
                 await on_node_end(node_name, result)
 
-    return result or initial_state
+    return result
 
 
 async def resume_graph(
