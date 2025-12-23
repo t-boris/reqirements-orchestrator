@@ -131,9 +131,9 @@ BASE_TEMPLATE = """
         <nav class="nav">
             <a href="/admin/dashboard" class="{nav_dashboard}">Dashboard</a>
             <a href="/admin/zep/sessions" class="{nav_zep}">Zep Sessions</a>
+            <a href="/admin/zep/knowledge-graph" class="{nav_knowledge}">Knowledge Graph</a>
             <a href="/admin/graph/threads" class="{nav_graph}">Graph Threads</a>
-            <a href="/admin/graph/visualize" class="{nav_visualize}">Graph (D3.js)</a>
-            <a href="/admin/graph/mermaid" class="{nav_mermaid}">Mermaid</a>
+            <a href="/admin/graph/visualize" class="{nav_visualize}">Workflow (D3.js)</a>
         </nav>
         {content}
     </div>
@@ -153,9 +153,9 @@ def render_page(title: str, content: str, active: str = "") -> str:
         content=content,
         nav_dashboard="active" if active == "dashboard" else "",
         nav_zep="active" if active == "zep" else "",
+        nav_knowledge="active" if active == "knowledge" else "",
         nav_graph="active" if active == "graph" else "",
         nav_visualize="active" if active == "visualize" else "",
-        nav_mermaid="active" if active == "mermaid" else "",
     )
 
 
@@ -419,6 +419,422 @@ async def get_zep_session_html(session_id: str):
     except Exception as e:
         logger.error("zep_session_error", session_id=session_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Knowledge Graph Visualization
+# =============================================================================
+
+
+@router.get("/zep/knowledge-graph", response_class=HTMLResponse)
+async def zep_knowledge_graph():
+    """Interactive D3.js knowledge graph showing entities and facts from Zep memory."""
+    from src.memory.zep_client import get_http_client
+
+    # Collect all entities and facts from all sessions
+    nodes = []
+    edges = []
+    node_ids = set()
+
+    try:
+        client = await get_http_client()
+
+        # Get all sessions
+        sessions_response = await client.get("/api/v1/sessions")
+        if sessions_response.status_code == 200:
+            sessions_data = sessions_response.json()
+            sessions = sessions_data if isinstance(sessions_data, list) else sessions_data.get("sessions", [])
+
+            for session in sessions:
+                session_id = session.get("session_id", session.get("uuid"))
+                if not session_id:
+                    continue
+
+                # Add session as a central node
+                if session_id not in node_ids:
+                    nodes.append({
+                        "id": session_id,
+                        "label": session_id.replace("channel-", ""),
+                        "type": "session",
+                        "description": f"Channel session",
+                    })
+                    node_ids.add(session_id)
+
+                # Get memory with facts and entities
+                memory_response = await client.get(f"/api/v1/sessions/{session_id}/memory")
+                if memory_response.status_code == 200:
+                    memory_data = memory_response.json()
+
+                    # Process facts
+                    for i, fact in enumerate(memory_data.get("facts", []) or []):
+                        fact_text = fact if isinstance(fact, str) else fact.get("fact", str(fact))
+                        fact_id = f"{session_id}_fact_{i}"
+
+                        if fact_id not in node_ids:
+                            nodes.append({
+                                "id": fact_id,
+                                "label": fact_text[:50] + "..." if len(fact_text) > 50 else fact_text,
+                                "type": "fact",
+                                "description": fact_text,
+                            })
+                            node_ids.add(fact_id)
+                            edges.append({
+                                "source": session_id,
+                                "target": fact_id,
+                                "label": "has_fact",
+                            })
+
+                    # Process entities from messages
+                    for msg in memory_data.get("messages", []) or []:
+                        metadata = msg.get("metadata", {}) or {}
+                        entities = metadata.get("entities", []) or []
+                        for entity in entities:
+                            entity_name = entity.get("name", str(entity)) if isinstance(entity, dict) else str(entity)
+                            entity_id = f"entity_{entity_name.lower().replace(' ', '_')}"
+
+                            if entity_id not in node_ids:
+                                entity_type = entity.get("type", "entity") if isinstance(entity, dict) else "entity"
+                                nodes.append({
+                                    "id": entity_id,
+                                    "label": entity_name,
+                                    "type": entity_type,
+                                    "description": f"Entity: {entity_name}",
+                                })
+                                node_ids.add(entity_id)
+
+                            edges.append({
+                                "source": session_id,
+                                "target": entity_id,
+                                "label": "mentions",
+                            })
+
+    except Exception as e:
+        logger.error("knowledge_graph_error", error=str(e))
+
+    # If no data, add placeholder
+    if not nodes:
+        nodes = [
+            {"id": "no_data", "label": "No Data Yet", "type": "info", "description": "Start conversations to build the knowledge graph"}
+        ]
+        edges = []
+
+    graph_json = json.dumps({"nodes": nodes, "edges": edges})
+
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Graph - MARO Admin</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            overflow: hidden;
+        }}
+        .container {{ display: flex; height: 100vh; }}
+        #graph-container {{ flex: 1; position: relative; }}
+        #property-panel {{
+            width: 350px;
+            background: #1e293b;
+            border-left: 1px solid #334155;
+            padding: 20px;
+            overflow-y: auto;
+        }}
+        .panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }}
+        .panel-title {{ color: #38bdf8; font-size: 1.2rem; font-weight: 600; }}
+        .back-link {{ color: #64748b; text-decoration: none; font-size: 0.9rem; }}
+        .back-link:hover {{ color: #94a3b8; }}
+        .property-group {{ margin-bottom: 20px; }}
+        .property-label {{
+            color: #64748b;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 5px;
+        }}
+        .property-value {{
+            color: #e2e8f0;
+            font-size: 0.95rem;
+            padding: 10px 12px;
+            background: #0f172a;
+            border-radius: 6px;
+            word-wrap: break-word;
+        }}
+        .node-type {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }}
+        .type-session {{ background: #7c3aed; color: white; }}
+        .type-fact {{ background: #0284c7; color: white; }}
+        .type-entity {{ background: #16a34a; color: white; }}
+        .type-person {{ background: #ea580c; color: white; }}
+        .type-organization {{ background: #c026d3; color: white; }}
+        .type-info {{ background: #64748b; color: white; }}
+        .empty-state {{
+            color: #64748b;
+            font-style: italic;
+            text-align: center;
+            padding: 40px 20px;
+        }}
+        .legend {{
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }}
+        .legend-item:last-child {{ margin-bottom: 0; }}
+        .legend-dot {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }}
+        .controls {{
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #1e293b;
+            padding: 10px;
+            border-radius: 8px;
+        }}
+        .controls button {{
+            background: #334155;
+            color: #e2e8f0;
+            border: none;
+            padding: 8px 12px;
+            margin-right: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }}
+        .controls button:hover {{ background: #475569; }}
+        .stats {{
+            position: absolute;
+            top: 20px;
+            right: 340px;
+            background: #1e293b;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }}
+        svg {{ width: 100%; height: 100%; }}
+        .link {{ stroke: #475569; stroke-opacity: 0.6; fill: none; }}
+        .link-label {{ fill: #64748b; font-size: 9px; }}
+        .node circle {{
+            stroke: #1e293b;
+            stroke-width: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .node circle:hover {{ stroke: #38bdf8; stroke-width: 3px; }}
+        .node.selected circle {{ stroke: #38bdf8; stroke-width: 4px; }}
+        .node text {{ fill: #e2e8f0; font-size: 10px; pointer-events: none; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="graph-container">
+            <div class="controls">
+                <button onclick="zoomIn()">Zoom +</button>
+                <button onclick="zoomOut()">Zoom -</button>
+                <button onclick="resetZoom()">Reset</button>
+            </div>
+            <div class="stats">
+                Nodes: <strong>{len(nodes)}</strong> | Edges: <strong>{len(edges)}</strong>
+            </div>
+            <svg id="graph"></svg>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background: #7c3aed;"></div> Session</div>
+                <div class="legend-item"><div class="legend-dot" style="background: #0284c7;"></div> Fact</div>
+                <div class="legend-item"><div class="legend-dot" style="background: #16a34a;"></div> Entity</div>
+                <div class="legend-item"><div class="legend-dot" style="background: #ea580c;"></div> Person</div>
+                <div class="legend-item"><div class="legend-dot" style="background: #c026d3;"></div> Organization</div>
+            </div>
+        </div>
+        <div id="property-panel">
+            <div class="panel-header">
+                <span class="panel-title">Knowledge Graph</span>
+                <a href="/admin/dashboard" class="back-link">← Dashboard</a>
+            </div>
+            <div id="properties-content">
+                <p class="empty-state">Click on a node to view details</p>
+                <div class="property-group" style="margin-top: 30px;">
+                    <div class="property-label">About</div>
+                    <div class="property-value">
+                        This graph shows entities and facts extracted from Zep memory across all conversation sessions.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const graphData = {graph_json};
+
+        const typeColors = {{
+            session: '#7c3aed',
+            fact: '#0284c7',
+            entity: '#16a34a',
+            person: '#ea580c',
+            organization: '#c026d3',
+            info: '#64748b'
+        }};
+
+        const width = document.getElementById('graph-container').clientWidth;
+        const height = document.getElementById('graph-container').clientHeight;
+
+        const svg = d3.select('#graph').attr('viewBox', [0, 0, width, height]);
+
+        svg.append('defs').append('marker')
+            .attr('id', 'arrowhead')
+            .attr('viewBox', '-0 -5 10 10')
+            .attr('refX', 25)
+            .attr('refY', 0)
+            .attr('orient', 'auto')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .append('path')
+            .attr('d', 'M 0,-5 L 10,0 L 0,5')
+            .attr('fill', '#475569');
+
+        const g = svg.append('g');
+
+        const zoom = d3.zoom()
+            .scaleExtent([0.2, 4])
+            .on('zoom', (event) => g.attr('transform', event.transform));
+
+        svg.call(zoom);
+
+        const simulation = d3.forceSimulation(graphData.nodes)
+            .force('link', d3.forceLink(graphData.edges).id(d => d.id).distance(100))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(35));
+
+        const link = g.append('g')
+            .selectAll('path')
+            .data(graphData.edges)
+            .join('path')
+            .attr('class', 'link')
+            .attr('marker-end', 'url(#arrowhead)');
+
+        const linkLabels = g.append('g')
+            .selectAll('text')
+            .data(graphData.edges.filter(d => d.label))
+            .join('text')
+            .attr('class', 'link-label')
+            .text(d => d.label);
+
+        const node = g.append('g')
+            .selectAll('g')
+            .data(graphData.nodes)
+            .join('g')
+            .attr('class', 'node')
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended))
+            .on('click', selectNode);
+
+        node.append('circle')
+            .attr('r', d => d.type === 'session' ? 25 : 18)
+            .attr('fill', d => typeColors[d.type] || typeColors.entity);
+
+        node.append('text')
+            .attr('dy', d => d.type === 'session' ? 40 : 30)
+            .attr('text-anchor', 'middle')
+            .text(d => d.label.length > 20 ? d.label.substring(0, 20) + '...' : d.label);
+
+        simulation.on('tick', () => {{
+            link.attr('d', d => `M${{d.source.x}},${{d.source.y}} L${{d.target.x}},${{d.target.y}}`);
+            linkLabels
+                .attr('x', d => (d.source.x + d.target.x) / 2)
+                .attr('y', d => (d.source.y + d.target.y) / 2);
+            node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+        }});
+
+        function dragstarted(event) {{
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }}
+
+        function dragged(event) {{
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }}
+
+        function dragended(event) {{
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }}
+
+        function selectNode(event, d) {{
+            d3.selectAll('.node').classed('selected', false);
+            d3.select(this).classed('selected', true);
+
+            const incoming = graphData.edges.filter(e => (e.target.id || e.target) === d.id);
+            const outgoing = graphData.edges.filter(e => (e.source.id || e.source) === d.id);
+
+            const panel = document.getElementById('properties-content');
+            panel.innerHTML = `
+                <div class="property-group">
+                    <div class="property-label">ID</div>
+                    <div class="property-value" style="font-family: monospace; font-size: 0.85rem;">${{d.id}}</div>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Label</div>
+                    <div class="property-value">${{d.label}}</div>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Type</div>
+                    <div class="property-value">
+                        <span class="node-type type-${{d.type}}">${{d.type}}</span>
+                    </div>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Description</div>
+                    <div class="property-value">${{d.description}}</div>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Connections</div>
+                    <div class="property-value">
+                        Incoming: ${{incoming.length}}<br>
+                        Outgoing: ${{outgoing.length}}
+                    </div>
+                </div>
+            `;
+        }}
+
+        function zoomIn() {{ svg.transition().call(zoom.scaleBy, 1.3); }}
+        function zoomOut() {{ svg.transition().call(zoom.scaleBy, 0.7); }}
+        function resetZoom() {{ svg.transition().call(zoom.transform, d3.zoomIdentity); }}
+    </script>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html)
 
 
 # =============================================================================
