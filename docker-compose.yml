@@ -29,8 +29,13 @@ services:
     container_name: maro-zep
     environment:
       ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
-      STORE_TYPE: postgres
-      STORE_POSTGRES_DSN: "postgres://maro:maro@postgres:5432/maro?sslmode=disable"
+      ZEP_STORE_TYPE: postgres
+      ZEP_STORE_POSTGRES_HOST: postgres
+      ZEP_STORE_POSTGRES_PORT: "5432"
+      ZEP_STORE_POSTGRES_USER: maro
+      ZEP_STORE_POSTGRES_PASSWORD: maro
+      ZEP_STORE_POSTGRES_DB: maro
+      ZEP_STORE_POSTGRES_SSL_MODE: disable
     ports:
       - "8001:8000"
     depends_on:
