@@ -171,6 +171,7 @@ class PostgresCheckpointer(BaseCheckpointSaver):
         config: dict,
         checkpoint: Checkpoint,
         metadata: CheckpointMetadata,
+        new_versions: dict | None = None,
     ) -> dict:
         """
         Save a checkpoint.
@@ -179,12 +180,13 @@ class PostgresCheckpointer(BaseCheckpointSaver):
             config: Configuration with thread_id.
             checkpoint: Checkpoint data to save.
             metadata: Checkpoint metadata.
+            new_versions: Channel versions (unused, for API compatibility).
 
         Returns:
             Updated config with checkpoint_id.
         """
         thread_id = config["configurable"]["thread_id"]
-        checkpoint_id = checkpoint["id"]
+        checkpoint_id = checkpoint.get("id") if isinstance(checkpoint, dict) else checkpoint["id"]
         parent_checkpoint_id = config["configurable"].get("checkpoint_id")
 
         async with self.pool.acquire() as conn:
@@ -328,10 +330,11 @@ class PostgresCheckpointer(BaseCheckpointSaver):
         config: dict,
         checkpoint: Checkpoint,
         metadata: CheckpointMetadata,
+        new_versions: dict | None = None,
     ) -> dict:
         """Sync wrapper for aput."""
         return asyncio.get_event_loop().run_until_complete(
-            self.aput(config, checkpoint, metadata)
+            self.aput(config, checkpoint, metadata, new_versions)
         )
 
     def put_writes(
