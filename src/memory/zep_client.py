@@ -7,12 +7,12 @@ Provides:
 - Fact extraction and retrieval
 - Semantic search across memories
 
-Note: Using direct HTTP requests to Zep CE API (no zep-python due to httpx conflicts).
+Note: Using zep-python 2.x with self-hosted Zep CE (0.26+).
+Pass api_key=None for self-hosted, only base_url is needed.
 """
 
 from typing import Any
 
-import httpx
 import structlog
 
 from src.config.settings import get_settings
@@ -22,22 +22,10 @@ settings = get_settings()
 
 
 # =============================================================================
-# Zep HTTP Client Singleton
+# Zep Client Singleton
 # =============================================================================
 
-_client: httpx.AsyncClient | None = None
-
-
-async def get_http_client() -> httpx.AsyncClient:
-    """Get or create the HTTP client for Zep."""
-    global _client
-    if _client is None:
-        _client = httpx.AsyncClient(
-            base_url=settings.zep_api_url,
-            timeout=30.0,
-        )
-        logger.info("zep_http_client_initialized", url=settings.zep_api_url)
-    return _client
+_client = None
 
 
 async def get_zep_client() -> "ZepMemoryClient":
@@ -47,8 +35,19 @@ async def get_zep_client() -> "ZepMemoryClient":
     Returns:
         ZepMemoryClient instance.
     """
-    client = await get_http_client()
-    return ZepMemoryClient(client)
+    global _client
+
+    if _client is None:
+        from zep_python import AsyncZep
+
+        # For self-hosted Zep: pass base_url and api_key=None
+        _client = AsyncZep(
+            base_url=settings.zep_api_url,
+            api_key=None,  # No API key for self-hosted Zep CE
+        )
+        logger.info("zep_client_initialized", url=settings.zep_api_url)
+
+    return ZepMemoryClient(_client)
 
 
 # =============================================================================
@@ -58,18 +57,18 @@ async def get_zep_client() -> "ZepMemoryClient":
 
 class ZepMemoryClient:
     """
-    Wrapper around Zep HTTP API with convenience methods for requirements workflow.
+    Wrapper around Zep client with convenience methods for requirements workflow.
 
     Handles session management, message storage, and semantic search.
-    Uses direct HTTP requests to Zep CE API.
+    Uses zep-python 2.x API with self-hosted Zep CE.
     """
 
-    def __init__(self, client: httpx.AsyncClient):
+    def __init__(self, client):
         """
         Initialize the memory client.
 
         Args:
-            client: httpx AsyncClient for Zep API.
+            client: Zep AsyncZep instance.
         """
         self.client = client
         self.memory = MemoryOperations(client)
@@ -92,38 +91,28 @@ class ZepMemoryClient:
 
         try:
             # Try to get existing session
-            response = await self.client.get(f"/api/v1/sessions/{session_id}")
-            if response.status_code == 200:
-                return session_id
+            await self.client.memory.get_session(session_id)
         except Exception:
-            pass
-
-        # Session doesn't exist, create it
-        try:
-            response = await self.client.post(
-                "/api/v1/sessions",
-                json={
-                    "session_id": session_id,
-                    "metadata": {
+            # Session doesn't exist, create it
+            try:
+                await self.client.memory.add_session(
+                    session_id=session_id,
+                    metadata={
                         "channel_id": channel_id,
                         "created_by": user_id,
                         "type": "slack_channel",
                     },
-                },
-            )
-            if response.status_code in (200, 201):
+                )
                 logger.info("zep_session_created", session_id=session_id)
-        except Exception as e:
-            logger.debug("session_create_skipped", error=str(e))
+            except Exception as e:
+                # Session might already exist from another request
+                logger.debug("session_create_skipped", error=str(e))
 
         return session_id
 
     async def close(self) -> None:
-        """Close the HTTP client connection."""
-        global _client
-        if _client is not None:
-            await _client.aclose()
-            _client = None
+        """Close the Zep client connection."""
+        pass  # AsyncZep handles cleanup automatically
 
 
 # =============================================================================
@@ -134,10 +123,10 @@ class ZepMemoryClient:
 class MemoryOperations:
     """
     Memory operations for storing and retrieving conversation history.
-    Uses direct HTTP requests to Zep CE API.
+    Uses zep-python 2.x API.
     """
 
-    def __init__(self, client: httpx.AsyncClient):
+    def __init__(self, client):
         self.client = client
 
     async def add(
@@ -152,34 +141,29 @@ class MemoryOperations:
             session_id: Zep session ID.
             messages: List of message dicts with role, content, and optional metadata.
         """
+        from zep_python import Message
+
         try:
             zep_messages = [
-                {
-                    "role": msg.get("role", "user"),
-                    "role_type": msg.get("role", "user"),
-                    "content": msg.get("content", ""),
-                    "metadata": msg.get("metadata", {}),
-                }
+                Message(
+                    role=msg.get("role", "user"),
+                    role_type=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                    metadata=msg.get("metadata", {}),
+                )
                 for msg in messages
             ]
 
-            response = await self.client.post(
-                f"/api/v1/sessions/{session_id}/memory",
-                json={"messages": zep_messages},
+            await self.client.memory.add(
+                session_id=session_id,
+                messages=zep_messages,
             )
 
-            if response.status_code in (200, 201):
-                logger.debug(
-                    "memory_added",
-                    session_id=session_id,
-                    message_count=len(messages),
-                )
-            else:
-                logger.warning(
-                    "memory_add_failed",
-                    session_id=session_id,
-                    status=response.status_code,
-                )
+            logger.debug(
+                "memory_added",
+                session_id=session_id,
+                message_count=len(messages),
+            )
         except Exception as e:
             logger.warning("memory_add_failed", session_id=session_id, error=str(e))
 
@@ -199,22 +183,16 @@ class MemoryOperations:
             List of message dicts.
         """
         try:
-            response = await self.client.get(
-                f"/api/v1/sessions/{session_id}/memory",
-                params={"lastn": limit},
-            )
+            memory = await self.client.memory.get(session_id=session_id)
 
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
             messages = []
-            for msg in data.get("messages", [])[-limit:]:
+            msgs = memory.messages or []
+            for msg in msgs[-limit:]:
                 messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", ""),
-                    "metadata": msg.get("metadata", {}),
-                    "created_at": msg.get("created_at"),
+                    "role": msg.role,
+                    "content": msg.content,
+                    "metadata": msg.metadata or {},
+                    "created_at": getattr(msg, 'created_at', None),
                 })
 
             return messages
@@ -240,26 +218,22 @@ class MemoryOperations:
             List of search results with relevance scores.
         """
         try:
-            response = await self.client.post(
-                f"/api/v1/sessions/{session_id}/search",
-                json={"text": text, "metadata": {}},
-                params={"limit": limit},
+            results = await self.client.memory.search(
+                session_id=session_id,
+                text=text,
+                limit=limit,
             )
 
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
             memories = []
-            for result in data or []:
-                msg = result.get("message", {})
+            for result in results or []:
+                msg = result.message
                 if msg:
                     memories.append({
-                        "content": msg.get("content", ""),
-                        "role": msg.get("role", "user"),
-                        "score": result.get("score", 0.0),
-                        "metadata": msg.get("metadata", {}),
-                        "created_at": msg.get("created_at"),
+                        "content": msg.content,
+                        "role": msg.role,
+                        "score": result.score or 0.0,
+                        "metadata": msg.metadata or {},
+                        "created_at": getattr(msg, 'created_at', None),
                     })
 
             return memories
@@ -278,13 +252,9 @@ class MemoryOperations:
             True if successful.
         """
         try:
-            response = await self.client.delete(
-                f"/api/v1/sessions/{session_id}/memory"
-            )
-            if response.status_code in (200, 204):
-                logger.info("memory_cleared", session_id=session_id)
-                return True
-            return False
+            await self.client.memory.delete(session_id=session_id)
+            logger.info("memory_cleared", session_id=session_id)
+            return True
         except Exception:
             return True  # Already cleared or doesn't exist
 
@@ -299,10 +269,10 @@ class FactOperations:
     Fact operations for the temporal knowledge graph.
 
     Facts are extracted entities and relationships from conversations.
-    Uses direct HTTP requests to Zep CE API.
+    Uses zep-python 2.x API.
     """
 
-    def __init__(self, client: httpx.AsyncClient):
+    def __init__(self, client):
         self.client = client
 
     async def get_facts(
@@ -319,19 +289,13 @@ class FactOperations:
             List of fact dicts.
         """
         try:
-            response = await self.client.get(
-                f"/api/v1/sessions/{session_id}/memory"
-            )
+            memory = await self.client.memory.get(session_id=session_id)
 
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
             facts = []
-            for fact in data.get("facts", []) or []:
+            for fact in memory.facts or []:
                 facts.append({
-                    "content": fact.get("fact", fact.get("content", "")),
-                    "created_at": fact.get("created_at"),
+                    "content": getattr(fact, 'fact', getattr(fact, 'content', '')),
+                    "created_at": getattr(fact, 'created_at', None),
                 })
 
             return facts
@@ -356,25 +320,22 @@ class FactOperations:
             fact_content: The fact to add.
             metadata: Optional metadata.
         """
+        from zep_python import Message
+
         # Add as a system message that will be processed by Zep
-        try:
-            response = await self.client.post(
-                f"/api/v1/sessions/{session_id}/memory",
-                json={
-                    "messages": [
-                        {
-                            "role": "system",
-                            "role_type": "system",
-                            "content": f"[FACT] {fact_content}",
-                            "metadata": metadata or {},
-                        }
-                    ]
-                },
-            )
-            if response.status_code in (200, 201):
-                logger.debug("fact_added", session_id=session_id, fact=fact_content[:50])
-        except Exception as e:
-            logger.warning("fact_add_failed", error=str(e))
+        await self.client.memory.add(
+            session_id=session_id,
+            messages=[
+                Message(
+                    role="system",
+                    role_type="system",
+                    content=f"[FACT] {fact_content}",
+                    metadata=metadata or {},
+                )
+            ],
+        )
+
+        logger.debug("fact_added", session_id=session_id, fact=fact_content[:50])
 
 
 # =============================================================================
