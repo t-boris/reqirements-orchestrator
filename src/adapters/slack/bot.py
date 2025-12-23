@@ -166,6 +166,33 @@ class SlackBot:
             self._handlers.update_channel_settings(channel_id, **updates)
             logger.info("config_updated", channel_id=channel_id, updates=updates)
 
+            # Send confirmation message
+            provider_display = updates["llm_provider"].capitalize()
+            model_display = updates["llm_model"]
+            jira_display = updates["jira_project_key"] or "_not configured_"
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=f"Configuration updated: Provider={provider_display}, Model={model_display}",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Configuration Updated*",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {"type": "mrkdwn", "text": f"*Provider:* {provider_display}"},
+                            {"type": "mrkdwn", "text": f"*Model:* {model_display}"},
+                            {"type": "mrkdwn", "text": f"*Jira Project:* {jira_display}"},
+                        ],
+                    },
+                ],
+            )
+
         @self._app.view("personality_modal_submit")
         async def handle_personality_submit(ack, body, view, client) -> None:
             """Handle personality modal submission."""
@@ -185,8 +212,34 @@ class SlackBot:
             self._handlers.update_channel_settings(channel_id, **updates)
             logger.info("personality_updated", channel_id=channel_id, updates=updates)
 
+            # Send confirmation message
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="Personality settings updated",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Personality Settings Updated*",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {"type": "mrkdwn", "text": f"*Temperature:* {updates['temperature']}%"},
+                            {"type": "mrkdwn", "text": f"*Humor:* {updates['humor']}%"},
+                            {"type": "mrkdwn", "text": f"*Verbosity:* {updates['verbosity']}%"},
+                            {"type": "mrkdwn", "text": f"*Formality:* {updates['formality']}%"},
+                            {"type": "mrkdwn", "text": f"*Technical Depth:* {updates['technical_depth']}%"},
+                            {"type": "mrkdwn", "text": f"*Emoji Usage:* {updates['emoji_usage']}%"},
+                        ],
+                    },
+                ],
+            )
+
         # Helper function for prompt submission
-        async def _handle_prompt_submit(ack, view, prompt_type: str) -> None:
+        async def _handle_prompt_submit(ack, view, client, prompt_type: str) -> None:
             await ack()
             channel_id = view["private_metadata"]
             values = view["state"]["values"]
@@ -198,22 +251,45 @@ class SlackBot:
                 "graph_admin": "prompt_graph_admin",
             }
 
+            display_names = {
+                "product_manager": "Product Manager",
+                "architect": "Software Architect",
+                "graph_admin": "Graph Admin",
+            }
+
             field_name = field_map.get(prompt_type)
             if field_name:
                 self._handlers.update_channel_settings(channel_id, **{field_name: prompt_content})
                 logger.info("prompt_updated", channel_id=channel_id, prompt_type=prompt_type)
 
+                # Send confirmation message
+                display_name = display_names.get(prompt_type, prompt_type)
+                status = "custom prompt saved" if prompt_content else "reset to default"
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=f"{display_name} prompt updated",
+                    blocks=[
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*{display_name} Prompt Updated*\n{status} ({len(prompt_content)} chars)",
+                            },
+                        },
+                    ],
+                )
+
         @self._app.view("prompt_editor_submit_product_manager")
         async def handle_pm_prompt_submit(ack, body, view, client) -> None:
-            await _handle_prompt_submit(ack, view, "product_manager")
+            await _handle_prompt_submit(ack, view, client, "product_manager")
 
         @self._app.view("prompt_editor_submit_architect")
         async def handle_arch_prompt_submit(ack, body, view, client) -> None:
-            await _handle_prompt_submit(ack, view, "architect")
+            await _handle_prompt_submit(ack, view, client, "architect")
 
         @self._app.view("prompt_editor_submit_graph_admin")
         async def handle_admin_prompt_submit(ack, body, view, client) -> None:
-            await _handle_prompt_submit(ack, view, "graph_admin")
+            await _handle_prompt_submit(ack, view, client, "graph_admin")
 
         # Action handlers for navigation buttons
 
