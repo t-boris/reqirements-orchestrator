@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", description="Server host")
     port: int = Field(default=8000, ge=1, le=65535, description="Server port")
     debug: bool = Field(default=False, description="Debug mode")
+    external_url: str = Field(default="http://localhost:8000", description="External URL for admin links")
 
 
 @lru_cache
