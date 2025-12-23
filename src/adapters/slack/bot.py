@@ -316,11 +316,34 @@ class SlackBot:
         # Handle select changes (for dynamic model dropdown based on provider)
         @self._app.action("llm_provider_select")
         async def handle_provider_change(ack, body, client) -> None:
-            """Handle provider selection change - update model options."""
+            """Handle provider selection change - update model options dynamically."""
             await ack()
-            # Note: Slack modals don't support dynamic updates of other fields
-            # The user will need to save and reopen to see updated models
-            # This is a Slack limitation
+
+            # Extract current values from the view state
+            view = body["view"]
+            channel_id = view["private_metadata"]
+            values = view["state"]["values"]
+
+            # Get the newly selected provider
+            new_provider = body["actions"][0]["selected_option"]["value"]
+
+            # Get current Jira project key value
+            jira_key = values.get("jira_project_key", {}).get("jira_project_key_input", {}).get("value", "") or ""
+
+            # Build updated settings with new provider
+            from src.adapters.slack.config import ChannelSettings
+            updated_settings = ChannelSettings(
+                channel_id=channel_id,
+                jira_project_key=jira_key,
+                llm_provider=new_provider,
+                llm_model="",  # Reset model to first option of new provider
+            )
+
+            # Update the modal with new model options
+            await client.views_update(
+                view_id=view["id"],
+                view=build_main_config_modal(channel_id, updated_settings),
+            )
 
         @self._app.action("llm_model_select")
         async def handle_model_change(ack, body, client) -> None:
