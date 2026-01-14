@@ -127,7 +127,7 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     try:
         llm = get_llm()
         result = await llm.chat(prompt)
-        response_text = result.content.strip()
+        response_text = result.text.strip()
 
         # Parse JSON response
         # Handle markdown code blocks

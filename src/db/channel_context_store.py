@@ -114,6 +114,18 @@ class ChannelContextStore:
                     ) THEN
                         ALTER TABLE channel_context ADD COLUMN jira_sync_cursor TEXT;
                     END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'channel_context' AND column_name = 'created_at'
+                    ) THEN
+                        ALTER TABLE channel_context ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'channel_context' AND column_name = 'updated_at'
+                    ) THEN
+                        ALTER TABLE channel_context ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+                    END IF;
                 END $$;
             """)
 

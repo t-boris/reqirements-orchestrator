@@ -214,7 +214,7 @@ async def validation_node(state: AgentState) -> dict[str, Any]:
 
         llm = get_llm()
         result = await llm.chat(prompt)
-        response_text = result.content.strip()
+        response_text = result.text.strip()
 
         # Parse JSON response
         if response_text.startswith("```"):
