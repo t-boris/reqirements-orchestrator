@@ -1,3 +1,3 @@
-"""MARO v2 - Multi-Agent Requirements Orchestrator."""
+"""Jira Analyst Bot - Proactive requirements gathering via Slack."""
 
-__version__ = "2.0.0"
+__version__ = "0.1.0"
