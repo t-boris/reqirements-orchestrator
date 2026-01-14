@@ -118,15 +118,23 @@ Plans:
 - [x] 06-03: Edit modal + skill dispatcher + tool binding (Wave 3)
 
 ### Phase 7: Jira Integration
-**Goal**: Atlassian Python API client, jira_create and jira_search skills
+**Goal**: Jira API service with transactional operations, strict approval validation, and duplicate detection
 **Depends on**: Phase 6
-**Research**: Unlikely (atlassian-python-api is standard, documented)
-**Plans**: TBD
+**Research**: Complete (architecture discussed in detail)
+**Architecture**: Service pattern (not library wrapper), idempotency via DB constraints, all-or-nothing semantics
+
+**Key Decisions:**
+- API Token + email auth (OAuth later if needed)
+- Service with policy: validation, idempotency, logging, retry/backoff, dry-run
+- Idempotency key: (session_id, draft_hash, "jira_create") with unique constraint
+- Audit trail in jira_operations table
+- All-or-nothing: Jira failure doesn't advance session state
+- Duplicate detection as "last defense" before create
 
 Plans:
-- [ ] 07-01: Atlassian API client setup
-- [ ] 07-02: jira_create skill with priority mapping
-- [ ] 07-03: jira_search skill for duplicate detection
+- [ ] 07-01: JiraService client with retry/backoff, dry-run, env separation (Wave 1)
+- [ ] 07-02: jira_create skill with approval validation, idempotency, audit trail (Wave 2)
+- [ ] 07-03: jira_search skill for duplicate detection before preview (Wave 2)
 
 ### Phase 8: Global State
 **Goal**: Channel context system from root messages, pinned content, and Jira history
