@@ -130,6 +130,9 @@ Recent decisions affecting current work:
 - 08-02: LLM extraction with JSON response format for structured knowledge output
 - 08-02: Max 10 pins, 2000 chars each to stay within LLM context limits
 - 08-02: Graceful fallback on extraction failure (return empty knowledge with source_pin_ids)
+- 08-03: Root index keyed by (team_id, channel_id, root_ts) with unique constraint
+- 08-03: Pinned threads exempt from retention window cleanup
+- 08-03: Entity extraction limited to 10 items (5 mentions, 3 channels, 5 tickets)
 - 08-04: Non-blocking pin operations - failures logged but don't break main flow
 - 08-04: Separate pinned message for Jira links (distinct from session card)
 - 08-04: Slack permalink stored in Jira description for bidirectional traceability
