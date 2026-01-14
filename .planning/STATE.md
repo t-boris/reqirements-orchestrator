@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-14)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** Phase 7 — Jira Integration
+**Current focus:** Phase 8 — Global State
 
 ## Current Position
 
 Phase: 8 of 10 (Global State)
-Plan: 2 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 08-02-PLAN.md
+Last activity: 2026-01-14 — Completed 08-04-PLAN.md
 
-Progress: █████████████░░░░░░░ 68%
+Progress: ██████████████░░░░░░ 72%
 
 ## Performance Metrics
 
@@ -130,6 +130,9 @@ Recent decisions affecting current work:
 - 08-02: LLM extraction with JSON response format for structured knowledge output
 - 08-02: Max 10 pins, 2000 chars each to stay within LLM context limits
 - 08-02: Graceful fallback on extraction failure (return empty knowledge with source_pin_ids)
+- 08-04: Non-blocking pin operations - failures logged but don't break main flow
+- 08-04: Separate pinned message for Jira links (distinct from session card)
+- 08-04: Slack permalink stored in Jira description for bidirectional traceability
 
 ### Deferred Issues
 
@@ -141,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T19:38:00Z
-Stopped at: Completed 08-02-PLAN.md (pin ingestion and knowledge extraction)
+Last session: 2026-01-14T19:40:00Z
+Stopped at: Completed 08-04-PLAN.md (Jira linkage with thread pins)
 Resume file: None
