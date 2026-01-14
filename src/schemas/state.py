@@ -67,6 +67,9 @@ class AgentState(TypedDict):
     thread_ts: Optional[str]  # Slack thread timestamp (session ID)
     channel_id: Optional[str]  # Slack channel
 
+    # Channel context (Phase 8 - Global State)
+    channel_context: Optional[dict[str, Any]]  # ChannelContextResult.to_dict()
+
     # Metadata
     user_id: Optional[str]  # Requesting user
 
