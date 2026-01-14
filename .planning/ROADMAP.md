@@ -17,8 +17,8 @@ None
 - [x] **Phase 1: Foundation** - Project setup, config, core schemas
 - [x] **Phase 2: Database Layer** - PostgreSQL models, LangGraph checkpointer
 - [x] **Phase 3: LLM Integration** - Multi-provider LLM abstraction, prompt system
-- [ ] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
-- [ ] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
+- [x] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
+- [x] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
 - [ ] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
 - [ ] **Phase 7: Jira Integration** - Atlassian API, create/search operations
 - [ ] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
@@ -77,14 +77,14 @@ Plans:
 
 Plans:
 - [x] 04-01: Slack Bolt setup + Socket Mode (Wave 1)
-- [ ] 04-02: Message router - mentions + slash commands (Wave 2)
-- [ ] 04-03: Session model + dedup store + serialization (Wave 2)
-- [ ] 04-04: Epic binding flow with session card UI (Wave 3)
+- [x] 04-02: Message router - mentions + slash commands (Wave 2)
+- [x] 04-03: Session model + dedup store + serialization (Wave 2)
+- [x] 04-04: Epic binding flow with session card UI (Wave 3)
 - [x] 04-05: Zep integration - storage + search API (Wave 1)
 - [x] 04-06: Knowledge Graph schema + constraint storage (Wave 1)
 - [x] 04-07: Document processing - PDF, DOCX, MD, TXT (Wave 1)
-- [ ] 04-08: Dedup suggestions - high-confidence, non-blocking (Wave 4)
-- [ ] 04-09: Contradiction detector - structured matching (Wave 4)
+- [x] 04-08: Dedup suggestions - high-confidence, non-blocking (Wave 4)
+- [x] 04-09: Contradiction detector - structured matching (Wave 4)
 
 ### Phase 5: Agent Core
 **Goal**: LangGraph ReAct agent loop, AgentState management, extraction/validation/decision cycle
@@ -94,21 +94,28 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: LangGraph graph definition with ReAct pattern
-- [ ] 05-02: Extraction node (update draft from messages)
-- [ ] 05-03: Validation node (check completeness, detect conflicts)
-- [ ] 05-04: Decision node (ask question vs preview ticket)
+- [x] 05-01: State & Draft schemas (Wave 1)
+- [x] 05-02: Graph & Extraction node (Wave 2)
+- [x] 05-03: Validation & Decision nodes (Wave 3)
+- [x] 05-04: Runner Integration (Wave 4)
 
 ### Phase 6: Skills
-**Goal**: Implement LangGraph tools: ask_user, preview_ticket for agent to call
+**Goal**: Implement skills: ask_user, preview_ticket for agent to call with interrupt/resume pattern
 **Depends on**: Phase 5
-**Research**: Unlikely (LangGraph tool patterns established)
-**Plans**: TBD
+**Research**: Complete (discussed architecture in detail)
+**Architecture**: Skills as async functions with explicit parameters, Decision node controls "when", skills handle "how"
+
+**Key Decisions:**
+- Skills are async functions (not graph nodes) with explicit dependency injection
+- Dedup key: (session_id, state_version) for idempotency
+- Approval records: PostgreSQL table with unique constraint on (session_id, draft_hash)
+- Question matching: semantic (LLM-based), re-ask limit 2x max
+- Edit modal: full draft fields, client-side validation, replace preview after submit
 
 Plans:
-- [ ] 06-01: ask_user skill (send message to thread)
-- [ ] 06-02: preview_ticket skill (show draft with approval buttons)
-- [ ] 06-03: Tool binding and agent integration
+- [x] 06-01: ask_user skill + interrupt/resume + semantic answer matching (Wave 1)
+- [ ] 06-02: preview_ticket skill + version checking + approval records (Wave 2)
+- [ ] 06-03: Edit modal + skill dispatcher + tool binding (Wave 3)
 
 ### Phase 7: Jira Integration
 **Goal**: Atlassian Python API client, jira_create and jira_search skills
@@ -164,9 +171,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
 | 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
-| 4. Slack Router | 4/9 | In progress | - |
-| 5. Agent Core | 0/4 | Not started | - |
-| 6. Skills | 0/3 | Not started | - |
+| 4. Slack Router | 9/9 | Complete | 2026-01-14 |
+| 5. Agent Core | 4/4 | Complete | 2026-01-14 |
+| 6. Skills | 1/3 | In progress | - |
 | 7. Jira Integration | 0/3 | Not started | - |
 | 8. Global State | 0/3 | Not started | - |
 | 9. Personas | 0/3 | Not started | - |

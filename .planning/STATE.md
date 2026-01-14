@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-14)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** Phase 4 — Slack Router
+**Current focus:** Phase 6 — Skills (ask_user, preview_ticket)
 
 ## Current Position
 
-Phase: 4 of 10 (Slack Router)
-Plan: 4 of 9 in current phase
+Phase: 6 of 10 (Skills)
+Plan: 1 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 04-05-PLAN.md
+Last activity: 2026-01-14 — Completed 06-01-PLAN.md
 
-Progress: █████████░ 50%
+Progress: ██████████░░░░░░░░░░ 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
-- Average duration: 1.9 min
-- Total execution time: 0.53 hours
+- Total plans completed: 21
+- Average duration: 2.1 min
+- Total execution time: 0.75 hours
 
 **By Phase:**
 
@@ -30,10 +30,12 @@ Progress: █████████░ 50%
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
 | 03-llm-integration | 6 | 12 min | 2 min |
-| 04-slack-router | 4 | 12 min | 3 min |
+| 04-slack-router | 9 | 27 min | 3 min |
+| 05-agent-core | 4 | 8 min | 2 min |
+| 06-skills | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (2 min), 04-06 (3 min), 04-07 (3 min), 04-05 (4 min)
+- Last 5 plans: 05-02 (2 min), 05-03 (2 min), 05-04 (2 min), 06-01 (5 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -85,6 +87,35 @@ Recent decisions affecting current work:
 - 04-05: zep-python v2 API (AsyncZep from zep_python.client, not ZepClient)
 - 04-05: Session-based storage: epic:KEY for epics, team:channel:thread_ts for threads
 - 04-05: record_filter for metadata queries in Zep search
+- 04-02: Fast-ack pattern - handlers ack immediately, process async
+- 04-02: Message handler filters bot messages, edits, deletes, non-thread messages
+- 04-03: Session identity canonical format: team:channel:thread_ts
+- 04-03: Per-session asyncio locks prevent race conditions
+- 04-03: Event dedup with 5-minute TTL handles Socket Mode retries
+- 04-04: Session cards pinned in threads show Epic link and status
+- 04-04: Epic binding uses Zep semantic search for suggestions
+- 04-04: Action handlers use sync wrapper with async implementation for Bolt
+- 04-08: Dedup threshold 0.85 (high confidence only)
+- 04-08: Non-blocking suggestions - continue discussion normally
+- 04-09: Contradiction detection only on accepted constraints
+- 04-09: Three resolution options: conflict, override, keep both
+- 05-01: TicketDraft Pydantic model with patch() for incremental updates
+- 05-01: AgentPhase enum for state machine (COLLECTING → VALIDATING → AWAITING_USER → READY_TO_CREATE → CREATED)
+- 05-01: Evidence links trace draft fields back to Slack messages
+- 05-02: Custom StateGraph (not prebuilt create_react_agent)
+- 05-02: MAX_STEPS=10 loop protection via step_count
+- 05-02: Extraction node uses LLM to identify new information only
+- 05-03: LLM-first validation with rule-based fallback
+- 05-03: ValidationReport with missing_fields, conflicts, suggestions, quality_score
+- 05-03: DecisionResult with action (ask/preview/ready_to_create) and questions[]
+- 05-03: Smart batching - max 3 questions, most impactful first
+- 05-04: GraphRunner manages interrupt/resume per session
+- 05-04: TYPE_CHECKING import to avoid circular import
+- 05-04: Deferred import of get_session_lock inside methods
+- 06-01: Skills are async functions with explicit parameters (not graph nodes)
+- 06-01: Yes/No button detection via question prefix heuristic (Is/Are/Do/Does/Should/Will)
+- 06-01: MAX_REASK_COUNT=2 to prevent infinite loops
+- 06-01: TypedDict-compatible question tracking (dict instead of Pydantic model in state)
 
 ### Deferred Issues
 
@@ -96,6 +127,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T15:46:15Z
-Stopped at: Completed 04-05-PLAN.md
+Last session: 2026-01-14T19:02:57Z
+Stopped at: Completed 06-01-PLAN.md (ask_user skill)
 Resume file: None
