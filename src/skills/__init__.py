@@ -28,6 +28,8 @@ from src.skills.preview_ticket import (
     compute_draft_hash,
 )
 
+from src.skills.dispatcher import SkillDispatcher
+
 __all__ = [
     # ask_user skill
     "ask_user",
@@ -42,4 +44,6 @@ __all__ = [
     "preview_ticket",
     "PreviewResult",
     "compute_draft_hash",
+    # dispatcher
+    "SkillDispatcher",
 ]
