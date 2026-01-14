@@ -150,15 +150,25 @@ Plans:
 - [x] 08-05: Context retrieval strategy
 
 ### Phase 9: Personas
-**Goal**: Dynamic persona switching (PM/Architect/Security) based on conversation topic
+**Goal**: Policy-driven multi-perspective reasoning layer with PM/Security/Architect operational modes
 **Depends on**: Phase 5
-**Research**: Unlikely (prompt engineering, internal patterns)
-**Plans**: TBD
+**Research**: Complete (discussed architecture in detail)
+**Architecture**: Persona = Policy + Lens (prompt overlay + validation policy), two orthogonal axes (persona voice vs validators safety)
+
+**Key Decisions:**
+- PM is always default, switch only on explicit trigger or high-confidence detection
+- Threshold-based silent checks: Security 0.75, Architect 0.60
+- Sensitive ops always run Security validator (Jira writes, tokens, user data)
+- Auto-lock on persona switch, /persona unlock to allow re-detection
+- Persona indicator only first 1-2 messages after switch
+- Validators never auto-execute irreversible actions
+- Hybrid findings UX: inline BLOCK + "Review Notes" section
 
 Plans:
-- [ ] 09-01: Persona definitions and system prompts
-- [ ] 09-02: Topic detection for persona switching
-- [ ] 09-03: Persona integration with agent extraction/validation
+- [ ] 09-01: Persona definitions and config model (Wave 1)
+- [ ] 09-02: Topic detection + switching logic (Wave 1)
+- [ ] 09-03: Persona-specific validators + integration (Wave 2)
+- [ ] 09-04: Persona commands + UX (Wave 2)
 
 ### Phase 10: Deployment
 **Goal**: Docker container configuration, environment setup, production deployment
@@ -186,5 +196,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Skills | 3/3 | Complete | 2026-01-14 |
 | 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
 | 8. Global State | 5/5 | Complete | 2026-01-14 |
-| 9. Personas | 0/3 | Not started | - |
+| 9. Personas | 0/4 | Planned | - |
 | 10. Deployment | 0/3 | Not started | - |
