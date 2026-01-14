@@ -70,6 +70,17 @@ class AgentState(TypedDict):
     # Channel context (Phase 8 - Global State)
     channel_context: Optional[dict[str, Any]]  # ChannelContextResult.to_dict()
 
+    # Persona (Phase 9)
+    persona: Optional[Literal["pm", "security", "architect"]]  # Current active persona
+    persona_lock: bool  # If True, persona is locked for this thread
+    persona_reason: Optional[Literal["default", "explicit", "detected"]]  # Why persona was set
+    persona_confidence: Optional[float]  # Detection confidence (None for explicit/default)
+    persona_changed_at: Optional[str]  # ISO timestamp of last persona change
+    persona_message_count: int  # Messages since persona change (for indicator display)
+
+    # Validator findings (Phase 9)
+    validator_findings: Optional[dict[str, Any]]  # ValidationFindings.model_dump()
+
     # Metadata
     user_id: Optional[str]  # Requesting user
 
