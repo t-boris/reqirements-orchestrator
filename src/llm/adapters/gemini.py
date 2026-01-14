@@ -77,8 +77,21 @@ class GeminiAdapter(BaseAdapter):
 
     def parse_response(self, response: Any, latency_ms: float) -> LLMResult:
         """Parse LangChain response to unified format."""
-        # Extract text content
-        text = response.content if hasattr(response, "content") else ""
+        # Extract text content - handle both string and list of content blocks
+        text = ""
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                # Content blocks format: [{'type': 'text', 'text': '...'}]
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                text = "".join(text_parts)
 
         # Extract tool calls
         tool_calls = []

@@ -6,7 +6,9 @@ import sys
 
 from src.config import get_settings
 from src.db.checkpointer import setup_checkpointer
-from src.db.connection import init_db
+from src.db.connection import init_db, get_connection
+from src.db.session_store import SessionStore
+from src.db.channel_context_store import ChannelContextStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -19,10 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 async def init_database() -> None:
-    """Initialize database connection pool and run checkpointer setup."""
+    """Initialize database connection pool, tables, and checkpointer."""
     logger.info("Initializing database...")
     await init_db()
     await setup_checkpointer()
+
+    # Create application tables
+    async with get_connection() as conn:
+        session_store = SessionStore(conn)
+        await session_store.create_tables()
+
+        context_store = ChannelContextStore(conn)
+        await context_store.create_tables()
+
     logger.info("Database initialized")
 
 
