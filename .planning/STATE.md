@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 9 of 10 (Personas)
-Plan: 2 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-14 — Completed 09-02-PLAN.md
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-14 — Completed 09-04-PLAN.md
 
-Progress: █████████████████░░░ 86%
+Progress: █████████████████░░░ 90%
 
 ## Performance Metrics
 
@@ -149,6 +149,13 @@ Recent decisions affecting current work:
 - 09-02: Explicit triggers always work even when locked (with warning log)
 - 09-02: Auto-lock on any persona switch prevents oscillation
 - 09-02: Detection-based switches only work when unlocked
+- 09-03: Finding ID format: PERSONA-VALIDATOR-SUFFIX (e.g., SEC-AUTHZ-001)
+- 09-03: Validators auto-register on module import via _register_*_validators()
+- 09-03: Silent validators trigger when detection score >= threshold
+- 09-03: BLOCK severity findings cause is_valid=false in ValidationReport
+- 09-04: /persona defaults to status when no args
+- 09-04: Persona switch notification only on detected, not explicit
+- 09-04: Preview card shows Resolve Issues instead of Approve when has_blocking
 
 ### Deferred Issues
 
@@ -161,6 +168,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: Completed 09-02-PLAN.md (Topic detection + switching logic)
+Stopped at: Completed 09-04-PLAN.md (Persona commands + UX)
 Resume file: None
-Next action: Execute 09-03-PLAN.md (Persona-specific validators + integration)
+Next action: Execute 10-01-PLAN.md (Dockerfile and docker-compose)

@@ -22,7 +22,7 @@ None
 - [x] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
 - [x] **Phase 7: Jira Integration** - Atlassian API, create/search operations
 - [x] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
-- [ ] **Phase 9: Personas** - Dynamic PM/Architect/Security prompt switching
+- [x] **Phase 9: Personas** - Dynamic PM/Architect/Security prompt switching
 - [ ] **Phase 10: Deployment** - Docker container, environment config
 
 ## Phase Details
@@ -167,8 +167,8 @@ Plans:
 Plans:
 - [x] 09-01: Persona definitions and config model (Wave 1)
 - [x] 09-02: Topic detection + switching logic (Wave 1)
-- [ ] 09-03: Persona-specific validators + integration (Wave 2)
-- [ ] 09-04: Persona commands + UX (Wave 2)
+- [x] 09-03: Persona-specific validators + integration (Wave 2)
+- [x] 09-04: Persona commands + UX (Wave 2)
 
 ### Phase 10: Deployment
 **Goal**: Docker container configuration, environment setup, production deployment
@@ -196,5 +196,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Skills | 3/3 | Complete | 2026-01-14 |
 | 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
 | 8. Global State | 5/5 | Complete | 2026-01-14 |
-| 9. Personas | 2/4 | In progress | - |
+| 9. Personas | 4/4 | Complete | 2026-01-14 |
 | 10. Deployment | 0/3 | Not started | - |
