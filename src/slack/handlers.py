@@ -55,6 +55,10 @@ async def _process_mention(
     """Async processing for @mention - runs graph and dispatches to skills."""
     try:
         runner = get_runner(identity)
+
+        # Check for persona switch before running graph (Phase 9)
+        await _check_persona_switch(runner, text, client, channel, thread_ts)
+
         result = await runner.run_with_message(text, user)
 
         # Use dispatcher for skill execution
@@ -67,6 +71,56 @@ async def _process_mention(
             thread_ts=thread_ts,
             text="Sorry, something went wrong. Please try again.",
         )
+
+
+async def _check_persona_switch(
+    runner,
+    message_text: str,
+    client: WebClient,
+    channel: str,
+    thread_ts: str,
+) -> None:
+    """Check for and apply persona switch based on message content.
+
+    Notifies user when persona switches due to topic detection.
+    """
+    try:
+        from src.personas.switcher import PersonaSwitcher
+        from src.personas.types import PersonaName, PersonaReason
+
+        state = runner._get_current_state()
+        current_persona = PersonaName(state.get("persona", "pm"))
+        is_locked = state.get("persona_lock", False)
+
+        switcher = PersonaSwitcher()
+        switch_result = switcher.evaluate_switch(
+            message=message_text,
+            current_persona=current_persona,
+            is_locked=is_locked,
+        )
+
+        if switch_result.switched:
+            state_update = switcher.apply_switch(state, switch_result)
+            # Update runner state
+            new_state = {**state, **state_update}
+            runner._update_state(new_state)
+
+            # Notify user of switch (only if detected, not explicit)
+            if switch_result.reason == PersonaReason.DETECTED:
+                from src.slack.blocks import build_persona_indicator
+                indicator = build_persona_indicator(
+                    switch_result.persona.value,
+                    message_count=0,
+                )
+                if indicator:
+                    client.chat_postMessage(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        text=f"{indicator} {switch_result.message}",
+                    )
+    except Exception as e:
+        # Non-blocking - log and continue
+        logger.warning(f"Persona switch check failed: {e}")
 
 
 async def _dispatch_result(
@@ -200,6 +254,10 @@ async def _process_thread_message(
     """Async processing for thread message - continues graph and dispatches to skills."""
     try:
         runner = get_runner(identity)
+
+        # Check for persona switch before running graph (Phase 9)
+        await _check_persona_switch(runner, text, client, channel, thread_ts)
+
         result = await runner.run_with_message(text, user)
 
         # Use dispatcher for skill execution (same as _process_mention)
@@ -262,6 +320,103 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
             text="Available commands:\n• `/jira create [type]` - Start new ticket\n• `/jira search <query>` - Search tickets\n• `/jira status` - Session status",
             channel=channel,
         )
+
+
+def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
+    """Handle /persona slash command.
+
+    Commands:
+    - /persona [name] - Switch to persona (pm, security, architect)
+    - /persona lock - Lock current persona for thread
+    - /persona unlock - Allow persona switching again
+    - /persona status - Show current persona and validators
+    - /persona list - Show available personas
+    """
+    ack()  # Ack immediately
+
+    channel = command.get("channel_id")
+    thread_ts = command.get("thread_ts") or command.get("ts", "")
+    user = command.get("user_id")
+    text = command.get("text", "").strip()
+
+    logger.info(
+        "Persona command received",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user": user,
+            "command_text": text,
+        }
+    )
+
+    # Get session state if we have a thread
+    from src.personas.commands import handle_persona_command as exec_persona_cmd
+
+    # Build minimal state if no session exists
+    state = {
+        "persona": "pm",
+        "persona_lock": False,
+        "persona_reason": "default",
+    }
+
+    # Try to get actual session state
+    if thread_ts:
+        try:
+            identity = SessionIdentity(
+                team_id=command.get("team_id", "default"),
+                channel_id=channel,
+                thread_ts=thread_ts,
+            )
+            # Check if runner exists for this session
+            from src.graph.runner import _runners
+            if identity.session_id in _runners:
+                runner = get_runner(identity)
+                current_state = runner._get_current_state()
+                state = {
+                    "persona": current_state.get("persona", "pm"),
+                    "persona_lock": current_state.get("persona_lock", False),
+                    "persona_reason": current_state.get("persona_reason", "default"),
+                    "persona_confidence": current_state.get("persona_confidence"),
+                }
+        except Exception as e:
+            logger.warning(f"Could not get session state: {e}")
+
+    # Execute command
+    result = exec_persona_cmd(text, state)
+
+    # Send response
+    response_kwargs = {
+        "channel": channel,
+        "text": result.message,
+    }
+    if thread_ts:
+        response_kwargs["thread_ts"] = thread_ts
+
+    client.chat_postMessage(**response_kwargs)
+
+    # Update session if state changed and we have a runner
+    if result.state_update and thread_ts:
+        try:
+            identity = SessionIdentity(
+                team_id=command.get("team_id", "default"),
+                channel_id=channel,
+                thread_ts=thread_ts,
+            )
+            from src.graph.runner import _runners
+            if identity.session_id in _runners:
+                runner = get_runner(identity)
+                current_state = runner._get_current_state()
+                new_state = {**current_state, **result.state_update}
+                runner._update_state(new_state)
+                logger.info(
+                    "Persona state updated",
+                    extra={
+                        "session_id": identity.session_id,
+                        "state_update": result.state_update,
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"Could not update session state: {e}")
 
 
 async def handle_epic_selection(ack, body, client: WebClient, action):
