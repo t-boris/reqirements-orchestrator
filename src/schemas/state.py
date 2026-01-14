@@ -4,7 +4,7 @@ from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-from src.schemas.ticket import JiraTicketSchema
+from src.schemas.ticket import JiraTicketBase
 
 
 class AgentState(TypedDict):
@@ -17,8 +17,8 @@ class AgentState(TypedDict):
     # Conversation history (LangGraph manages with add_messages reducer)
     messages: Annotated[list[BaseMessage], add_messages]
 
-    # Current ticket draft being built
-    draft: Optional[JiraTicketSchema]
+    # Current ticket draft being built (EpicSchema, StorySchema, TaskSchema, or BugSchema)
+    draft: Optional[JiraTicketBase]
 
     # Questions the agent needs to ask (populated by validation)
     missing_info: list[str]
