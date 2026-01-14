@@ -747,20 +747,23 @@ def _build_approved_preview_blocks(draft: "TicketDraft", approved_by: str) -> li
 async def handle_reject_draft(ack, body, client: WebClient, action):
     """Handle 'Needs Changes' button click on draft preview.
 
+    Opens the edit modal for direct draft editing.
     Implements idempotent rejection handling:
     1. Check in-memory dedup (handles Slack retries)
-    2. Update state to return to COLLECTING
-    3. Update preview message to show rejected state
+    2. Open edit modal with current draft values
     """
+    # Get trigger_id BEFORE ack (needed for modal)
+    trigger_id = body.get("trigger_id")
+
     ack()
 
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
-    message_ts = body["message"]["ts"]  # Preview message to update
+    message_ts = body["message"]["ts"]  # Preview message to update later
     team_id = body["team"]["id"]
     user_id = body["user"]["id"]
 
-    # Parse button value
+    # Parse button value (session_id:draft_hash)
     button_value = action.get("value", "")
     action_id = action.get("action_id", "reject_draft")
 
@@ -771,6 +774,13 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
         logger.debug(f"Ignoring duplicate reject click: {button_value}")
         return
 
+    # Parse session_id and draft_hash from button value
+    if ":" in button_value:
+        session_id, draft_hash = button_value.rsplit(":", 1)
+    else:
+        session_id = button_value
+        draft_hash = ""
+
     identity = SessionIdentity(
         team_id=team_id,
         channel_id=channel,
@@ -778,36 +788,175 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
     )
 
     logger.info(
-        "Draft rejected for changes",
+        "Opening edit modal for draft changes",
         extra={
             "session_id": identity.session_id,
             "user_id": user_id,
         }
     )
 
+    # Get current draft from runner state
     runner = get_runner(identity)
     state = runner._get_current_state()
     draft = state.get("draft")
 
-    await runner.handle_approval(approved=False)
+    if not draft:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not find draft. Please start a new session.",
+        )
+        return
 
-    # Update preview message to show rejected state
+    # Build and open edit modal
+    from src.slack.modals import build_edit_draft_modal
+    from src.skills.preview_ticket import compute_draft_hash
+
+    current_hash = compute_draft_hash(draft)
+    modal_view = build_edit_draft_modal(
+        draft=draft,
+        session_id=session_id,
+        draft_hash=current_hash,
+        preview_message_ts=message_ts,
+    )
+
     try:
-        if draft:
-            rejected_blocks = _build_rejected_preview_blocks(draft, user_id)
-            client.chat_update(
-                channel=channel,
-                ts=message_ts,
-                text=f"Changes requested by <@{user_id}>",
-                blocks=rejected_blocks,
-            )
+        client.views_open(
+            trigger_id=trigger_id,
+            view=modal_view,
+        )
+    except Exception as e:
+        logger.error(f"Failed to open edit modal: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Sorry, I couldn't open the edit form. Please tell me what needs to be changed in the thread.",
+        )
+
+
+async def handle_edit_draft_submit(ack, body, client: WebClient, view):
+    """Handle edit modal submission.
+
+    Process modal submission flow:
+    1. Parse submitted values from view state
+    2. Parse private_metadata for session info
+    3. Update draft in runner state
+    4. Get updated draft and compute new hash
+    5. Update original preview message with new draft
+    6. Post confirmation message
+    """
+    ack()
+
+    user_id = body["user"]["id"]
+    view_state = view.get("state", {}).get("values", {})
+    private_metadata_raw = view.get("private_metadata", "{}")
+
+    # Parse private metadata
+    import json
+    try:
+        private_metadata = json.loads(private_metadata_raw)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
+        return
+
+    session_id = private_metadata.get("session_id", "")
+    preview_message_ts = private_metadata.get("preview_message_ts", "")
+
+    logger.info(
+        "Processing edit modal submission",
+        extra={
+            "session_id": session_id,
+            "user_id": user_id,
+        }
+    )
+
+    # Parse session_id to get identity parts
+    # Format: team:channel:thread_ts
+    parts = session_id.split(":")
+    if len(parts) != 3:
+        logger.error(f"Invalid session_id format: {session_id}")
+        return
+
+    team_id, channel, thread_ts = parts
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Parse submitted values
+    from src.slack.modals import parse_modal_values
+    values = parse_modal_values(view_state)
+
+    # Get runner and current draft
+    runner = get_runner(identity)
+    state = runner._get_current_state()
+    draft = state.get("draft")
+
+    if not draft:
+        logger.error(f"No draft found for session: {session_id}")
+        return
+
+    # Update draft with new values
+    from src.schemas.draft import DraftConstraint, ConstraintStatus
+
+    # Update basic fields
+    if "title" in values:
+        draft.title = values["title"]
+    if "problem" in values:
+        draft.problem = values["problem"]
+    if "proposed_solution" in values:
+        draft.proposed_solution = values["proposed_solution"]
+    if "acceptance_criteria" in values:
+        draft.acceptance_criteria = values["acceptance_criteria"]
+    if "risks" in values:
+        draft.risks = values["risks"]
+
+    # Update constraints (parse key=value pairs)
+    if "constraints_raw" in values:
+        new_constraints = []
+        for c in values["constraints_raw"]:
+            new_constraints.append(DraftConstraint(
+                key=c["key"],
+                value=c["value"],
+                status=ConstraintStatus.PROPOSED,
+            ))
+        draft.constraints = new_constraints
+
+    # Increment version
+    draft.version += 1
+
+    # Update runner state with modified draft
+    runner._update_draft(draft)
+
+    # Compute new hash
+    from src.skills.preview_ticket import compute_draft_hash
+    new_hash = compute_draft_hash(draft)
+
+    # Update original preview message with new draft
+    from src.slack.blocks import build_draft_preview_blocks_with_hash
+    new_blocks = build_draft_preview_blocks_with_hash(
+        draft=draft,
+        session_id=session_id,
+        draft_hash=new_hash,
+    )
+
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=preview_message_ts,
+            text=f"Updated ticket preview for: {draft.title or 'Untitled'}",
+            blocks=new_blocks,
+        )
     except Exception as e:
         logger.warning(f"Failed to update preview message: {e}")
 
+    # Post confirmation
     client.chat_postMessage(
         channel=channel,
         thread_ts=thread_ts,
-        text="No problem! Tell me what needs to be changed.",
+        text=f"Draft updated by <@{user_id}>. Please review the changes above.",
     )
 
 

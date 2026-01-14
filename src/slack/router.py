@@ -14,6 +14,9 @@ from src.slack.handlers import (
     handle_contradiction_conflict,
     handle_contradiction_override,
     handle_contradiction_both,
+    handle_approve_draft,
+    handle_reject_draft,
+    handle_edit_draft_submit,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,4 +49,11 @@ def register_handlers(app: App) -> None:
     app.action("resolve_contradiction_override")(handle_contradiction_override)
     app.action("resolve_contradiction_both")(handle_contradiction_both)
 
-    logger.info("Slack handlers registered: app_mention, message, /jira, select_epic_*, dedup, contradiction")
+    # Action handlers for draft approval/rejection
+    app.action("approve_draft")(handle_approve_draft)
+    app.action("reject_draft")(handle_reject_draft)
+
+    # View submission handlers
+    app.view("edit_draft_modal")(handle_edit_draft_submit)
+
+    logger.info("Slack handlers registered: app_mention, message, /jira, select_epic_*, dedup, contradiction, draft_approval, edit_modal")

@@ -238,6 +238,32 @@ class GraphRunner:
         state = self._get_current_state()
         return state.get("pending_questions")
 
+    def _update_draft(self, draft: TicketDraft) -> None:
+        """Update draft in current state (synchronous).
+
+        Used by modal handlers to update draft after user edits.
+
+        Args:
+            draft: Updated TicketDraft
+        """
+        try:
+            state = self._get_current_state()
+            state["draft"] = draft
+            # Use sync update - modal handlers are sync context
+            # We'll use aupdate_state via asyncio.run if needed
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(self.graph.aupdate_state(self._config, state))
+                else:
+                    loop.run_until_complete(self.graph.aupdate_state(self._config, state))
+            except RuntimeError:
+                asyncio.run(self.graph.aupdate_state(self._config, state))
+            logger.debug(f"Updated draft version to {draft.version}")
+        except Exception as e:
+            logger.error(f"Failed to update draft: {e}", exc_info=True)
+
 
 # Session runner cache
 _runners: dict[str, "GraphRunner"] = {}
