@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 10 of 10 (Deployment)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-14 — Completed 10-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-14 — Completed 10-03-PLAN.md
 
-Progress: █████████████████░░░ 93%
+Progress: ████████████████████ 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
+- Total plans completed: 24
 - Average duration: 2.4 min
-- Total execution time: 0.93 hours
+- Total execution time: 0.97 hours
 
 **By Phase:**
 
@@ -161,6 +161,9 @@ Recent decisions affecting current work:
 - 10-01: Memory limits: 256MB postgres, 512MB bot for e2-small VM
 - 10-02: Settings.py already has all production settings with sensible defaults
 - 10-02: .env.example grouped by category for easier configuration
+- 10-03: Cloud Build with SHORT_SHA and latest tags for versioned + rolling deployments
+- 10-03: SSH-based deploy to GCE VM via gcloud compute ssh
+- 10-03: .deploy.env for local deployment config, separate from app .env
 
 ### Deferred Issues
 
@@ -173,6 +176,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: Completed 10-02-PLAN.md (Environment configuration)
+Stopped at: Completed 10-03-PLAN.md (Production deployment scripts)
 Resume file: None
-Next action: Execute 10-03 (Production deployment scripts)
+Next action: Milestone complete - all phases done
