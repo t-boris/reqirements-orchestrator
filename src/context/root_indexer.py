@@ -75,6 +75,48 @@ class RootIndexer:
         """Update index when ticket is created from thread."""
         return await self._store.add_ticket(team_id, channel_id, root_ts, ticket_key)
 
+    async def build_activity_snapshot(
+        self,
+        team_id: str,
+        channel_id: str,
+    ) -> "ChannelActivitySnapshot":
+        """Build activity snapshot from recent roots.
+
+        Returns:
+            ChannelActivitySnapshot with active_epics, recent_tickets, etc.
+        """
+        from datetime import datetime, timezone
+
+        from src.db.models import ChannelActivitySnapshot
+
+        roots = await self._store.get_recent_roots(team_id, channel_id)
+
+        # Collect unique epics
+        active_epics = list(
+            set(r.epic_id for r in roots if r.epic_id)
+        )[:10]
+
+        # Collect recent tickets (most recent first)
+        recent_tickets = []
+        seen = set()
+        for r in roots:
+            for tk in r.ticket_keys:
+                if tk not in seen:
+                    recent_tickets.append(tk)
+                    seen.add(tk)
+                if len(recent_tickets) >= 10:
+                    break
+            if len(recent_tickets) >= 10:
+                break
+
+        return ChannelActivitySnapshot(
+            active_epics=active_epics,
+            recent_tickets=recent_tickets,
+            top_constraints=[],  # Filled by separate constraint aggregation
+            unresolved_conflicts=[],  # Filled by contradiction detector
+            last_updated=datetime.now(timezone.utc),
+        )
+
     def _extract_summary(self, text: str) -> str:
         """Extract brief summary from root text."""
         # Clean whitespace, take first 100 chars
