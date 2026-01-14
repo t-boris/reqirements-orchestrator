@@ -5,7 +5,15 @@ This package provides a unified interface for interacting with multiple LLM prov
 standardized result formats.
 
 Usage:
-    from src.llm import LLMProvider, Message, LLMResult, get_capabilities
+    from src.llm import get_llm, UnifiedChatClient, Message
+
+    # Quick start - uses project default
+    llm = get_llm()
+    result = await llm.chat("Hello!")
+
+    # Specify model (provider auto-detected)
+    llm = get_llm("gpt-4o")
+    result = await llm.invoke(messages)
 
     # Check provider capabilities
     caps = get_capabilities(LLMProvider.GEMINI)
@@ -38,6 +46,17 @@ from src.llm.capabilities import (
     supports_feature,
 )
 
+# Client and Factory
+from src.llm.client import (
+    UnifiedChatClient,
+    get_llm,
+)
+from src.llm.factory import (
+    detect_provider,
+    create_adapter,
+    get_default_model,
+)
+
 __all__ = [
     # Enums
     "LLMProvider",
@@ -54,4 +73,11 @@ __all__ = [
     "CAPABILITIES",
     "get_capabilities",
     "supports_feature",
+    # Client
+    "UnifiedChatClient",
+    "get_llm",
+    # Factory
+    "detect_provider",
+    "create_adapter",
+    "get_default_model",
 ]
