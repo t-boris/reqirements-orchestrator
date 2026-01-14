@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 6 of 10 (Skills)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 06-01-PLAN.md
+Last activity: 2026-01-14 — Completed 06-02-PLAN.md
 
-Progress: ██████████░░░░░░░░░░ 50%
+Progress: ███████████░░░░░░░░░ 55%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21
-- Average duration: 2.1 min
-- Total execution time: 0.75 hours
+- Total plans completed: 22
+- Average duration: 2.3 min
+- Total execution time: 0.85 hours
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: ██████████░░░░░░░░░░ 50%
 | 03-llm-integration | 6 | 12 min | 2 min |
 | 04-slack-router | 9 | 27 min | 3 min |
 | 05-agent-core | 4 | 8 min | 2 min |
-| 06-skills | 1 | 5 min | 5 min |
+| 06-skills | 2 | 10 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-02 (2 min), 05-03 (2 min), 05-04 (2 min), 06-01 (5 min)
+- Last 5 plans: 05-03 (2 min), 05-04 (2 min), 06-01 (5 min), 06-02 (5 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -116,6 +116,10 @@ Recent decisions affecting current work:
 - 06-01: Yes/No button detection via question prefix heuristic (Is/Are/Do/Does/Should/Will)
 - 06-01: MAX_REASK_COUNT=2 to prevent infinite loops
 - 06-01: TypedDict-compatible question tracking (dict instead of Pydantic model in state)
+- 06-02: SHA256[:8] hash of title|problem|ACs for draft version checking
+- 06-02: Button value format session_id:draft_hash embeds version for validation
+- 06-02: ON CONFLICT DO NOTHING for first-wins approval semantics in PostgreSQL
+- 06-02: Two-layer idempotency: in-memory dedup for retries, DB constraint for races
 
 ### Deferred Issues
 
@@ -127,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T19:02:57Z
-Stopped at: Completed 06-01-PLAN.md (ask_user skill)
+Last session: 2026-01-14T19:10:00Z
+Stopped at: Completed 06-02-PLAN.md (preview_ticket skill)
 Resume file: None
