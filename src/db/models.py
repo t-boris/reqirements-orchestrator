@@ -27,6 +27,10 @@ class ThreadSession(BaseModel):
         default=None,
         description="Jira issue key after ticket is created (e.g., PROJ-123)",
     )
+    epic_id: Optional[str] = Field(
+        default=None,
+        description="Linked Epic Jira key (e.g., PROJ-50)",
+    )
     created_at: datetime = Field(description="When the session was created")
     updated_at: datetime = Field(description="When the session was last updated")
 
