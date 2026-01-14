@@ -1,12 +1,13 @@
 """Database module for PostgreSQL connectivity and LangGraph state persistence.
 
 Provides async database connection utilities using psycopg v3,
-LangGraph checkpointer for agent state persistence, and session storage
-for thread-to-ticket mapping.
+LangGraph checkpointer for agent state persistence, session storage
+for thread-to-ticket mapping, and approval records for idempotency.
 
 Usage:
     from src.db import get_connection, init_db, close_db, get_checkpointer, setup_checkpointer
     from src.db import ThreadSession, ChannelContext, SessionStore
+    from src.db import ApprovalStore, ApprovalRecord
 
     # At application startup
     await init_db()
@@ -23,6 +24,12 @@ Usage:
         await store.create_tables()
         session = await store.get_or_create_session(channel_id, thread_ts, user_id)
 
+    # Approval records
+    async with get_connection() as conn:
+        approval_store = ApprovalStore(conn)
+        await approval_store.create_tables()
+        is_new = await approval_store.record_approval(session_id, draft_hash, user_id)
+
     # For LangGraph graph compilation
     checkpointer = get_checkpointer()
     graph = workflow.compile(checkpointer=checkpointer)
@@ -34,6 +41,7 @@ from src.db.checkpointer import get_checkpointer, setup_checkpointer
 from src.db.connection import close_db, get_connection, init_db
 from src.db.models import ChannelContext, ThreadSession
 from src.db.session_store import SessionStore
+from src.db.approval_store import ApprovalStore, ApprovalRecord
 
 __all__ = [
     # Connection (02-01)
@@ -48,4 +56,7 @@ __all__ = [
     "ChannelContext",
     # Session Store (02-03)
     "SessionStore",
+    # Approval Store (06-02)
+    "ApprovalStore",
+    "ApprovalRecord",
 ]
