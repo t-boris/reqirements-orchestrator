@@ -76,7 +76,7 @@ Plans:
 - Non-blocking dedup suggestions (high threshold only)
 
 Plans:
-- [ ] 04-01: Slack Bolt setup + Socket Mode (Wave 1)
+- [x] 04-01: Slack Bolt setup + Socket Mode (Wave 1)
 - [ ] 04-02: Message router - mentions + slash commands (Wave 2)
 - [ ] 04-03: Session model + dedup store + serialization (Wave 2)
 - [ ] 04-04: Epic binding flow with session card UI (Wave 3)
@@ -164,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
 | 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
-| 4. Slack Router | 0/9 | Planned | - |
+| 4. Slack Router | 1/9 | In progress | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
 | 7. Jira Integration | 0/3 | Not started | - |
