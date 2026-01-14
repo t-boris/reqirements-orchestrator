@@ -15,7 +15,7 @@ None
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Foundation** - Project setup, config, core schemas
-- [ ] **Phase 2: Database Layer** - PostgreSQL models, LangGraph checkpointer
+- [ ] **Phase 2: Database Layer** - PostgreSQL models, LangGraph checkpointer (In progress)
 - [ ] **Phase 3: LLM Integration** - Gemini client, configurable providers
 - [ ] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
 - [ ] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
@@ -45,7 +45,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 02-01: PostgreSQL connection and base models
+- [x] 02-01: PostgreSQL connection and base models
 - [ ] 02-02: LangGraph checkpointer integration
 - [ ] 02-03: Project context and session tables
 
@@ -148,7 +148,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
-| 2. Database Layer | 0/3 | Not started | - |
+| 2. Database Layer | 1/3 | In progress | - |
 | 3. LLM Integration | 0/3 | Not started | - |
 | 4. Slack Router | 0/3 | Not started | - |
 | 5. Agent Core | 0/4 | Not started | - |
