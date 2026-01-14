@@ -64,15 +64,27 @@ Plans:
 - [x] 03-06: Prompt system (base templates + provider overlays)
 
 ### Phase 4: Slack Router
-**Goal**: Slack Bolt integration, Socket Mode, thread detection, message event routing
-**Depends on**: Phase 1
-**Research**: Unlikely (Slack Bolt Socket Mode is documented)
-**Plans**: TBD
+**Goal**: Full Hub & Spoke architecture - Slack integration with Epic binding, Zep memory, Knowledge Graph, and PM behaviors
+**Depends on**: Phase 1, Phase 2, Phase 3
+**Research**: Complete (discussed architecture in detail)
+**Architecture**: 3 sub-phases (4A: Slack Spine, 4B: Memory Plumbing, 4C: PM Behaviors)
+
+**Key Decisions:**
+- Explicit triggers only (no ambient LLM classification)
+- Separate ingestion from decisioning
+- Structured constraints (subject/value/status) not free-form text
+- Non-blocking dedup suggestions (high threshold only)
 
 Plans:
-- [ ] 04-01: Slack Bolt app setup with Socket Mode
-- [ ] 04-02: Message event handlers with thread detection
-- [ ] 04-03: Session initialization and routing logic
+- [ ] 04-01: Slack Bolt setup + Socket Mode (Wave 1)
+- [ ] 04-02: Message router - mentions + slash commands (Wave 2)
+- [ ] 04-03: Session model + dedup store + serialization (Wave 2)
+- [ ] 04-04: Epic binding flow with session card UI (Wave 3)
+- [ ] 04-05: Zep integration - storage + search API (Wave 1)
+- [ ] 04-06: Knowledge Graph schema + constraint storage (Wave 1)
+- [ ] 04-07: Document processing - PDF, DOCX, MD, TXT (Wave 1)
+- [ ] 04-08: Dedup suggestions - high-confidence, non-blocking (Wave 4)
+- [ ] 04-09: Contradiction detector - structured matching (Wave 4)
 
 ### Phase 5: Agent Core
 **Goal**: LangGraph ReAct agent loop, AgentState management, extraction/validation/decision cycle
@@ -152,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
 | 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
-| 4. Slack Router | 0/3 | Not started | - |
+| 4. Slack Router | 0/9 | Planned | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
 | 7. Jira Integration | 0/3 | Not started | - |
