@@ -1,11 +1,22 @@
-"""Channel context extraction and processing.
-
-This package handles extracting context from various channel sources
-like pinned messages, activity patterns, and Jira data.
-"""
-
+"""Channel context management for global state."""
 from src.context.pin_extractor import PinExtractor, PinInfo
-from src.context.jira_linker import JiraLinker, ThreadJiraLink
 from src.context.root_indexer import RootIndexer
+from src.context.jira_linker import JiraLinker, ThreadJiraLink
+from src.context.retriever import (
+    ChannelContextRetriever,
+    ChannelContextResult,
+    RetrievalMode,
+    ContextSource,
+)
 
-__all__ = ["PinExtractor", "PinInfo", "JiraLinker", "ThreadJiraLink", "RootIndexer"]
+__all__ = [
+    "PinExtractor",
+    "PinInfo",
+    "RootIndexer",
+    "JiraLinker",
+    "ThreadJiraLink",
+    "ChannelContextRetriever",
+    "ChannelContextResult",
+    "RetrievalMode",
+    "ContextSource",
+]
