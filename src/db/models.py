@@ -85,3 +85,25 @@ class ChannelContext(BaseModel):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RootIndex(BaseModel):
+    """Index entry for a root message (thread starter).
+
+    Maps: channel_id + root_ts -> epic_id -> ticket_keys
+    Used for channel activity snapshot and context.
+    """
+
+    id: str = Field(description="UUID")
+    team_id: str
+    channel_id: str
+    root_ts: str = Field(description="Thread root message timestamp")
+    text_summary: Optional[str] = Field(
+        default=None, description="Brief summary of root topic (max 100 chars)"
+    )
+    entities: list[str] = Field(default_factory=list, description="Extracted entities/tags")
+    epic_id: Optional[str] = None
+    ticket_keys: list[str] = Field(default_factory=list)
+    is_pinned: bool = Field(default=False, description="Pinned threads live beyond retention window")
+    created_at: datetime
+    updated_at: datetime

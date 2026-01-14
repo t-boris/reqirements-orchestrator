@@ -44,12 +44,14 @@ from src.db.models import (
     ChannelConfig,
     ChannelContext,
     ChannelKnowledge,
+    RootIndex,
     ThreadSession,
 )
 from src.db.session_store import SessionStore
 from src.db.approval_store import ApprovalStore, ApprovalRecord
 from src.db.jira_operations import JiraOperationStore, JiraOperationRecord
 from src.db.channel_context_store import ChannelContextStore
+from src.db.root_index_store import RootIndexStore
 
 __all__ = [
     # Connection (02-01)
@@ -65,6 +67,7 @@ __all__ = [
     "ChannelConfig",
     "ChannelKnowledge",
     "ChannelActivitySnapshot",
+    "RootIndex",
     # Session Store (02-03)
     "SessionStore",
     # Approval Store (06-02)
@@ -75,4 +78,6 @@ __all__ = [
     "JiraOperationRecord",
     # Channel Context Store (08-01)
     "ChannelContextStore",
+    # Root Index Store (08-03)
+    "RootIndexStore",
 ]
