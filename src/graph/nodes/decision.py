@@ -1,0 +1,210 @@
+"""Decision node - routes to ASK, PREVIEW, or READY_TO_CREATE.
+
+Prioritizes most impactful issues first.
+Smart batching: immediate if urgent, else batch related questions.
+Re-ask logic: max 2 re-asks before proceeding with partial info.
+
+EXECUTE is deferred to Phase 7 - only sets state to READY_TO_CREATE.
+"""
+import logging
+from typing import Any, Literal
+from pydantic import BaseModel, Field
+
+from src.schemas.state import AgentState, AgentPhase
+
+logger = logging.getLogger(__name__)
+
+# Max re-ask attempts before proceeding with partial info
+MAX_REASK_COUNT = 2
+
+
+class DecisionResult(BaseModel):
+    """Result of decision node processing."""
+    action: Literal["ask", "preview", "ready_to_create"]
+    questions: list[str] = Field(default_factory=list)  # For ASK action
+    reason: str = ""  # Why this decision
+    is_reask: bool = False  # True if re-asking unanswered questions
+    reask_count: int = 0  # How many times we've re-asked
+
+
+def prioritize_issues(
+    missing_fields: list[str],
+    conflicts: list[str],
+    suggestions: list[str],
+) -> list[str]:
+    """Prioritize issues by impact.
+
+    Order: conflicts (blockers) > missing required > suggestions (nice-to-have)
+    Returns list of questions/issues, most impactful first.
+    """
+    questions = []
+
+    # Conflicts are blockers - ask first
+    for conflict in conflicts:
+        questions.append(f"I found a conflict: {conflict}. How should we resolve this?")
+
+    # Missing required fields
+    field_questions = {
+        "title": "What should be the title/summary for this ticket?",
+        "problem": "What problem are we trying to solve?",
+        "acceptance_criteria": "What are the acceptance criteria? How will we know this is done?",
+    }
+    for field in missing_fields:
+        # Extract base field name
+        base_field = field.split(" ")[0].strip("()")
+        if base_field in field_questions:
+            questions.append(field_questions[base_field])
+        else:
+            questions.append(f"Please provide: {field}")
+
+    return questions
+
+
+def batch_questions(questions: list[str], max_batch: int = 3) -> list[str]:
+    """Batch related questions together.
+
+    Returns at most max_batch questions to avoid overwhelming user.
+    Most impactful questions first (already prioritized).
+    """
+    return questions[:max_batch]
+
+
+async def decision_node(state: AgentState) -> dict[str, Any]:
+    """Decide next action: ASK, PREVIEW, or READY_TO_CREATE.
+
+    Logic:
+    1. If validation passed (is_valid=True) -> PREVIEW
+    2. If conflicts exist -> ASK (prioritize conflicts)
+    3. If missing fields -> ASK (batch questions)
+    4. If approved -> READY_TO_CREATE
+    5. Check for unanswered questions from previous ask -> RE-ASK (max 2 times)
+    6. After max re-asks -> proceed with partial info (PREVIEW)
+
+    Returns partial state update with decision result.
+    """
+    draft = state.get("draft")
+    validation_report = state.get("validation_report", {})
+    step_count = state.get("step_count", 0)
+    phase = state.get("phase", AgentPhase.COLLECTING)
+    pending_questions = state.get("pending_questions")
+    answer_match_result = state.get("answer_match_result", {})
+
+    # Check if already approved (would be set by approval handler)
+    if phase == AgentPhase.READY_TO_CREATE:
+        logger.info("Draft already approved, ready to create")
+        return {
+            "step_count": step_count + 1,
+            "decision_result": DecisionResult(
+                action="ready_to_create",
+                reason="Draft approved by user",
+            ).model_dump(),
+        }
+
+    # Check for unanswered questions from previous ask
+    unanswered = answer_match_result.get("unanswered_questions", [])
+    current_reask_count = pending_questions.get("re_ask_count", 0) if pending_questions else 0
+
+    if unanswered and current_reask_count < MAX_REASK_COUNT:
+        # Re-ask unanswered questions
+        new_reask_count = current_reask_count + 1
+        batched = batch_questions(unanswered)
+
+        logger.info(
+            "Re-asking unanswered questions",
+            extra={
+                "unanswered": len(unanswered),
+                "reask_count": new_reask_count,
+                "max_reask": MAX_REASK_COUNT,
+            }
+        )
+
+        # Update pending_questions with incremented re_ask_count
+        updated_pending = dict(pending_questions) if pending_questions else {}
+        updated_pending["questions"] = batched
+        updated_pending["re_ask_count"] = new_reask_count
+
+        return {
+            "step_count": step_count + 1,
+            "phase": AgentPhase.AWAITING_USER,
+            "pending_questions": updated_pending,
+            "decision_result": DecisionResult(
+                action="ask",
+                questions=batched,
+                reason=f"Re-asking {len(batched)} unanswered questions (attempt {new_reask_count}/{MAX_REASK_COUNT})",
+                is_reask=True,
+                reask_count=new_reask_count,
+            ).model_dump(),
+        }
+    elif unanswered and current_reask_count >= MAX_REASK_COUNT:
+        # Max re-asks reached, proceed with partial info
+        logger.info(
+            "Max re-asks reached, proceeding with partial info",
+            extra={
+                "unanswered": len(unanswered),
+                "reask_count": current_reask_count,
+            }
+        )
+        # Clear pending questions and proceed to preview
+        return {
+            "step_count": step_count + 1,
+            "phase": AgentPhase.AWAITING_USER,
+            "pending_questions": None,
+            "decision_result": DecisionResult(
+                action="preview",
+                reason=f"Proceeding with partial info after {MAX_REASK_COUNT} re-asks ({len(unanswered)} questions unanswered)",
+            ).model_dump(),
+        }
+
+    # Get validation details
+    is_valid = validation_report.get("is_valid", False)
+    missing_fields = validation_report.get("missing_fields", [])
+    conflicts = validation_report.get("conflicts", [])
+    suggestions = validation_report.get("suggestions", [])
+
+    # Decision logic
+    if is_valid and not conflicts:
+        # Ready for preview
+        logger.info("Draft valid, showing preview")
+        return {
+            "step_count": step_count + 1,
+            "phase": AgentPhase.AWAITING_USER,
+            "pending_questions": None,  # Clear any pending
+            "decision_result": DecisionResult(
+                action="preview",
+                reason="Draft meets minimum requirements",
+            ).model_dump(),
+        }
+
+    # Need to ask questions
+    questions = prioritize_issues(missing_fields, conflicts, suggestions)
+    batched = batch_questions(questions)
+
+    logger.info(
+        "Asking user for more information",
+        extra={
+            "total_issues": len(questions),
+            "batch_size": len(batched),
+        }
+    )
+
+    return {
+        "step_count": step_count + 1,
+        "phase": AgentPhase.AWAITING_USER,
+        "decision_result": DecisionResult(
+            action="ask",
+            questions=batched,
+            reason=f"Need {len(missing_fields)} fields, {len(conflicts)} conflicts to resolve",
+        ).model_dump(),
+    }
+
+
+def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready"]:
+    """Get decision action from state for routing.
+
+    Use in graph conditional edges.
+    """
+    result = state.get("decision_result", {})
+    action = result.get("action", "ask")
+    if action == "ready_to_create":
+        return "ready"
+    return action

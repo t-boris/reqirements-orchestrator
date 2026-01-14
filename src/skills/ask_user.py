@@ -54,6 +54,8 @@ async def ask_user(
     questions: list[str],
     context: str = "",
     expected_fields: Optional[list[str]] = None,
+    is_reask: bool = False,
+    reask_count: int = 0,
 ) -> AskResult:
     """Post questions to Slack thread.
 
@@ -64,6 +66,8 @@ async def ask_user(
         questions: List of questions to ask
         context: Why we're asking (context message)
         expected_fields: Optional list of expected field names
+        is_reask: True if this is a re-ask of unanswered questions
+        reask_count: How many times we've re-asked (for messaging)
 
     Returns:
         AskResult with message_ts and question_id
@@ -72,19 +76,37 @@ async def ask_user(
     - Posts questions as formatted message
     - Adds Yes/No buttons for questions starting with Is/Are/Do/Does/Should/Will
     - Generates question_id (UUID) for tracking
+    - For re-asks, adds a gentle nudge message
     - Returns AskResult with message_ts
     """
     question_set = QuestionSet(
         questions=questions,
         expected_fields=expected_fields or [],
+        re_ask_count=reask_count,
     )
 
     # Build message blocks
     blocks = []
     button_questions = []
 
-    # Add context if provided
-    if context:
+    # Add re-ask header if this is a re-ask
+    if is_reask:
+        reask_messages = [
+            "I still need a bit more info:",
+            "Just to make sure I have everything:",
+            "A few questions I didn't catch answers for:",
+        ]
+        # Use reask_count to pick message (cycle through them)
+        reask_msg = reask_messages[min(reask_count - 1, len(reask_messages) - 1)]
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"_{reask_msg}_",
+            }
+        })
+    # Add context if provided (and not already added reask header)
+    elif context:
         blocks.append({
             "type": "section",
             "text": {
