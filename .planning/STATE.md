@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 3 of 10 (LLM Integration)
-Plan: 6 of 6 in current phase
+Plan: 4 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 03-06-PLAN.md
+Last activity: 2026-01-14 — Completed 03-04-PLAN.md
 
-Progress: ████████░░ 30%
+Progress: ████████░░ 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 1.8 min
-- Total execution time: 0.27 hours
+- Total plans completed: 10
+- Average duration: 1.9 min
+- Total execution time: 0.32 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: ████████░░ 30%
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
-| 03-llm-integration | 3 | 7 min | 2.3 min |
+| 03-llm-integration | 4 | 10 min | 2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (2 min), 03-01 (2 min), 03-02 (2 min), 03-06 (3 min)
+- Last 5 plans: 03-01 (2 min), 03-02 (2 min), 03-04 (3 min), 03-06 (3 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -60,6 +60,11 @@ Recent decisions affecting current work:
 - 03-02: BaseAdapter defines invoke/convert_messages/parse_response contract
 - 03-02: ToolDefinition uses JSON Schema for parameters
 - 03-02: langchain-google-genai for Gemini adapter (consistent with stack)
+- 03-03: langchain-openai for OpenAI adapter (same pattern as Gemini)
+- 03-03: openai_api_key optional in settings (allows Gemini-only deployments)
+- 03-04: langchain-anthropic for adapter (consistent with langchain stack)
+- 03-04: System messages extracted separately for Anthropic API requirements
+- 03-04: Content block parsing handles both text and tool_use response types
 - 03-06: Simple format() templating over Jinja2 DSL - sufficient for variable substitution
 - 03-06: Provider overlays as dict[LLMProvider, str] for clean lookup
 - 03-06: Secret redaction via regex on known field names
@@ -75,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T14:53:26Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-01-14T14:54:03Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None

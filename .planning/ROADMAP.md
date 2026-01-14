@@ -59,7 +59,7 @@ Plans:
 - [x] 03-01: Core interfaces & types (LLMProvider, Message, LLMResult, CapabilityMatrix)
 - [x] 03-02: Gemini adapter with langchain-google-genai
 - [ ] 03-03: OpenAI adapter with langchain-openai
-- [ ] 03-04: Anthropic adapter with langchain-anthropic
+- [x] 03-04: Anthropic adapter with langchain-anthropic
 - [ ] 03-05: UnifiedChatClient + LLMFactory
 - [ ] 03-06: Prompt system (base templates + provider overlays)
 
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
-| 3. LLM Integration | 2/6 | In progress | - |
+| 3. LLM Integration | 4/6 | In progress | - |
 | 4. Slack Router | 0/3 | Not started | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
