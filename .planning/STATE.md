@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 3 of 10 (LLM Integration)
-Plan: 1 of 6 in current phase
+Plan: 2 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 03-01-PLAN.md
+Last activity: 2026-01-14 — Completed 03-02-PLAN.md
 
-Progress: ███████░░░ 23%
+Progress: ███████░░░ 27%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 1.7 min
-- Total execution time: 0.2 hours
+- Total plans completed: 8
+- Average duration: 1.75 min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: ███████░░░ 23%
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
-| 03-llm-integration | 1 | 2 min | 2 min |
+| 03-llm-integration | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (2 min), 03-01 (2 min)
+- Last 5 plans: 02-02 (2 min), 02-03 (2 min), 03-01 (2 min), 03-02 (2 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -57,6 +57,9 @@ Recent decisions affecting current work:
 - 03-01: Pydantic BaseModel for all LLM types (serializable, validated)
 - 03-01: str Enum for LLMProvider (JSON-compatible)
 - 03-01: Frozen dataclass for ProviderCapabilities (immutable config)
+- 03-02: BaseAdapter defines invoke/convert_messages/parse_response contract
+- 03-02: ToolDefinition uses JSON Schema for parameters
+- 03-02: langchain-google-genai for Gemini adapter (consistent with stack)
 
 ### Deferred Issues
 
@@ -68,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T14:32:00Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-01-14T14:52:28Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
