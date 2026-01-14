@@ -16,7 +16,7 @@ None
 
 - [x] **Phase 1: Foundation** - Project setup, config, core schemas
 - [x] **Phase 2: Database Layer** - PostgreSQL models, LangGraph checkpointer
-- [ ] **Phase 3: LLM Integration** - Gemini client, configurable providers (In progress)
+- [x] **Phase 3: LLM Integration** - Multi-provider LLM abstraction, prompt system
 - [ ] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
 - [ ] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
 - [ ] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
@@ -60,7 +60,7 @@ Plans:
 - [x] 03-02: Gemini adapter with langchain-google-genai
 - [x] 03-03: OpenAI adapter with langchain-openai
 - [x] 03-04: Anthropic adapter with langchain-anthropic
-- [ ] 03-05: UnifiedChatClient + LLMFactory
+- [x] 03-05: UnifiedChatClient + LLMFactory
 - [x] 03-06: Prompt system (base templates + provider overlays)
 
 ### Phase 4: Slack Router
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
-| 3. LLM Integration | 5/6 | In progress | - |
+| 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
 | 4. Slack Router | 0/3 | Not started | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
