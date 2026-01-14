@@ -1,86 +1,35 @@
+version: '3.8'
+
 services:
-  # ===========================================================================
-  # PostgreSQL - Checkpoints, approvals, application data
-  # ===========================================================================
-  postgres:
-    image: pgvector/pgvector:pg15
-    container_name: maro-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-maro}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-maro}
+  db:
+    image: postgres:16
     ports:
       - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=jira_analyst
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-maro}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # ===========================================================================
-  # Zep - Long-term memory with temporal knowledge graph
-  # ===========================================================================
   zep:
-    image: ghcr.io/getzep/zep-cloud:latest
-    container_name: maro-zep
-    environment:
-      ZEP_OPENAI_API_KEY: ${OPENAI_API_KEY}
-      ZEP_STORE_TYPE: postgres
-      ZEP_STORE_POSTGRES_DSN: "postgres://${POSTGRES_USER:-maro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maro}?sslmode=disable"
-    ports:
-      - "8001:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ===========================================================================
-  # Jira MCP Server - Model Context Protocol for Jira integration
-  # ===========================================================================
-  jira-mcp:
-    image: node:20-alpine
-    container_name: maro-jira-mcp
-    working_dir: /app
-    env_file:
-      - .env
-    command: >
-      sh -c "npm install -g @anthropic/mcp-server-jira || npm install -g jira-mcp &&
-             npx jira-mcp --stdio"
-    environment:
-      JIRA_URL: ${JIRA_URL}
-      JIRA_USER: ${JIRA_USER}
-      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
-    volumes:
-      - jira_mcp_cache:/app/node_modules
-
-  # ===========================================================================
-  # MARO Backend - LangGraph agent application
-  # ===========================================================================
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: maro-backend
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-maro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maro}
-      ZEP_API_URL: http://zep:8000
+    image: ghcr.io/getzep/zep:latest
     ports:
       - "8000:8000"
+    environment:
+      - ZEP_STORE_TYPE=postgres
+      - ZEP_STORE_POSTGRES_DSN=postgres://postgres:postgres@db:5432/zep?sslmode=disable
+      - ZEP_OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-      zep:
-        condition: service_started
     restart: unless-stopped
-    volumes:
-      - ./src:/app/src:ro
-      - ./personas:/app/personas:ro
-      - ./config:/app/config:ro
 
 volumes:
   postgres_data:
-  jira_mcp_cache:
