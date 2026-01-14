@@ -50,16 +50,18 @@ Plans:
 - [x] 02-03: Project context and session tables
 
 ### Phase 3: LLM Integration
-**Goal**: Gemini client setup, configurable LLM providers, prompt utilities
+**Goal**: Multi-provider LLM abstraction (Gemini, OpenAI, Anthropic) with unified interface and prompt system
 **Depends on**: Phase 1
-**Research**: Likely (Gemini API, langchain-google-genai)
-**Research topics**: langchain-google-genai setup, Gemini tool calling, provider abstraction patterns
-**Plans**: TBD
+**Research**: Complete (discussed architecture decisions)
+**Architecture**: 3-layer (Factory -> UnifiedClient -> ProviderAdapters), capability matrix, provider overlays
 
 Plans:
-- [ ] 03-01: Gemini client with langchain-google-genai
-- [ ] 03-02: LLM provider abstraction layer
-- [ ] 03-03: Prompt utilities and templates
+- [ ] 03-01: Core interfaces & types (LLMProvider, Message, LLMResult, CapabilityMatrix)
+- [ ] 03-02: Gemini adapter with langchain-google-genai
+- [ ] 03-03: OpenAI adapter with langchain-openai
+- [ ] 03-04: Anthropic adapter with langchain-anthropic
+- [ ] 03-05: UnifiedChatClient + LLMFactory
+- [ ] 03-06: Prompt system (base templates + provider overlays)
 
 ### Phase 4: Slack Router
 **Goal**: Slack Bolt integration, Socket Mode, thread detection, message event routing
@@ -149,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
-| 3. LLM Integration | 0/3 | Not started | - |
+| 3. LLM Integration | 0/6 | Not started | - |
 | 4. Slack Router | 0/3 | Not started | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
