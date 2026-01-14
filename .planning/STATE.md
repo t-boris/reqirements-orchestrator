@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-14)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** Phase 6 — Skills (ask_user, preview_ticket)
+**Current focus:** Phase 7 — Jira Integration
 
 ## Current Position
 
 Phase: 6 of 10 (Skills)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-14 — Completed 06-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-14 — Completed 06-03-PLAN.md
 
-Progress: ███████████░░░░░░░░░ 55%
+Progress: ███████████░░░░░░░░░ 57%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
-- Average duration: 2.3 min
-- Total execution time: 0.85 hours
+- Total plans completed: 23
+- Average duration: 2.4 min
+- Total execution time: 0.93 hours
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: ███████████░░░░░░░░░ 55%
 | 03-llm-integration | 6 | 12 min | 2 min |
 | 04-slack-router | 9 | 27 min | 3 min |
 | 05-agent-core | 4 | 8 min | 2 min |
-| 06-skills | 2 | 10 min | 5 min |
+| 06-skills | 3 | 15 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-03 (2 min), 05-04 (2 min), 06-01 (5 min), 06-02 (5 min)
+- Last 5 plans: 05-04 (2 min), 06-01 (5 min), 06-02 (5 min), 06-03 (5 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -120,6 +120,9 @@ Recent decisions affecting current work:
 - 06-02: Button value format session_id:draft_hash embeds version for validation
 - 06-02: ON CONFLICT DO NOTHING for first-wins approval semantics in PostgreSQL
 - 06-02: Two-layer idempotency: in-memory dedup for retries, DB constraint for races
+- 06-03: Modal opens on reject for direct field editing
+- 06-03: SkillDispatcher routes DecisionResult to skills (decision decides when, skills handle how)
+- 06-03: Shared _dispatch_result() for consistent handler behavior
 
 ### Deferred Issues
 
@@ -131,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T19:10:00Z
-Stopped at: Completed 06-02-PLAN.md (preview_ticket skill)
+Last session: 2026-01-14T19:16:55Z
+Stopped at: Completed 06-03-PLAN.md (edit modal and skill dispatcher)
 Resume file: None

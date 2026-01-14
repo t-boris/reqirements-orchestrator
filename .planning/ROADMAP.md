@@ -19,7 +19,7 @@ None
 - [x] **Phase 3: LLM Integration** - Multi-provider LLM abstraction, prompt system
 - [x] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
 - [x] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
-- [ ] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
+- [x] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
 - [ ] **Phase 7: Jira Integration** - Atlassian API, create/search operations
 - [ ] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
 - [ ] **Phase 9: Personas** - Dynamic PM/Architect/Security prompt switching
@@ -115,7 +115,7 @@ Plans:
 Plans:
 - [x] 06-01: ask_user skill + interrupt/resume + semantic answer matching (Wave 1)
 - [x] 06-02: preview_ticket skill + version checking + approval records (Wave 2)
-- [ ] 06-03: Edit modal + skill dispatcher + tool binding (Wave 3)
+- [x] 06-03: Edit modal + skill dispatcher + tool binding (Wave 3)
 
 ### Phase 7: Jira Integration
 **Goal**: Atlassian Python API client, jira_create and jira_search skills
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
 | 4. Slack Router | 9/9 | Complete | 2026-01-14 |
 | 5. Agent Core | 4/4 | Complete | 2026-01-14 |
-| 6. Skills | 2/3 | In progress | - |
+| 6. Skills | 3/3 | Complete | 2026-01-14 |
 | 7. Jira Integration | 0/3 | Not started | - |
 | 8. Global State | 0/3 | Not started | - |
 | 9. Personas | 0/3 | Not started | - |
