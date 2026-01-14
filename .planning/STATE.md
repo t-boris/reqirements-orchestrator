@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 4 of 10 (Slack Router)
-Plan: 3 of 9 in current phase
+Plan: 4 of 9 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 04-07-PLAN.md
+Last activity: 2026-01-14 — Completed 04-05-PLAN.md
 
-Progress: █████████░ 47%
+Progress: █████████░ 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 1.8 min
-- Total execution time: 0.50 hours
+- Total plans completed: 16
+- Average duration: 1.9 min
+- Total execution time: 0.53 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: █████████░ 47%
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
 | 03-llm-integration | 6 | 12 min | 2 min |
-| 04-slack-router | 3 | 8 min | 2.7 min |
+| 04-slack-router | 4 | 12 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-05 (2 min), 04-01 (2 min), 04-06 (3 min), 04-07 (3 min)
+- Last 5 plans: 04-01 (2 min), 04-06 (3 min), 04-07 (3 min), 04-05 (4 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -82,6 +82,9 @@ Recent decisions affecting current work:
 - 04-07: python-docx for DOCX extraction (standard library)
 - 04-07: latin-1 fallback for text encoding issues
 - 04-07: 10000 char default max_length for LLM normalization
+- 04-05: zep-python v2 API (AsyncZep from zep_python.client, not ZepClient)
+- 04-05: Session-based storage: epic:KEY for epics, team:channel:thread_ts for threads
+- 04-05: record_filter for metadata queries in Zep search
 
 ### Deferred Issues
 
@@ -93,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T15:55:00Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-01-14T15:46:15Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None

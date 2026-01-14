@@ -80,7 +80,7 @@ Plans:
 - [ ] 04-02: Message router - mentions + slash commands (Wave 2)
 - [ ] 04-03: Session model + dedup store + serialization (Wave 2)
 - [ ] 04-04: Epic binding flow with session card UI (Wave 3)
-- [ ] 04-05: Zep integration - storage + search API (Wave 1)
+- [x] 04-05: Zep integration - storage + search API (Wave 1)
 - [x] 04-06: Knowledge Graph schema + constraint storage (Wave 1)
 - [x] 04-07: Document processing - PDF, DOCX, MD, TXT (Wave 1)
 - [ ] 04-08: Dedup suggestions - high-confidence, non-blocking (Wave 4)
@@ -164,7 +164,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation | 3/3 | Complete | 2026-01-14 |
 | 2. Database Layer | 3/3 | Complete | 2026-01-14 |
 | 3. LLM Integration | 6/6 | Complete | 2026-01-14 |
-| 4. Slack Router | 3/9 | In progress | - |
+| 4. Slack Router | 4/9 | In progress | - |
 | 5. Agent Core | 0/4 | Not started | - |
 | 6. Skills | 0/3 | Not started | - |
 | 7. Jira Integration | 0/3 | Not started | - |
