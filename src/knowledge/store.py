@@ -1,0 +1,214 @@
+"""Knowledge Graph storage operations."""
+
+import logging
+from typing import Optional
+from uuid import UUID
+
+from src.db.connection import get_connection
+from src.knowledge.models import Constraint, Entity, Relationship, ConstraintStatus
+
+logger = logging.getLogger(__name__)
+
+
+class KnowledgeStore:
+    """Storage for Knowledge Graph entities and constraints.
+
+    Uses PostgreSQL for persistence. Tables created on first use.
+    """
+
+    async def ensure_tables(self) -> None:
+        """Create KG tables if they don't exist."""
+        async with get_connection() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS kg_constraints (
+                    id UUID PRIMARY KEY,
+                    epic_id VARCHAR(50) NOT NULL,
+                    thread_ts VARCHAR(32) NOT NULL,
+                    message_ts VARCHAR(32),
+                    subject VARCHAR(255) NOT NULL,
+                    value TEXT NOT NULL,
+                    status VARCHAR(20) DEFAULT 'proposed',
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(epic_id, subject, status)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_constraints_epic
+                    ON kg_constraints(epic_id);
+                CREATE INDEX IF NOT EXISTS idx_constraints_subject
+                    ON kg_constraints(subject);
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS kg_entities (
+                    id UUID PRIMARY KEY,
+                    epic_id VARCHAR(50) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    entity_type VARCHAR(50) NOT NULL,
+                    mentions INTEGER DEFAULT 1,
+                    first_seen TIMESTAMPTZ DEFAULT NOW(),
+                    last_seen TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(epic_id, name)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_entities_epic
+                    ON kg_entities(epic_id);
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS kg_relationships (
+                    id UUID PRIMARY KEY,
+                    epic_id VARCHAR(50) NOT NULL,
+                    source_entity_id UUID REFERENCES kg_entities(id),
+                    target_entity_id UUID REFERENCES kg_entities(id),
+                    relationship_type VARCHAR(50) NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_relationships_epic
+                    ON kg_relationships(epic_id);
+            """)
+
+        logger.info("Knowledge Graph tables ensured")
+
+    # --- Constraint Operations ---
+
+    async def add_constraint(self, constraint: Constraint) -> Constraint:
+        """Add or update a constraint."""
+        async with get_connection() as conn:
+            await conn.execute("""
+                INSERT INTO kg_constraints (id, epic_id, thread_ts, message_ts, subject, value, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (epic_id, subject, status)
+                DO UPDATE SET value = EXCLUDED.value, message_ts = EXCLUDED.message_ts
+            """, (
+                str(constraint.id),
+                constraint.epic_id,
+                constraint.thread_ts,
+                constraint.message_ts,
+                constraint.subject,
+                constraint.value,
+                constraint.status,
+                constraint.created_at,
+            ))
+
+        logger.info(f"Added constraint: {constraint.subject}={constraint.value}")
+        return constraint
+
+    async def get_constraints_for_epic(
+        self,
+        epic_id: str,
+        status: Optional[ConstraintStatus] = None,
+    ) -> list[Constraint]:
+        """Get all constraints for an Epic."""
+        async with get_connection() as conn:
+            if status:
+                result = await conn.execute("""
+                    SELECT id, epic_id, thread_ts, message_ts, subject, value, status, created_at
+                    FROM kg_constraints
+                    WHERE epic_id = %s AND status = %s
+                    ORDER BY created_at
+                """, (epic_id, status))
+            else:
+                result = await conn.execute("""
+                    SELECT id, epic_id, thread_ts, message_ts, subject, value, status, created_at
+                    FROM kg_constraints
+                    WHERE epic_id = %s
+                    ORDER BY created_at
+                """, (epic_id,))
+
+            rows = await result.fetchall()
+            return [
+                Constraint(
+                    id=UUID(row[0]),
+                    epic_id=row[1],
+                    thread_ts=row[2],
+                    message_ts=row[3],
+                    subject=row[4],
+                    value=row[5],
+                    status=row[6],
+                    created_at=row[7],
+                )
+                for row in rows
+            ]
+
+    async def find_conflicting_constraints(
+        self,
+        epic_id: str,
+        subject: str,
+        value: str,
+    ) -> list[Constraint]:
+        """Find constraints with same subject but different value.
+
+        Returns constraints that conflict with proposed value.
+        Only checks accepted constraints.
+        """
+        async with get_connection() as conn:
+            result = await conn.execute("""
+                SELECT id, epic_id, thread_ts, message_ts, subject, value, status, created_at
+                FROM kg_constraints
+                WHERE epic_id = %s
+                  AND subject = %s
+                  AND value != %s
+                  AND status = 'accepted'
+            """, (epic_id, subject, value))
+
+            rows = await result.fetchall()
+            return [
+                Constraint(
+                    id=UUID(row[0]),
+                    epic_id=row[1],
+                    thread_ts=row[2],
+                    message_ts=row[3],
+                    subject=row[4],
+                    value=row[5],
+                    status=row[6],
+                    created_at=row[7],
+                )
+                for row in rows
+            ]
+
+    # --- Entity Operations ---
+
+    async def add_entity(self, entity: Entity) -> Entity:
+        """Add or update an entity."""
+        async with get_connection() as conn:
+            await conn.execute("""
+                INSERT INTO kg_entities (id, epic_id, name, entity_type, mentions, first_seen, last_seen)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (epic_id, name)
+                DO UPDATE SET mentions = kg_entities.mentions + 1, last_seen = EXCLUDED.last_seen
+            """, (
+                str(entity.id),
+                entity.epic_id,
+                entity.name,
+                entity.entity_type,
+                entity.mentions,
+                entity.first_seen,
+                entity.last_seen,
+            ))
+
+        return entity
+
+    async def get_entities_for_epic(self, epic_id: str) -> list[Entity]:
+        """Get all entities for an Epic."""
+        async with get_connection() as conn:
+            result = await conn.execute("""
+                SELECT id, epic_id, name, entity_type, mentions, first_seen, last_seen
+                FROM kg_entities
+                WHERE epic_id = %s
+                ORDER BY mentions DESC
+            """, (epic_id,))
+
+            rows = await result.fetchall()
+            return [
+                Entity(
+                    id=UUID(row[0]),
+                    epic_id=row[1],
+                    name=row[2],
+                    entity_type=row[3],
+                    mentions=row[4],
+                    first_seen=row[5],
+                    last_seen=row[6],
+                )
+                for row in rows
+            ]
