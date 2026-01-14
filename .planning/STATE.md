@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 3 of 10 (LLM Integration)
-Plan: 2 of 6 in current phase
+Plan: 6 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 03-02-PLAN.md
+Last activity: 2026-01-14 — Completed 03-06-PLAN.md
 
-Progress: ███████░░░ 27%
+Progress: ████████░░ 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 1.75 min
-- Total execution time: 0.23 hours
+- Total plans completed: 9
+- Average duration: 1.8 min
+- Total execution time: 0.27 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: ███████░░░ 27%
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
-| 03-llm-integration | 2 | 4 min | 2 min |
+| 03-llm-integration | 3 | 7 min | 2.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (2 min), 02-03 (2 min), 03-01 (2 min), 03-02 (2 min)
+- Last 5 plans: 02-03 (2 min), 03-01 (2 min), 03-02 (2 min), 03-06 (3 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -60,6 +60,10 @@ Recent decisions affecting current work:
 - 03-02: BaseAdapter defines invoke/convert_messages/parse_response contract
 - 03-02: ToolDefinition uses JSON Schema for parameters
 - 03-02: langchain-google-genai for Gemini adapter (consistent with stack)
+- 03-06: Simple format() templating over Jinja2 DSL - sufficient for variable substitution
+- 03-06: Provider overlays as dict[LLMProvider, str] for clean lookup
+- 03-06: Secret redaction via regex on known field names
+- 03-06: SHA256[:8] prompt hashing for log identification
 
 ### Deferred Issues
 
@@ -71,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T14:52:28Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-01-14T14:53:26Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
