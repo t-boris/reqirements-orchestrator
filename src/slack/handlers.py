@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from slack_bolt import Ack, BoltContext
 from slack_bolt.kwargs_injection.args import Args
 from slack_sdk.web import WebClient
@@ -10,6 +11,26 @@ from src.slack.session import SessionIdentity
 from src.graph.runner import get_runner
 
 logger = logging.getLogger(__name__)
+
+# Background executor for async tasks
+_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="async_handler_")
+
+
+def _run_async(coro):
+    """Run an async coroutine from a sync context.
+
+    Creates a new event loop in a background thread to run the coroutine.
+    This is needed because Slack Bolt handlers run in threads without event loops.
+    """
+    def run_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    _executor.submit(run_in_thread)
 
 
 def handle_app_mention(event: dict, say, client: WebClient, context: BoltContext):
@@ -41,7 +62,7 @@ def handle_app_mention(event: dict, say, client: WebClient, context: BoltContext
     )
 
     # Run async processing in background
-    asyncio.ensure_future(_process_mention(identity, text, user, client, thread_ts, channel))
+    _run_async(_process_mention(identity, text, user, client, thread_ts, channel))
 
 
 async def _process_mention(
@@ -240,7 +261,7 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
     from src.graph.runner import _runners
     if identity.session_id in _runners:
         # Active session - process message
-        asyncio.ensure_future(_process_thread_message(identity, text, user, client, thread_ts, channel))
+        _run_async(_process_thread_message(identity, text, user, client, thread_ts, channel))
 
 
 async def _process_thread_message(
@@ -474,17 +495,8 @@ def handle_epic_selection_sync(ack, body, client: WebClient, action):
     """
     ack()
 
-    # Run the async handler in the event loop
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Create a future and run the coroutine
-            asyncio.ensure_future(_handle_epic_selection_async(body, client, action))
-        else:
-            loop.run_until_complete(_handle_epic_selection_async(body, client, action))
-    except RuntimeError:
-        # No event loop, create one
-        asyncio.run(_handle_epic_selection_async(body, client, action))
+    # Run the async handler in background thread with its own event loop
+    _run_async(_handle_epic_selection_async(body, client, action))
 
 
 async def _handle_epic_selection_async(body, client: WebClient, action):
