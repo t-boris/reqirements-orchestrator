@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 9 of 10 (Personas)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 09-01-PLAN.md
+Last activity: 2026-01-14 — Completed 09-02-PLAN.md
 
-Progress: █████████████████░░░ 85%
+Progress: █████████████████░░░ 86%
 
 ## Performance Metrics
 
@@ -145,6 +145,10 @@ Recent decisions affecting current work:
 - 09-01: PersonaConfig as frozen dataclass (immutable, deterministic)
 - 09-01: Silent validators threshold-based (security=0.75, architect=0.60)
 - 09-01: SENSITIVE_OPS always trigger Security validator regardless of detection
+- 09-02: Heuristic scoring: 0.3 for first keyword match, +0.15 for each additional (max 0.9)
+- 09-02: Explicit triggers always work even when locked (with warning log)
+- 09-02: Auto-lock on any persona switch prevents oscillation
+- 09-02: Detection-based switches only work when unlocked
 
 ### Deferred Issues
 
@@ -157,6 +161,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: Completed 09-01-PLAN.md (Persona definitions and config model)
+Stopped at: Completed 09-02-PLAN.md (Topic detection + switching logic)
 Resume file: None
-Next action: Execute 09-02-PLAN.md (Topic detection)
+Next action: Execute 09-03-PLAN.md (Persona-specific validators + integration)
