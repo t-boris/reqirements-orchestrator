@@ -18,6 +18,7 @@ dependencies = [
     "pydantic-settings",
     "atlassian-python-api",
     "psycopg2-binary",
+    "psycopg[binary]>=3.1",
     "python-dotenv",
 ]
 
