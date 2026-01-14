@@ -40,7 +40,7 @@ class ScopeValidator(BaseValidator):
         vague_words = ["improve", "enhance", "optimize", "better", "more"]
         vague_count = sum(1 for word in vague_words if word in content)
         has_measurable = any(
-            char.isdigit() or "%" in ac or "seconds" in ac.lower() or "ms" in ac.lower()
+            any(c.isdigit() for c in ac) or "%" in ac or "seconds" in ac.lower() or "ms" in ac.lower()
             for ac in draft.acceptance_criteria
         )
 

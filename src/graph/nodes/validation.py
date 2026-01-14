@@ -4,6 +4,7 @@ LLM-first approach: Uses LLM for semantic validation,
 falls back to rule-based checks for structural requirements.
 
 Output: ValidationReport with missing_fields[], conflicts[], suggestions[]
+Also runs persona-specific validators (Phase 9).
 """
 import json
 import logging
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from src.schemas.state import AgentState, AgentPhase
 from src.schemas.draft import TicketDraft
 from src.llm import get_llm
+from src.personas.types import PersonaName, ValidationFindings
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,96 @@ def rule_based_validation(draft: TicketDraft) -> ValidationReport:
     return report
 
 
+async def run_persona_validators(
+    draft: TicketDraft,
+    persona: str,
+    context: Optional[dict] = None,
+) -> ValidationFindings:
+    """Run validators for the current persona.
+
+    Also runs silent validators based on topic detection.
+
+    Args:
+        draft: Ticket draft to validate.
+        persona: Current persona name.
+        context: Optional context dict.
+
+    Returns:
+        ValidationFindings with all findings.
+    """
+    from src.personas.config import PERSONA_VALIDATORS, SILENT_VALIDATORS
+    from src.personas.validators import get_validator_registry
+    from src.personas.detector import TopicDetector
+
+    findings = ValidationFindings()
+    registry = get_validator_registry()
+
+    # Get current persona
+    try:
+        current_persona = PersonaName(persona)
+    except ValueError:
+        current_persona = PersonaName.PM
+
+    # Run mandatory validators for current persona
+    mandatory_names = PERSONA_VALIDATORS.get(current_persona, ())
+    mandatory_validators = registry.get_by_names(mandatory_names)
+
+    for validator in mandatory_validators:
+        try:
+            validator_findings = await validator.validate(draft, context)
+            for f in validator_findings:
+                findings.add(f)
+        except Exception as e:
+            logger.warning(f"Validator {validator.name} failed: {e}")
+
+    # Run silent validators based on topic detection
+    # Combine all text for detection
+    draft_text = f"{draft.title} {draft.problem} {draft.proposed_solution}"
+    detector = TopicDetector()
+    detection = detector.detect(draft_text)
+
+    # Security silent checks (if above threshold and not already Security persona)
+    if current_persona != PersonaName.SECURITY:
+        security_config = SILENT_VALIDATORS.get("security", {})
+        if detection.security_score >= security_config.get("threshold", 0.75):
+            silent_names = security_config.get("validators", ())
+            silent_validators = registry.get_by_names(silent_names)
+            for validator in silent_validators:
+                if validator not in mandatory_validators:  # Don't run twice
+                    try:
+                        validator_findings = await validator.validate(draft, context)
+                        for f in validator_findings:
+                            findings.add(f)
+                    except Exception as e:
+                        logger.warning(f"Silent validator {validator.name} failed: {e}")
+
+    # Architect silent checks (if above threshold and not already Architect persona)
+    if current_persona != PersonaName.ARCHITECT:
+        architect_config = SILENT_VALIDATORS.get("architect", {})
+        if detection.architect_score >= architect_config.get("threshold", 0.60):
+            silent_names = architect_config.get("validators", ())
+            silent_validators = registry.get_by_names(silent_names)
+            for validator in silent_validators:
+                if validator not in mandatory_validators:
+                    try:
+                        validator_findings = await validator.validate(draft, context)
+                        for f in validator_findings:
+                            findings.add(f)
+                    except Exception as e:
+                        logger.warning(f"Silent validator {validator.name} failed: {e}")
+
+    logger.info(
+        "Persona validation complete",
+        extra={
+            "persona": persona,
+            "total_findings": len(findings.findings),
+            "blocking": findings.has_blocking,
+        }
+    )
+
+    return findings
+
+
 async def validation_node(state: AgentState) -> dict[str, Any]:
     """Validate draft and produce detailed report.
 
@@ -147,6 +239,25 @@ async def validation_node(state: AgentState) -> dict[str, Any]:
         logger.warning(f"LLM validation failed, using rule-based: {e}")
         report = rule_based_validation(draft)
 
+    # Run persona-specific validators (Phase 9)
+    persona = state.get("persona", "pm")
+    channel_context = state.get("channel_context")
+
+    persona_findings: Optional[ValidationFindings] = None
+    try:
+        persona_findings = await run_persona_validators(
+            draft=draft,
+            persona=persona,
+            context=channel_context,
+        )
+
+        # Merge blocking findings with is_valid
+        if persona_findings.has_blocking:
+            report.is_valid = False
+
+    except Exception as e:
+        logger.warning(f"Persona validation failed: {e}")
+
     # Determine next phase
     if report.is_valid:
         next_phase = AgentPhase.VALIDATING  # Move to decision
@@ -157,4 +268,5 @@ async def validation_node(state: AgentState) -> dict[str, Any]:
         "step_count": step_count + 1,
         "phase": next_phase,
         "validation_report": report.model_dump(),
+        "validator_findings": persona_findings.model_dump() if persona_findings else None,
     }
