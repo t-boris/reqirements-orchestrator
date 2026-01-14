@@ -19,6 +19,18 @@ Think of a persona as:
 
 Same underlying state, different "spotlight."
 
+**Critical distinction — two orthogonal axes:**
+```
+Persona controls voice and priorities.
+Validators control safety and correctness.
+```
+
+Technically:
+- `persona` = presentation + emphasis
+- `validators` = risk detection + correctness
+
+This resolves the question "Why did Security validator fire when persona is PM?" — because they're separate axes.
+
 **Three personas from the start:**
 - **PM** — checks: scope, acceptance criteria, risks, dependencies, timeline
 - **Security** — checks: data retention, access scope, least privilege, auditability
@@ -42,11 +54,11 @@ Same underlying state, different "spotlight."
   - Architect validator: medium threshold (0.60) — less disruptive
   - **Sensitive ops override:** Always run Security validator for: Jira writes, token/secret handling, user data, content storage — regardless of topic detection
 
-- **Visible persona changes** — Subtle indicator (emoji prefix: 🛡️ Security:) rather than loud announcements. Keep bot feeling like a calm PM.
+- **Visible persona changes** — Subtle indicator (emoji prefix: 🛡️ Security:) **only on first 1-2 messages after switch**, not forever. Avoids channel spam.
 
 - **Auto-lock + unlock** — Once persona activates, it locks for the thread. Users can `/persona unlock` if needed. Prevents oscillation.
 
-- **Validators warn, never block** — All validators surface issues but user decides. No authoritarian blocking.
+- **Validators never auto-execute irreversible actions** — They may block workflow progression until resolved, but never act autonomously. User always decides. This is the difference between blocking UI state and blocking user freedom.
 
 </essential>
 
@@ -61,6 +73,24 @@ Store each persona as a config object:
 - `questions_style` (short description)
 - `output_format` (e.g., "bullet list + DoD section")
 - `risk_tolerance` (strict/moderate)
+
+**Explicit mapping:**
+```python
+PERSONA_VALIDATORS = {
+    "pm": ["scope", "acceptance_criteria", "risks", "dependencies"],
+    "architect": ["boundaries", "failure_modes", "idempotency", "scaling"],
+    "security": ["authz", "data_retention", "secrets", "least_privilege"]
+}
+
+SILENT_VALIDATORS = {
+    "security": {"threshold": 0.75},
+    "architect": {"threshold": 0.60}
+}
+```
+
+Two orthogonal mechanisms:
+- `persona` → what's mandatory to run
+- `silent checks` → what to run when risk detected
 
 ### Topic Detection (09-02)
 **Threshold-based detection model:**
@@ -105,10 +135,12 @@ Detection methods in order of preference:
 
 3. **"Show review" action** — Button to see full findings in threaded message or modal
 
-**If BLOCK findings exist:** Replace "Approve" with "Fix issues"
+**If BLOCK findings exist:** Replace "Approve" with "Fix issues" or "Resolve conflict"
 
 ### Conflict Resolution
 When validators find conflicting issues (Security vs Architect): **Flag for discussion** — Bot notes the conflict and suggests the team discuss. Don't try to resolve automatically.
+
+**UX rule:** If conflict involves any BLOCK-level finding, the preview must switch from "Approve" to "Resolve conflict".
 
 ### Persona Commands (09-04)
 Full control interface:
@@ -121,6 +153,17 @@ Full control interface:
 - `/persona list` — Show available personas
 
 **@mention triggers work naturally:** @security in message activates Security persona for that thread.
+
+### AgentState Fields
+```python
+persona: Literal["pm", "security", "architect"]
+persona_lock: bool
+persona_reason: Literal["default", "explicit", "detected"]
+persona_confidence: Optional[float]  # null for explicit/default
+persona_changed_at: Optional[datetime]
+```
+
+**Audit requirement:** Every persona switch must be auditable: who/what triggered it and why.
 
 ### Integration Points
 - **Extraction node:** minor influence (what fields to prioritize)
@@ -146,6 +189,7 @@ All three are critical:
 - Keyword-triggered paranoia (too many false positives)
 - Running all validators always (expensive and noisy)
 - Drowning preview cards with validator output
+- Showing persona indicator forever (spam)
 
 ### Sensitive Ops Override
 Regardless of topic detection, always run Security validator when:
@@ -163,13 +207,27 @@ When a silent validator runs:
 - Cap findings (max 3)
 - Attach confidence note ("Flagged because this touches auth scopes / PII")
 
+### Graceful Degradation
+If persona detection fails (detector error, LLM unavailable):
+- Fallback to PM persona
+- Disable all silent validators except Sensitive Ops overrides
+- Log the degradation for debugging
+
+This makes the system predictable during outages.
+
 ### Definition of Done
 - Personas are small overlays (not giant prompts)
 - Switching is deterministic: explicit trigger or high-confidence detection
-- Persona changes are visible (subtle indicator)
+- Persona changes are visible (subtle indicator, only first 1-2 messages)
 - Persona affects validation via modular checks
-- AgentState stores persona, persona_lock, and persona_reason
+- AgentState stores persona, persona_lock, persona_reason, persona_confidence, persona_changed_at
+- Every persona switch is auditable
+- Validators never auto-execute irreversible actions
 - Tests: same input + same state → same persona decision; no oscillation; Security persona always runs its required validators
+
+### Architecture Summary
+
+This is not "personas" — it's a **policy-driven multi-perspective reasoning layer**.
 
 ### Suggested Plan Breakdown (4 plans)
 - 09-01: Persona definitions and config model
