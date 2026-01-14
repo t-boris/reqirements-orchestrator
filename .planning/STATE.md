@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 8 of 10 (Global State)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 08-01-PLAN.md
+Last activity: 2026-01-14 — Completed 08-02-PLAN.md
 
-Progress: █████████████░░░░░░░ 65%
+Progress: █████████████░░░░░░░ 68%
 
 ## Performance Metrics
 
@@ -126,6 +126,10 @@ Recent decisions affecting current work:
 - 08-01: 4-layer model: config (manual) > knowledge (pins) > activity (live) > derived (computed)
 - 08-01: Team ID added for multi-workspace support (unique on team_id + channel_id)
 - 08-01: Version field for cache invalidation, pinned_digest for pin change detection
+- 08-02: SHA256[:16] digest for pin change detection (deterministic, readable)
+- 08-02: LLM extraction with JSON response format for structured knowledge output
+- 08-02: Max 10 pins, 2000 chars each to stay within LLM context limits
+- 08-02: Graceful fallback on extraction failure (return empty knowledge with source_pin_ids)
 
 ### Deferred Issues
 
@@ -137,6 +141,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T19:34:00Z
-Stopped at: Completed 08-01-PLAN.md (channel context foundation)
+Last session: 2026-01-14T19:38:00Z
+Stopped at: Completed 08-02-PLAN.md (pin ingestion and knowledge extraction)
 Resume file: None
