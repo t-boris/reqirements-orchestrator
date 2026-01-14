@@ -39,10 +39,17 @@ Usage:
 """
 from src.db.checkpointer import get_checkpointer, setup_checkpointer
 from src.db.connection import close_db, get_connection, init_db
-from src.db.models import ChannelContext, ThreadSession
+from src.db.models import (
+    ChannelActivitySnapshot,
+    ChannelConfig,
+    ChannelContext,
+    ChannelKnowledge,
+    ThreadSession,
+)
 from src.db.session_store import SessionStore
 from src.db.approval_store import ApprovalStore, ApprovalRecord
 from src.db.jira_operations import JiraOperationStore, JiraOperationRecord
+from src.db.channel_context_store import ChannelContextStore
 
 __all__ = [
     # Connection (02-01)
@@ -55,6 +62,9 @@ __all__ = [
     # Models (02-03)
     "ThreadSession",
     "ChannelContext",
+    "ChannelConfig",
+    "ChannelKnowledge",
+    "ChannelActivitySnapshot",
     # Session Store (02-03)
     "SessionStore",
     # Approval Store (06-02)
@@ -63,4 +73,6 @@ __all__ = [
     # Jira Operations (07-02)
     "JiraOperationStore",
     "JiraOperationRecord",
+    # Channel Context Store (08-01)
+    "ChannelContextStore",
 ]

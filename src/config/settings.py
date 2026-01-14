@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Channel Context settings (Phase 8)
+    channel_context_activity_refresh_hours: int = 6  # How often to refresh activity snapshot
+    channel_context_derived_ttl_days: int = 14  # TTL for derived signals
+    channel_context_root_window_days: int = 60  # How far back to index root messages
+    channel_context_max_bullets: int = 15  # Max bullets in compact context
+
 
 # Singleton pattern for settings access
 _settings: Optional[Settings] = None
