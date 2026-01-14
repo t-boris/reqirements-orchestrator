@@ -19,7 +19,7 @@ A Slack bot that acts as a proactive business analyst, driving conversations in 
 - [ ] **Thread-first architecture**: One discussion = one thread = one session = one Jira ticket
 - [ ] **Cyclic agent loop**: LangGraph ReAct pattern instead of fixed phases
 - [ ] **Proactive questioning**: Bot asks clarifying questions until requirements complete
-- [ ] **JiraTicketSchema**: summary, description, acceptance_criteria[], priority, type
+- [x] **Type-specific ticket schemas**: EpicSchema, StorySchema, TaskSchema, BugSchema with type-aware validation
 - [ ] **AgentState**: messages, draft, missing_info[], status (collecting/ready_to_sync/synced)
 - [ ] **Global State**: Channel context from root messages, pinned content, and Jira history
 - [ ] **Dynamic personas**: PM/Architect/Security switch based on conversation topic (fresh prompts)
@@ -54,16 +54,22 @@ A Slack bot that acts as a proactive business analyst, driving conversations in 
 
 **Data schema:**
 ```python
-class JiraTicketSchema(BaseModel):
+# Type-specific schemas with different validation requirements
+class JiraTicketBase(BaseModel):
     summary: str
     description: str
-    acceptance_criteria: List[str]
     priority: Literal['Highest', 'High', 'Medium', 'Low']
-    type: Literal['Epic', 'Story', 'Task', 'Bug']
+    labels: list[str]
+    components: list[str]
+
+class EpicSchema(JiraTicketBase): ...  # Just summary + description
+class StorySchema(JiraTicketBase): ...  # + acceptance_criteria, story_points, epic_link
+class TaskSchema(JiraTicketBase): ...   # + acceptance_criteria, estimated_hours, parent_link
+class BugSchema(JiraTicketBase): ...    # + steps_to_reproduce, expected/actual_behavior
 
 class AgentState(TypedDict):
     messages: List[BaseMessage]
-    draft: Optional[JiraTicketSchema]
+    draft: Optional[JiraTicketBase]  # Any ticket type
     missing_info: List[str]
     status: Literal['collecting', 'ready_to_sync', 'synced']
 ```
@@ -88,6 +94,7 @@ class AgentState(TypedDict):
 | Direct Atlassian API | Remove MCP server complexity | — Pending |
 | Fresh personas | Tailored to ticket-focused workflow vs reusing MARO personas | — Pending |
 | Gemini default | User preference for initial LLM provider | — Pending |
+| Type-specific schemas | Different issue types have different required fields (Bug needs steps_to_reproduce, Story needs acceptance_criteria) | ✓ Good |
 
 ---
-*Last updated: 2026-01-14 after initialization*
+*Last updated: 2026-01-14 after Phase 1 refinement*
