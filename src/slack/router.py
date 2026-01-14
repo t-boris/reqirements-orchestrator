@@ -1,12 +1,14 @@
 """Router that registers all Slack event handlers."""
 
 import logging
+import re
 from slack_bolt import App
 
 from src.slack.handlers import (
     handle_app_mention,
     handle_message,
     handle_jira_command,
+    handle_epic_selection_sync,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,4 +28,8 @@ def register_handlers(app: App) -> None:
     # Slash command
     app.command("/jira")(handle_jira_command)
 
-    logger.info("Slack handlers registered: app_mention, message, /jira")
+    # Action handlers for Epic selection buttons
+    # Pattern matches: select_epic_PROJ-123, select_epic_new, etc.
+    app.action(re.compile(r"^select_epic_.*"))(handle_epic_selection_sync)
+
+    logger.info("Slack handlers registered: app_mention, message, /jira, select_epic_*")

@@ -1,9 +1,12 @@
 """Slack event handlers with fast-ack pattern."""
 
+import asyncio
 import logging
 from slack_bolt import Ack, BoltContext
 from slack_bolt.kwargs_injection.args import Args
 from slack_sdk.web import WebClient
+
+from src.slack.session import SessionIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +131,113 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
             text="Available commands:\n• `/jira create [type]` - Start new ticket\n• `/jira search <query>` - Search tickets\n• `/jira status` - Session status",
             channel=channel,
         )
+
+
+async def handle_epic_selection(ack, body, client: WebClient, action):
+    """Handle Epic selection button click.
+
+    Called when user clicks one of the Epic selection buttons in the selector UI.
+    Binds the session to the selected Epic and posts a session card.
+    """
+    ack()
+
+    epic_key = action.get("value")
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    team_id = body["team"]["id"]
+
+    logger.info(
+        "Epic selection received",
+        extra={
+            "epic_key": epic_key,
+            "channel": channel,
+            "thread_ts": thread_ts,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    if epic_key == "new":
+        # User wants to create new Epic
+        # For now, create a placeholder - full creation in Phase 7
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Creating new Epic... (This will create a Jira Epic in Phase 7)",
+        )
+        return
+
+    # Bind to selected Epic
+    from src.slack.binding import bind_epic
+    from src.db.session_store import SessionStore
+    from src.db.connection import get_connection
+
+    async with get_connection() as conn:
+        store = SessionStore(conn)
+        await bind_epic(identity, epic_key, store, client)
+
+
+def handle_epic_selection_sync(ack, body, client: WebClient, action):
+    """Synchronous wrapper for handle_epic_selection.
+
+    Bolt may call handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+
+    # Run the async handler in the event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Create a future and run the coroutine
+            asyncio.ensure_future(_handle_epic_selection_async(body, client, action))
+        else:
+            loop.run_until_complete(_handle_epic_selection_async(body, client, action))
+    except RuntimeError:
+        # No event loop, create one
+        asyncio.run(_handle_epic_selection_async(body, client, action))
+
+
+async def _handle_epic_selection_async(body, client: WebClient, action):
+    """Async implementation of epic selection handling."""
+    epic_key = action.get("value")
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    team_id = body["team"]["id"]
+
+    logger.info(
+        "Epic selection received",
+        extra={
+            "epic_key": epic_key,
+            "channel": channel,
+            "thread_ts": thread_ts,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    if epic_key == "new":
+        # User wants to create new Epic
+        # For now, create a placeholder - full creation in Phase 7
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Creating new Epic... (This will create a Jira Epic in Phase 7)",
+        )
+        return
+
+    # Bind to selected Epic
+    from src.slack.binding import bind_epic
+    from src.db.session_store import SessionStore
+    from src.db.connection import get_connection
+
+    async with get_connection() as conn:
+        store = SessionStore(conn)
+        await bind_epic(identity, epic_key, store, client)

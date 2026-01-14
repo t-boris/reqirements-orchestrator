@@ -45,10 +45,24 @@ class SessionStore:
                     user_id TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'collecting',
                     jira_key TEXT,
+                    epic_id TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW(),
                     UNIQUE(channel_id, thread_ts)
                 )
+            """)
+
+            # Add epic_id column if it doesn't exist (for existing tables)
+            await cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'thread_sessions' AND column_name = 'epic_id'
+                    ) THEN
+                        ALTER TABLE thread_sessions ADD COLUMN epic_id TEXT;
+                    END IF;
+                END $$;
             """)
 
             # Channel context table
@@ -93,7 +107,7 @@ class SessionStore:
                 """
                 INSERT INTO thread_sessions (id, channel_id, thread_ts, user_id, status, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, channel_id, thread_ts, user_id, status, jira_key, created_at, updated_at
+                RETURNING id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
                 """,
                 (session_id, channel_id, thread_ts, user_id, "collecting", now, now),
             )
@@ -107,8 +121,9 @@ class SessionStore:
             user_id=row[3],
             status=row[4],
             jira_key=row[5],
-            created_at=row[6],
-            updated_at=row[7],
+            epic_id=row[6],
+            created_at=row[7],
+            updated_at=row[8],
         )
 
     async def update_session(
@@ -139,7 +154,7 @@ class SessionStore:
                     UPDATE thread_sessions
                     SET status = %s, jira_key = %s, updated_at = %s
                     WHERE id = %s
-                    RETURNING id, channel_id, thread_ts, user_id, status, jira_key, created_at, updated_at
+                    RETURNING id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
                     """,
                     (status, jira_key, now, session_id),
                 )
@@ -149,7 +164,7 @@ class SessionStore:
                     UPDATE thread_sessions
                     SET status = %s, updated_at = %s
                     WHERE id = %s
-                    RETURNING id, channel_id, thread_ts, user_id, status, jira_key, created_at, updated_at
+                    RETURNING id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
                     """,
                     (status, now, session_id),
                 )
@@ -167,8 +182,9 @@ class SessionStore:
             user_id=row[3],
             status=row[4],
             jira_key=row[5],
-            created_at=row[6],
-            updated_at=row[7],
+            epic_id=row[6],
+            created_at=row[7],
+            updated_at=row[8],
         )
 
     async def get_session_by_thread(
@@ -188,7 +204,7 @@ class SessionStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, thread_ts, user_id, status, jira_key, created_at, updated_at
+                SELECT id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
                 FROM thread_sessions
                 WHERE channel_id = %s AND thread_ts = %s
                 """,
@@ -206,8 +222,9 @@ class SessionStore:
             user_id=row[3],
             status=row[4],
             jira_key=row[5],
-            created_at=row[6],
-            updated_at=row[7],
+            epic_id=row[6],
+            created_at=row[7],
+            updated_at=row[8],
         )
 
     async def list_sessions_by_channel(self, channel_id: str) -> list[ThreadSession]:
@@ -222,7 +239,7 @@ class SessionStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, thread_ts, user_id, status, jira_key, created_at, updated_at
+                SELECT id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
                 FROM thread_sessions
                 WHERE channel_id = %s
                 ORDER BY created_at DESC
@@ -239,8 +256,70 @@ class SessionStore:
                 user_id=row[3],
                 status=row[4],
                 jira_key=row[5],
-                created_at=row[6],
-                updated_at=row[7],
+                epic_id=row[6],
+                created_at=row[7],
+                updated_at=row[8],
             )
             for row in rows
         ]
+
+    async def update_epic(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        epic_id: str,
+    ) -> ThreadSession:
+        """Bind session to an Epic.
+
+        Args:
+            channel_id: Slack channel ID.
+            thread_ts: Slack thread timestamp.
+            epic_id: Jira Epic key to bind (e.g., PROJ-50).
+
+        Returns:
+            ThreadSession: Updated session.
+
+        Raises:
+            ValueError: If session not found.
+        """
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE thread_sessions
+                SET epic_id = %s, updated_at = %s
+                WHERE channel_id = %s AND thread_ts = %s
+                RETURNING id, channel_id, thread_ts, user_id, status, jira_key, epic_id, created_at, updated_at
+                """,
+                (epic_id, now, channel_id, thread_ts),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            raise ValueError(f"Session not found: {channel_id}/{thread_ts}")
+
+        return ThreadSession(
+            id=str(row[0]),
+            channel_id=row[1],
+            thread_ts=row[2],
+            user_id=row[3],
+            status=row[4],
+            jira_key=row[5],
+            epic_id=row[6],
+            created_at=row[7],
+            updated_at=row[8],
+        )
+
+    async def get_or_create(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        user_id: str = "unknown",
+    ) -> ThreadSession:
+        """Alias for get_or_create_session with optional user_id.
+
+        Convenience method used by binding flow where user_id may not be available.
+        """
+        return await self.get_or_create_session(channel_id, thread_ts, user_id)
