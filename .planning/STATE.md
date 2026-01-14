@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 6 of 10 (Skills)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-14 — Completed 06-03-PLAN.md
+Phase: 8 of 10 (Global State)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-14 — Completed 08-01-PLAN.md
 
-Progress: ███████████░░░░░░░░░ 57%
+Progress: █████████████░░░░░░░ 65%
 
 ## Performance Metrics
 
@@ -123,6 +123,9 @@ Recent decisions affecting current work:
 - 06-03: Modal opens on reject for direct field editing
 - 06-03: SkillDispatcher routes DecisionResult to skills (decision decides when, skills handle how)
 - 06-03: Shared _dispatch_result() for consistent handler behavior
+- 08-01: 4-layer model: config (manual) > knowledge (pins) > activity (live) > derived (computed)
+- 08-01: Team ID added for multi-workspace support (unique on team_id + channel_id)
+- 08-01: Version field for cache invalidation, pinned_digest for pin change detection
 
 ### Deferred Issues
 
@@ -134,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T19:16:55Z
-Stopped at: Completed 06-03-PLAN.md (edit modal and skill dispatcher)
+Last session: 2026-01-14T19:34:00Z
+Stopped at: Completed 08-01-PLAN.md (channel context foundation)
 Resume file: None
