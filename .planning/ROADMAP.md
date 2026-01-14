@@ -21,7 +21,7 @@ None
 - [x] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
 - [x] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
 - [x] **Phase 7: Jira Integration** - Atlassian API, create/search operations
-- [ ] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
+- [x] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
 - [ ] **Phase 9: Personas** - Dynamic PM/Architect/Security prompt switching
 - [ ] **Phase 10: Deployment** - Docker container, environment config
 
@@ -146,8 +146,8 @@ Plans:
 - [x] 08-01: Channel context model and storage
 - [x] 08-02: Pin ingestion and knowledge extraction
 - [x] 08-03: Root message indexer
-- [ ] 08-04: Jira linkage and sync cursor
-- [ ] 08-05: Context retrieval strategy
+- [x] 08-04: Jira linkage and sync cursor
+- [x] 08-05: Context retrieval strategy
 
 ### Phase 9: Personas
 **Goal**: Dynamic persona switching (PM/Architect/Security) based on conversation topic
@@ -185,6 +185,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Agent Core | 4/4 | Complete | 2026-01-14 |
 | 6. Skills | 3/3 | Complete | 2026-01-14 |
 | 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
-| 8. Global State | 3/5 | In progress | - |
+| 8. Global State | 5/5 | Complete | 2026-01-14 |
 | 9. Personas | 0/3 | Not started | - |
 | 10. Deployment | 0/3 | Not started | - |
