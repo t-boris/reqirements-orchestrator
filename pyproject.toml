@@ -13,6 +13,8 @@ dependencies = [
     "langgraph",
     "langchain-core",
     "langchain-google-genai",
+    "langchain-openai>=0.2",
+    "langchain-anthropic>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
     "slack-bolt",
     "pydantic>=2.0",
