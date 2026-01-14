@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     jira_user: str
     jira_api_token: str
     jira_default_project: Optional[str] = None
+    jira_env: str = "dev"  # Environment identifier (dev|staging|prod)
+    jira_dry_run: bool = False  # When True, log instead of calling Jira API
+    jira_timeout: int = 30  # Request timeout in seconds
+    jira_max_retries: int = 3  # Max retry attempts for transient failures
 
     # LLM
     google_api_key: str  # For Gemini

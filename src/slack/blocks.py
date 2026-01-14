@@ -156,6 +156,7 @@ def build_draft_preview_blocks(draft: "TicketDraft") -> list[dict]:
         session_id=draft.id,
         draft_hash="",
         evidence_permalinks=None,
+        potential_duplicates=None,
     )
 
 
@@ -164,17 +165,20 @@ def build_draft_preview_blocks_with_hash(
     session_id: str,
     draft_hash: str,
     evidence_permalinks: Optional[list[dict]] = None,
+    potential_duplicates: Optional[list[dict]] = None,
 ) -> list[dict]:
     """Build Slack blocks for ticket draft preview with version hash.
 
     Embeds draft_hash in button values for version checking.
     Shows evidence links inline with permalinks.
+    Shows potential duplicates before approval buttons if found.
 
     Args:
         draft: TicketDraft to display
         session_id: Session ID for button value prefix
         draft_hash: Hash of draft content for version checking
         evidence_permalinks: Optional list of {permalink, user, preview} dicts
+        potential_duplicates: Optional list of {key, summary, url} dicts for duplicate display
     """
     from src.schemas.draft import TicketDraft
 
@@ -260,6 +264,36 @@ def build_draft_preview_blocks_with_hash(
                 "type": "mrkdwn",
                 "text": sources_text
             }
+        })
+
+    # Potential duplicates warning (if found)
+    if potential_duplicates:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Potential duplicates found:*"
+            }
+        })
+        for dup in potential_duplicates[:3]:
+            # Truncate summary for display
+            summary = dup.get("summary", "")[:50]
+            if len(dup.get("summary", "")) > 50:
+                summary += "..."
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"• <{dup.get('url', '#')}|{dup.get('key', 'Unknown')}>: {summary}"
+                }
+            })
+        blocks.append({
+            "type": "context",
+            "elements": [{
+                "type": "mrkdwn",
+                "text": "_Review these before creating a new ticket_"
+            }]
         })
 
     # Divider

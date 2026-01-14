@@ -20,7 +20,7 @@ None
 - [x] **Phase 4: Slack Router** - Event handlers, thread detection, message routing
 - [x] **Phase 5: Agent Core** - ReAct loop, AgentState, extraction/validation/decision
 - [x] **Phase 6: Skills** - ask_user, preview_ticket, tool implementations
-- [ ] **Phase 7: Jira Integration** - Atlassian API, create/search operations
+- [x] **Phase 7: Jira Integration** - Atlassian API, create/search operations
 - [ ] **Phase 8: Global State** - Channel context from messages, pinned, Jira history
 - [ ] **Phase 9: Personas** - Dynamic PM/Architect/Security prompt switching
 - [ ] **Phase 10: Deployment** - Docker container, environment config
@@ -132,9 +132,9 @@ Plans:
 - Duplicate detection as "last defense" before create
 
 Plans:
-- [ ] 07-01: JiraService client with retry/backoff, dry-run, env separation (Wave 1)
-- [ ] 07-02: jira_create skill with approval validation, idempotency, audit trail (Wave 2)
-- [ ] 07-03: jira_search skill for duplicate detection before preview (Wave 2)
+- [x] 07-01: JiraService client with retry/backoff, dry-run, env separation (Wave 1)
+- [x] 07-02: jira_create skill with approval validation, idempotency, audit trail (Wave 2)
+- [x] 07-03: jira_search skill for duplicate detection before preview (Wave 2)
 
 ### Phase 8: Global State
 **Goal**: Channel context system from root messages, pinned content, and Jira history
@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Slack Router | 9/9 | Complete | 2026-01-14 |
 | 5. Agent Core | 4/4 | Complete | 2026-01-14 |
 | 6. Skills | 3/3 | Complete | 2026-01-14 |
-| 7. Jira Integration | 0/3 | Not started | - |
+| 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
 | 8. Global State | 0/3 | Not started | - |
 | 9. Personas | 0/3 | Not started | - |
 | 10. Deployment | 0/3 | Not started | - |

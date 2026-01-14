@@ -3,6 +3,7 @@
 Prioritizes most impactful issues first.
 Smart batching: immediate if urgent, else batch related questions.
 Re-ask logic: max 2 re-asks before proceeding with partial info.
+Duplicate detection: searches for similar tickets before preview.
 
 EXECUTE is deferred to Phase 7 - only sets state to READY_TO_CREATE.
 """
@@ -11,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from src.schemas.state import AgentState, AgentPhase
+from src.schemas.draft import TicketDraft
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class DecisionResult(BaseModel):
     reason: str = ""  # Why this decision
     is_reask: bool = False  # True if re-asking unanswered questions
     reask_count: int = 0  # How many times we've re-asked
+    potential_duplicates: list[dict] = Field(default_factory=list)  # Similar tickets found
 
 
 def prioritize_issues(
@@ -67,6 +70,55 @@ def batch_questions(questions: list[str], max_batch: int = 3) -> list[str]:
     Most impactful questions first (already prioritized).
     """
     return questions[:max_batch]
+
+
+async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
+    """Search for potential duplicate tickets.
+
+    Returns list of {key, summary, url} dicts for display.
+    Fails gracefully - returns empty list on any error.
+    """
+    if not draft or not draft.title:
+        return []
+
+    try:
+        from src.config.settings import get_settings
+        from src.jira.client import JiraService
+        from src.skills.jira_search import search_similar_to_draft
+
+        settings = get_settings()
+        jira_service = JiraService(settings)
+
+        try:
+            result = await search_similar_to_draft(draft, jira_service, limit=5)
+
+            # Convert to display format (max 3 shown)
+            duplicates = [
+                {"key": issue.key, "summary": issue.summary, "url": issue.url}
+                for issue in result.issues[:3]
+            ]
+
+            if duplicates:
+                logger.info(
+                    "Found potential duplicates",
+                    extra={
+                        "count": len(duplicates),
+                        "draft_title": draft.title[:50],
+                    },
+                )
+
+            return duplicates
+
+        finally:
+            await jira_service.close()
+
+    except Exception as e:
+        # Don't fail the workflow if duplicate search fails
+        logger.warning(
+            "Failed to search for duplicates",
+            extra={"error": str(e)},
+        )
+        return []
 
 
 async def decision_node(state: AgentState) -> dict[str, Any]:
@@ -163,15 +215,23 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
 
     # Decision logic
     if is_valid and not conflicts:
-        # Ready for preview
-        logger.info("Draft valid, showing preview")
+        # Ready for preview - check for duplicates first
+        logger.info("Draft valid, checking for potential duplicates before preview")
+
+        potential_duplicates = await _search_for_duplicates(draft)
+
+        dup_reason = "Draft meets minimum requirements"
+        if potential_duplicates:
+            dup_reason = f"Draft meets requirements. Found {len(potential_duplicates)} potential duplicate(s)."
+
         return {
             "step_count": step_count + 1,
             "phase": AgentPhase.AWAITING_USER,
             "pending_questions": None,  # Clear any pending
             "decision_result": DecisionResult(
                 action="preview",
-                reason="Draft meets minimum requirements",
+                reason=dup_reason,
+                potential_duplicates=potential_duplicates,
             ).model_dump(),
         }
 

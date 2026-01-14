@@ -1,0 +1,368 @@
+"""Jira API client service with retry, backoff, and dry-run support."""
+import asyncio
+import logging
+import time
+from typing import Any, Optional
+
+import aiohttp
+
+from src.config.settings import Settings
+from src.jira.types import (
+    JiraCreateRequest,
+    JiraIssue,
+    PRIORITY_MAP,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class JiraAPIError(Exception):
+    """Exception for Jira API errors."""
+
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        response_body: Optional[dict[str, Any]] = None,
+    ):
+        self.status_code = status_code
+        self.message = message
+        self.response_body = response_body
+        super().__init__(f"Jira API error {status_code}: {message}")
+
+
+class JiraService:
+    """Service for interacting with Jira API.
+
+    Provides policy-level operations (not just a library wrapper):
+    - Retry with exponential backoff on transient failures
+    - Dry-run mode for testing without API calls
+    - Structured logging for all operations
+    - Environment-aware configuration
+    """
+
+    def __init__(self, settings: Settings):
+        """Initialize JiraService.
+
+        Args:
+            settings: Application settings containing Jira configuration.
+        """
+        self.settings = settings
+        self.base_url = settings.jira_url.rstrip("/")
+        self.auth = aiohttp.BasicAuth(settings.jira_user, settings.jira_api_token)
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._mock_issue_counter = 0
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None or self._session.closed:
+            timeout = aiohttp.ClientTimeout(total=self.settings.jira_timeout)
+            self._session = aiohttp.ClientSession(
+                auth=self.auth,
+                timeout=timeout,
+                headers={"Content-Type": "application/json"},
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """Close the aiohttp session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        json_data: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Make HTTP request with retry and exponential backoff.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            endpoint: API endpoint (e.g., /rest/api/3/issue)
+            json_data: JSON body for POST/PUT requests
+            params: Query parameters
+
+        Returns:
+            Response JSON as dict
+
+        Raises:
+            JiraAPIError: On 4xx client errors (no retry)
+            JiraAPIError: On 5xx server errors after all retries exhausted
+        """
+        url = f"{self.base_url}{endpoint}"
+        session = await self._get_session()
+
+        last_error: Optional[Exception] = None
+        max_retries = self.settings.jira_max_retries
+
+        for attempt in range(max_retries + 1):
+            start_time = time.monotonic()
+            try:
+                logger.debug(
+                    "Jira API request",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "attempt": attempt + 1,
+                        "jira_env": self.settings.jira_env,
+                    },
+                )
+
+                async with session.request(
+                    method, url, json=json_data, params=params
+                ) as response:
+                    duration_ms = (time.monotonic() - start_time) * 1000
+                    response_body = await response.json() if response.content_length else {}
+
+                    logger.info(
+                        "Jira API response",
+                        extra={
+                            "method": method,
+                            "url": url,
+                            "status": response.status,
+                            "duration_ms": round(duration_ms, 2),
+                            "jira_env": self.settings.jira_env,
+                        },
+                    )
+
+                    # 2xx: Success
+                    if 200 <= response.status < 300:
+                        return response_body
+
+                    # 4xx: Client error - don't retry
+                    if 400 <= response.status < 500:
+                        error_msg = response_body.get("errorMessages", [response.reason])
+                        raise JiraAPIError(
+                            status_code=response.status,
+                            message=str(error_msg),
+                            response_body=response_body,
+                        )
+
+                    # 5xx: Server error - retry with backoff
+                    if response.status >= 500:
+                        last_error = JiraAPIError(
+                            status_code=response.status,
+                            message=response.reason or "Server error",
+                            response_body=response_body,
+                        )
+                        if attempt < max_retries:
+                            backoff = 2**attempt  # Exponential backoff: 1s, 2s, 4s...
+                            logger.warning(
+                                f"Jira API 5xx error, retrying in {backoff}s",
+                                extra={
+                                    "status": response.status,
+                                    "attempt": attempt + 1,
+                                    "backoff_seconds": backoff,
+                                },
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+                        raise last_error
+
+            except aiohttp.ClientError as e:
+                duration_ms = (time.monotonic() - start_time) * 1000
+                last_error = e
+                logger.warning(
+                    f"Jira API connection error: {e}",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "attempt": attempt + 1,
+                        "duration_ms": round(duration_ms, 2),
+                        "error": str(e),
+                    },
+                )
+                if attempt < max_retries:
+                    backoff = 2**attempt
+                    await asyncio.sleep(backoff)
+                    continue
+
+        # All retries exhausted
+        if isinstance(last_error, JiraAPIError):
+            raise last_error
+        raise JiraAPIError(
+            status_code=0,
+            message=f"Request failed after {max_retries + 1} attempts: {last_error}",
+        )
+
+    async def create_issue(self, request: JiraCreateRequest) -> JiraIssue:
+        """Create a Jira issue.
+
+        Args:
+            request: Issue creation request with all required fields.
+
+        Returns:
+            Created JiraIssue with key, summary, status, and URL.
+
+        Raises:
+            JiraAPIError: On API errors.
+        """
+        # Build API payload
+        payload = {
+            "fields": {
+                "project": {"key": request.project_key},
+                "summary": request.summary,
+                "description": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": request.description}],
+                        }
+                    ],
+                },
+                "issuetype": {"name": request.issue_type.value},
+                "priority": {"name": PRIORITY_MAP[request.priority]},
+            }
+        }
+
+        # Add optional fields
+        if request.labels:
+            payload["fields"]["labels"] = request.labels
+
+        if request.epic_key:
+            # Epic link field (may vary by Jira configuration)
+            payload["fields"]["parent"] = {"key": request.epic_key}
+
+        logger.info(
+            "Creating Jira issue",
+            extra={
+                "project_key": request.project_key,
+                "issue_type": request.issue_type.value,
+                "priority": request.priority.value,
+                "jira_priority": PRIORITY_MAP[request.priority],
+                "dry_run": self.settings.jira_dry_run,
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        # Dry-run mode: log and return mock issue
+        if self.settings.jira_dry_run:
+            self._mock_issue_counter += 1
+            mock_key = f"{request.project_key}-DRY{self._mock_issue_counter}"
+            logger.info(
+                "Dry-run mode: would create issue",
+                extra={
+                    "mock_key": mock_key,
+                    "payload": payload,
+                },
+            )
+            return JiraIssue(
+                key=mock_key,
+                summary=request.summary,
+                status="Open",
+                assignee=None,
+                base_url=self.base_url,
+            )
+
+        # Make API call
+        response = await self._request("POST", "/rest/api/3/issue", json_data=payload)
+
+        # Fetch full issue to get all fields
+        created_key = response.get("key", "")
+        return await self.get_issue(created_key)
+
+    async def search_issues(self, jql: str, limit: int = 5) -> list[JiraIssue]:
+        """Search for Jira issues using JQL.
+
+        Args:
+            jql: Jira Query Language search string.
+            limit: Maximum number of results (default 5).
+
+        Returns:
+            List of matching JiraIssue objects.
+
+        Raises:
+            JiraAPIError: On API errors.
+        """
+        start_time = time.monotonic()
+
+        logger.info(
+            "Searching Jira issues",
+            extra={
+                "jql": jql,
+                "limit": limit,
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        params = {
+            "jql": jql,
+            "maxResults": limit,
+            "fields": "key,summary,status,assignee",
+        }
+
+        response = await self._request("GET", "/rest/api/3/search", params=params)
+
+        issues = []
+        for item in response.get("issues", []):
+            fields = item.get("fields", {})
+            assignee = fields.get("assignee")
+            assignee_name = assignee.get("displayName") if assignee else None
+            status = fields.get("status", {}).get("name", "Unknown")
+
+            issues.append(
+                JiraIssue(
+                    key=item.get("key", ""),
+                    summary=fields.get("summary", ""),
+                    status=status,
+                    assignee=assignee_name,
+                    base_url=self.base_url,
+                )
+            )
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+        logger.info(
+            "Jira search complete",
+            extra={
+                "jql": jql,
+                "result_count": len(issues),
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+
+        return issues
+
+    async def get_issue(self, key: str) -> JiraIssue:
+        """Get a single Jira issue by key.
+
+        Args:
+            key: Issue key (e.g., PROJ-123).
+
+        Returns:
+            JiraIssue with full details.
+
+        Raises:
+            JiraAPIError: On API errors (including 404 if not found).
+        """
+        logger.info(
+            "Getting Jira issue",
+            extra={
+                "key": key,
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        response = await self._request(
+            "GET",
+            f"/rest/api/3/issue/{key}",
+            params={"fields": "key,summary,status,assignee"},
+        )
+
+        fields = response.get("fields", {})
+        assignee = fields.get("assignee")
+        assignee_name = assignee.get("displayName") if assignee else None
+        status = fields.get("status", {}).get("name", "Unknown")
+
+        return JiraIssue(
+            key=response.get("key", key),
+            summary=fields.get("summary", ""),
+            status=status,
+            assignee=assignee_name,
+            base_url=self.base_url,
+        )

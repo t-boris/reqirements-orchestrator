@@ -556,71 +556,91 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
     # Import dependencies
     from src.db import ApprovalStore, get_connection
     from src.skills.preview_ticket import compute_draft_hash
+    from src.skills.jira_create import jira_create
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
 
-    # Check for existing approval
+    # Get current draft from runner state (need this early for validation)
+    runner = get_runner(identity)
+    state = runner._get_current_state()
+    draft = state.get("draft")
+
+    if not draft:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not find draft. Please start a new session.",
+        )
+        return
+
+    # Compute current draft hash
+    current_hash = compute_draft_hash(draft)
+
+    # Version check - compare button hash with current draft
+    if button_hash and button_hash != current_hash:
+        # Draft changed since preview was posted - require re-review
+        logger.warning(
+            "Draft version mismatch",
+            extra={
+                "button_hash": button_hash,
+                "current_hash": current_hash,
+                "session_id": session_id,
+            }
+        )
+
+        # Post new preview with updated content
+        from src.slack.blocks import build_draft_preview_blocks_with_hash
+        new_blocks = build_draft_preview_blocks_with_hash(
+            draft=draft,
+            session_id=session_id,
+            draft_hash=current_hash,
+        )
+
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="The draft has changed since you saw this preview. Please review the updated version:",
+            blocks=new_blocks,
+        )
+        return
+
+    # Check for existing approval and record new one
     async with get_connection() as conn:
         approval_store = ApprovalStore(conn)
         await approval_store.create_tables()  # Ensure table exists
 
         # Check if already approved for this hash
-        if button_hash:
-            existing = await approval_store.get_approval(session_id, button_hash)
-            if existing:
-                # Already approved - notify user
-                approver = existing.approved_by
-                client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    text=f"This draft was already approved by <@{approver}>.",
-                )
-                return
+        hash_to_record = current_hash if current_hash else "no-hash"
+        existing = await approval_store.get_approval(session_id, hash_to_record)
+        if existing:
+            # Already approved - check if Jira ticket was created
+            from src.db.jira_operations import JiraOperationStore
+            op_store = JiraOperationStore(conn)
+            await op_store.create_tables()
 
-        # Get current draft from runner state
-        runner = get_runner(identity)
-        state = runner._get_current_state()
-        draft = state.get("draft")
+            if await op_store.was_already_created(session_id, hash_to_record):
+                # Ticket already created - notify with link
+                existing_op = await op_store.get_operation(session_id, hash_to_record, "jira_create")
+                if existing_op and existing_op.jira_key:
+                    settings = get_settings()
+                    jira_url = f"{settings.jira_url.rstrip('/')}/browse/{existing_op.jira_key}"
+                    client.chat_postMessage(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        text=f"Ticket was already created: <{jira_url}|{existing_op.jira_key}>",
+                    )
+                    return
 
-        if not draft:
+            # Already approved but not created - notify
+            approver = existing.approved_by
             client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
-                text="Error: Could not find draft. Please start a new session.",
-            )
-            return
-
-        # Compute current draft hash
-        current_hash = compute_draft_hash(draft)
-
-        # Version check - compare button hash with current draft
-        if button_hash and button_hash != current_hash:
-            # Draft changed since preview was posted - require re-review
-            logger.warning(
-                "Draft version mismatch",
-                extra={
-                    "button_hash": button_hash,
-                    "current_hash": current_hash,
-                    "session_id": session_id,
-                }
-            )
-
-            # Post new preview with updated content
-            from src.slack.blocks import build_draft_preview_blocks_with_hash
-            new_blocks = build_draft_preview_blocks_with_hash(
-                draft=draft,
-                session_id=session_id,
-                draft_hash=current_hash,
-            )
-
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="The draft has changed since you saw this preview. Please review the updated version:",
-                blocks=new_blocks,
+                text=f"This draft was already approved by <@{approver}>.",
             )
             return
 
         # Record approval (first wins)
-        hash_to_record = current_hash if current_hash else "no-hash"
         is_new = await approval_store.record_approval(
             session_id=session_id,
             draft_hash=hash_to_record,
@@ -638,35 +658,158 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
             )
             return
 
-    # Approval successful - update runner state
-    result = await runner.handle_approval(approved=True)
+        # Approval recorded - now create Jira ticket
+        settings = get_settings()
+        jira_service = JiraService(settings)
 
-    # Update original preview message to show approved state
+        try:
+            create_result = await jira_create(
+                session_id=session_id,
+                draft=draft,
+                approved_by=user_id,
+                jira_service=jira_service,
+                conn=conn,
+                settings=settings,
+            )
+        finally:
+            await jira_service.close()
+
+    # Handle Jira creation result
+    if create_result.success:
+        if create_result.was_duplicate:
+            # Already created (idempotent return) - just notify
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"Ticket was already created: <{create_result.jira_url}|{create_result.jira_key}>",
+            )
+        else:
+            # New creation - update session state
+            await runner.handle_approval(approved=True)
+
+            # Update preview message to show created state
+            _update_preview_to_created(
+                client=client,
+                channel=channel,
+                message_ts=message_ts,
+                draft=draft,
+                jira_key=create_result.jira_key,
+                jira_url=create_result.jira_url,
+                created_by=user_id,
+            )
+
+            # Notify in thread with Jira link
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"Ticket created: <{create_result.jira_url}|{create_result.jira_key}>",
+            )
+    else:
+        # Creation failed - don't advance state, notify error
+        # Update preview to show error state (keep buttons for retry)
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Could not create ticket: {create_result.error}",
+        )
+
+
+def _update_preview_to_created(
+    client: WebClient,
+    channel: str,
+    message_ts: str,
+    draft: "TicketDraft",
+    jira_key: str,
+    jira_url: str,
+    created_by: str,
+) -> None:
+    """Update preview message to show created state with Jira link.
+
+    Updates the original preview message to:
+    - Show "Ticket Created" header with Jira key
+    - Display ticket details (title, problem, etc.)
+    - Remove approval buttons
+    - Add context: Created by @user with Jira link
+
+    Args:
+        client: Slack WebClient
+        channel: Channel ID
+        message_ts: Preview message timestamp to update
+        draft: TicketDraft that was created
+        jira_key: Created Jira issue key (e.g., PROJ-123)
+        jira_url: URL to the Jira issue
+        created_by: User ID who created the ticket
+    """
+    from datetime import datetime
+
+    blocks = []
+
+    # Header with created status and Jira key
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": f"Ticket Created: {jira_key}",
+            "emoji": True
+        }
+    })
+
+    # Title with Jira link
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*<{jira_url}|{draft.title or 'Untitled'}>*"
+        }
+    })
+
+    # Problem (abbreviated for created state)
+    problem_preview = draft.problem[:200] if draft.problem else "_Not set_"
+    if draft.problem and len(draft.problem) > 200:
+        problem_preview += "..."
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Problem:*\n{problem_preview}"
+        }
+    })
+
+    # Acceptance Criteria count
+    if draft.acceptance_criteria:
+        ac_count = len(draft.acceptance_criteria)
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Acceptance Criteria:* {ac_count} item{'s' if ac_count != 1 else ''}"
+            }
+        })
+
+    # Divider
+    blocks.append({"type": "divider"})
+
+    # Context with Jira link and creator
+    created_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": f"Created by <@{created_by}> at {created_time} | <{jira_url}|View in Jira>"
+            }
+        ]
+    })
+
     try:
-        # Build approved message blocks (remove action buttons)
-        approved_blocks = _build_approved_preview_blocks(draft, user_id)
         client.chat_update(
             channel=channel,
             ts=message_ts,
-            text=f"Ticket approved by <@{user_id}>",
-            blocks=approved_blocks,
+            text=f"Ticket created: {jira_key}",
+            blocks=blocks,
         )
     except Exception as e:
-        logger.warning(f"Failed to update preview message: {e}")
-
-    # Confirm approval in thread
-    if result["action"] == "ready":
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text=f"Ticket approved by <@{user_id}> and ready to create in Jira!",
-        )
-    else:
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text=f"Approved by <@{user_id}>. Processing...",
-        )
+        logger.warning(f"Failed to update preview to created state: {e}")
 
 
 def _build_approved_preview_blocks(draft: "TicketDraft", approved_by: str) -> list[dict]:

@@ -42,6 +42,7 @@ from src.db.connection import close_db, get_connection, init_db
 from src.db.models import ChannelContext, ThreadSession
 from src.db.session_store import SessionStore
 from src.db.approval_store import ApprovalStore, ApprovalRecord
+from src.db.jira_operations import JiraOperationStore, JiraOperationRecord
 
 __all__ = [
     # Connection (02-01)
@@ -59,4 +60,7 @@ __all__ = [
     # Approval Store (06-02)
     "ApprovalStore",
     "ApprovalRecord",
+    # Jira Operations (07-02)
+    "JiraOperationStore",
+    "JiraOperationRecord",
 ]

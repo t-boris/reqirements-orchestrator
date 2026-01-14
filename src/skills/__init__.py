@@ -7,6 +7,8 @@ Skills:
 - ask_user: Post questions to Slack thread, handle interrupt/resume
 - answer_matcher: Semantic matching of user responses to questions
 - preview_ticket: Show draft for approval with version checking
+- jira_search: Fast duplicate detection before ticket creation
+- jira_create: Create Jira ticket with strict approval validation
 """
 
 from src.skills.ask_user import (
@@ -28,6 +30,17 @@ from src.skills.preview_ticket import (
     compute_draft_hash,
 )
 
+from src.skills.jira_search import (
+    jira_search,
+    search_similar_to_draft,
+    JiraSearchResult,
+)
+
+from src.skills.jira_create import (
+    jira_create,
+    JiraCreateResult,
+)
+
 from src.skills.dispatcher import SkillDispatcher
 
 __all__ = [
@@ -44,6 +57,13 @@ __all__ = [
     "preview_ticket",
     "PreviewResult",
     "compute_draft_hash",
+    # jira_search skill
+    "jira_search",
+    "search_similar_to_draft",
+    "JiraSearchResult",
+    # jira_create skill
+    "jira_create",
+    "JiraCreateResult",
     # dispatcher
     "SkillDispatcher",
 ]
