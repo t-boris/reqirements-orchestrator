@@ -1,6 +1,6 @@
 """Slack Block Kit builders for rich messages."""
 
-from typing import Optional
+from typing import Any, Optional
 
 
 def build_session_card(
@@ -345,3 +345,148 @@ def build_draft_preview_blocks_with_hash(
     })
 
     return blocks
+
+
+def build_findings_blocks(
+    findings: dict[str, Any],
+    max_inline: int = 2,
+    max_review: int = 5,
+) -> list[dict]:
+    """Build Slack blocks for validator findings.
+
+    Hybrid approach:
+    1. Inline BLOCK findings (max 2) at top
+    2. "Review Notes" section for WARN/INFO at bottom
+    3. "+N more" if truncated
+
+    Args:
+        findings: ValidationFindings.model_dump() dict.
+        max_inline: Max BLOCK findings to show inline.
+        max_review: Max WARN/INFO findings in review section.
+
+    Returns:
+        List of Slack block dicts.
+    """
+    if not findings or not findings.get("findings"):
+        return []
+
+    blocks = []
+    all_findings = findings.get("findings", [])
+
+    # Separate by severity
+    blocking = [f for f in all_findings if f.get("severity") == "block"]
+    warnings = [f for f in all_findings if f.get("severity") == "warn"]
+    info = [f for f in all_findings if f.get("severity") == "info"]
+
+    # 1. Inline BLOCK findings (critical, show prominently)
+    if blocking:
+        inline_blocking = blocking[:max_inline]
+        for f in inline_blocking:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":warning: *BLOCK:* {f.get('message', '')}",
+                },
+            })
+            if f.get("fix_hint"):
+                blocks.append({
+                    "type": "context",
+                    "elements": [{
+                        "type": "mrkdwn",
+                        "text": f":bulb: {f.get('fix_hint')}",
+                    }],
+                })
+
+        remaining_blocking = len(blocking) - max_inline
+        if remaining_blocking > 0:
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": f"+{remaining_blocking} more blocking issue(s)",
+                }],
+            })
+
+    # 2. Review Notes section for WARN/INFO
+    review_findings = warnings + info
+    if review_findings:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Review Notes:*",
+            },
+        })
+
+        # Group by persona
+        by_persona: dict[str, list] = {}
+        for f in review_findings[:max_review]:
+            persona = f.get("persona", "pm")
+            if persona not in by_persona:
+                by_persona[persona] = []
+            by_persona[persona].append(f)
+
+        for persona, persona_findings in by_persona.items():
+            emoji = {"pm": ":memo:", "security": ":shield:", "architect": ":building_construction:"}.get(persona, ":memo:")
+            notes = []
+            for f in persona_findings:
+                severity_emoji = ":large_orange_diamond:" if f.get("severity") == "warn" else ":small_blue_diamond:"
+                notes.append(f"{severity_emoji} {f.get('message', '')}")
+
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": f"{emoji} *{persona.upper()}:* " + " | ".join(notes),
+                }],
+            })
+
+        remaining_review = len(review_findings) - max_review
+        if remaining_review > 0:
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": f"+{remaining_review} more note(s) - use `/persona status` for details",
+                }],
+            })
+
+    return blocks
+
+
+def build_persona_indicator(
+    persona: str,
+    message_count: int,
+    max_indicator_messages: int = 2,
+) -> Optional[str]:
+    """Build persona indicator prefix for messages.
+
+    Only shows indicator on first 1-2 messages after switch.
+
+    Args:
+        persona: Current persona name.
+        message_count: Messages since persona change.
+        max_indicator_messages: How many messages to show indicator.
+
+    Returns:
+        Indicator prefix string or None if past threshold.
+    """
+    if message_count >= max_indicator_messages:
+        return None
+
+    indicators = {
+        "pm": ":memo:",
+        "security": ":shield:",
+        "architect": ":building_construction:",
+    }
+
+    emoji = indicators.get(persona, ":memo:")
+    names = {
+        "pm": "PM",
+        "security": "Security",
+        "architect": "Architect",
+    }
+
+    return f"{emoji} *{names.get(persona, 'PM')}:*"
