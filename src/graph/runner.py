@@ -31,12 +31,17 @@ class GraphRunner:
 
     def __init__(self, identity: "SessionIdentity"):
         self.identity = identity
-        self.graph = get_compiled_graph()
+        self.graph = None  # Lazy init - call _ensure_graph() before use
         self._config = {
             "configurable": {
                 "thread_id": identity.session_id,
             }
         }
+
+    async def _ensure_graph(self):
+        """Ensure graph is compiled (lazy async initialization)."""
+        if self.graph is None:
+            self.graph = await get_compiled_graph()
 
     async def run_with_message(
         self,
@@ -59,7 +64,7 @@ class GraphRunner:
         async with lock:
             try:
                 # Get current state or initialize
-                state = self._get_current_state()
+                state = await self._get_current_state()
 
                 # Add new message
                 new_message = HumanMessage(
@@ -83,10 +88,11 @@ class GraphRunner:
                 logger.error(f"Graph run failed: {e}", exc_info=True)
                 return {"action": "error", "error": str(e)}
 
-    def _get_current_state(self) -> dict[str, Any]:
+    async def _get_current_state(self) -> dict[str, Any]:
         """Get current state from checkpointer or initialize new."""
+        await self._ensure_graph()
         try:
-            checkpoint = self.graph.get_state(self._config)
+            checkpoint = await self.graph.aget_state(self._config)
             if checkpoint and checkpoint.values:
                 return dict(checkpoint.values)
         except Exception as e:
@@ -130,7 +136,7 @@ class GraphRunner:
                 return self._merge_state(state, current_state)
 
         # Graph completed
-        final_state = self.graph.get_state(self._config)
+        final_state = await self.graph.aget_state(self._config)
         return dict(final_state.values) if final_state else state
 
     def _merge_state(self, base: dict[str, Any], updates: dict) -> dict[str, Any]:
@@ -176,7 +182,7 @@ class GraphRunner:
         from src.slack.session import get_session_lock
         lock = get_session_lock(self.identity.session_id)
         async with lock:
-            state = self._get_current_state()
+            state = await self._get_current_state()
 
             if approved:
                 state["phase"] = AgentPhase.READY_TO_CREATE
@@ -197,7 +203,7 @@ class GraphRunner:
         from src.slack.session import get_session_lock
         lock = get_session_lock(self.identity.session_id)
         async with lock:
-            state = self._get_current_state()
+            state = await self._get_current_state()
             state["pending_questions"] = question_set_dict
             await self.graph.aupdate_state(self._config, state)
             logger.debug(f"Stored pending questions: {question_set_dict.get('question_id')}")
@@ -213,7 +219,7 @@ class GraphRunner:
         from src.slack.session import get_session_lock
         lock = get_session_lock(self.identity.session_id)
         async with lock:
-            state = self._get_current_state()
+            state = await self._get_current_state()
             pending = state.get("pending_questions")
 
             if pending:
@@ -229,17 +235,17 @@ class GraphRunner:
 
             return None
 
-    def get_pending_questions(self) -> dict[str, Any] | None:
+    async def get_pending_questions(self) -> dict[str, Any] | None:
         """Get current pending questions.
 
         Returns:
             QuestionSet as dict, or None if no pending questions
         """
-        state = self._get_current_state()
+        state = await self._get_current_state()
         return state.get("pending_questions")
 
-    def _update_draft(self, draft: TicketDraft) -> None:
-        """Update draft in current state (synchronous).
+    async def _update_draft(self, draft: TicketDraft) -> None:
+        """Update draft in current state.
 
         Used by modal handlers to update draft after user edits.
 
@@ -247,22 +253,27 @@ class GraphRunner:
             draft: Updated TicketDraft
         """
         try:
-            state = self._get_current_state()
+            state = await self._get_current_state()
             state["draft"] = draft
-            # Use sync update - modal handlers are sync context
-            # We'll use aupdate_state via asyncio.run if needed
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(self.graph.aupdate_state(self._config, state))
-                else:
-                    loop.run_until_complete(self.graph.aupdate_state(self._config, state))
-            except RuntimeError:
-                asyncio.run(self.graph.aupdate_state(self._config, state))
+            await self.graph.aupdate_state(self._config, state)
             logger.debug(f"Updated draft version to {draft.version}")
         except Exception as e:
             logger.error(f"Failed to update draft: {e}", exc_info=True)
+
+    async def _update_state(self, new_state: dict[str, Any]) -> None:
+        """Update full state.
+
+        Used for updating state fields like persona.
+
+        Args:
+            new_state: New state dictionary
+        """
+        await self._ensure_graph()
+        try:
+            await self.graph.aupdate_state(self._config, new_state)
+            logger.debug("State updated")
+        except Exception as e:
+            logger.error(f"Failed to update state: {e}", exc_info=True)
 
 
 # Session runner cache

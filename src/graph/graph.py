@@ -19,8 +19,6 @@ from src.schemas.state import AgentState, AgentPhase
 from src.graph.nodes.extraction import extraction_node
 from src.graph.nodes.validation import validation_node
 from src.graph.nodes.decision import decision_node, get_decision_action
-from src.db.checkpointer import get_checkpointer
-
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
@@ -106,14 +104,25 @@ def create_graph() -> StateGraph:
     return workflow
 
 
-def get_compiled_graph():
+_compiled_graph = None
+
+
+async def get_compiled_graph():
     """Get compiled graph with PostgreSQL checkpointer.
 
     Use this for production - enables interrupt/resume.
+    Uses singleton pattern for async checkpointer.
     """
-    workflow = create_graph()
-    checkpointer = get_checkpointer()
-    return workflow.compile(checkpointer=checkpointer)
+    global _compiled_graph
+
+    if _compiled_graph is None:
+        from src.db.checkpointer import get_checkpointer
+        workflow = create_graph()
+        checkpointer = await get_checkpointer()
+        _compiled_graph = workflow.compile(checkpointer=checkpointer)
+        logger.info("Graph compiled with AsyncPostgresSaver checkpointer")
+
+    return _compiled_graph
 
 
 # Convenience: graph without checkpointer for testing

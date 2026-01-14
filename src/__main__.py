@@ -22,7 +22,7 @@ async def init_database() -> None:
     """Initialize database connection pool and run checkpointer setup."""
     logger.info("Initializing database...")
     await init_db()
-    setup_checkpointer()
+    await setup_checkpointer()
     logger.info("Database initialized")
 
 

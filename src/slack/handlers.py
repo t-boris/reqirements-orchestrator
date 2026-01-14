@@ -109,7 +109,7 @@ async def _check_persona_switch(
         from src.personas.switcher import PersonaSwitcher
         from src.personas.types import PersonaName, PersonaReason
 
-        state = runner._get_current_state()
+        state = await runner._get_current_state()
         current_persona = PersonaName(state.get("persona", "pm"))
         is_locked = state.get("persona_lock", False)
 
@@ -124,7 +124,7 @@ async def _check_persona_switch(
             state_update = switcher.apply_switch(state, switch_result)
             # Update runner state
             new_state = {**state, **state_update}
-            runner._update_state(new_state)
+            await runner._update_state(new_state)
 
             # Notify user of switch (only if detected, not explicit)
             if switch_result.reason == PersonaReason.DETECTED:
@@ -344,7 +344,16 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
 
 
 def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
-    """Handle /persona slash command.
+    """Handle /persona slash command (sync wrapper).
+
+    Delegates to async implementation via _run_async().
+    """
+    ack()  # Ack immediately
+    _run_async(_handle_persona_command_async(command, say, client))
+
+
+async def _handle_persona_command_async(command: dict, say, client: WebClient):
+    """Async implementation of /persona slash command.
 
     Commands:
     - /persona [name] - Switch to persona (pm, security, architect)
@@ -353,8 +362,6 @@ def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
     - /persona status - Show current persona and validators
     - /persona list - Show available personas
     """
-    ack()  # Ack immediately
-
     channel = command.get("channel_id")
     thread_ts = command.get("thread_ts") or command.get("ts", "")
     user = command.get("user_id")
@@ -392,7 +399,7 @@ def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
             from src.graph.runner import _runners
             if identity.session_id in _runners:
                 runner = get_runner(identity)
-                current_state = runner._get_current_state()
+                current_state = await runner._get_current_state()
                 state = {
                     "persona": current_state.get("persona", "pm"),
                     "persona_lock": current_state.get("persona_lock", False),
@@ -426,9 +433,9 @@ def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
             from src.graph.runner import _runners
             if identity.session_id in _runners:
                 runner = get_runner(identity)
-                current_state = runner._get_current_state()
+                current_state = await runner._get_current_state()
                 new_state = {**current_state, **result.state_update}
-                runner._update_state(new_state)
+                await runner._update_state(new_state)
                 logger.info(
                     "Persona state updated",
                     extra={
@@ -729,7 +736,7 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
 
     # Get current draft from runner state (need this early for validation)
     runner = get_runner(identity)
-    state = runner._get_current_state()
+    state = await runner._get_current_state()
     draft = state.get("draft")
 
     if not draft:
@@ -1142,7 +1149,7 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
 
     # Get current draft from runner state
     runner = get_runner(identity)
-    state = runner._get_current_state()
+    state = await runner._get_current_state()
     draft = state.get("draft")
 
     if not draft:
@@ -1236,7 +1243,7 @@ async def handle_edit_draft_submit(ack, body, client: WebClient, view):
 
     # Get runner and current draft
     runner = get_runner(identity)
-    state = runner._get_current_state()
+    state = await runner._get_current_state()
     draft = state.get("draft")
 
     if not draft:
@@ -1273,7 +1280,7 @@ async def handle_edit_draft_submit(ack, body, client: WebClient, view):
     draft.version += 1
 
     # Update runner state with modified draft
-    runner._update_draft(draft)
+    await runner._update_draft(draft)
 
     # Compute new hash
     from src.skills.preview_ticket import compute_draft_hash
