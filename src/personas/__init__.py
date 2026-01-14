@@ -26,6 +26,16 @@ from src.personas.config import (
     get_persona,
     get_default_persona,
 )
+from src.personas.detector import (
+    TopicDetector,
+    DetectionResult,
+    SECURITY_KEYWORDS,
+    ARCHITECT_KEYWORDS,
+)
+from src.personas.switcher import (
+    PersonaSwitcher,
+    SwitchResult,
+)
 
 __all__ = [
     # Types
@@ -43,4 +53,12 @@ __all__ = [
     "SENSITIVE_OPS",
     "get_persona",
     "get_default_persona",
+    # Detector
+    "TopicDetector",
+    "DetectionResult",
+    "SECURITY_KEYWORDS",
+    "ARCHITECT_KEYWORDS",
+    # Switcher
+    "PersonaSwitcher",
+    "SwitchResult",
 ]
