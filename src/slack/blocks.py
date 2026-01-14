@@ -166,12 +166,14 @@ def build_draft_preview_blocks_with_hash(
     draft_hash: str,
     evidence_permalinks: Optional[list[dict]] = None,
     potential_duplicates: Optional[list[dict]] = None,
+    validator_findings: Optional[dict[str, Any]] = None,
 ) -> list[dict]:
     """Build Slack blocks for ticket draft preview with version hash.
 
     Embeds draft_hash in button values for version checking.
     Shows evidence links inline with permalinks.
     Shows potential duplicates before approval buttons if found.
+    Shows validator findings with hybrid UX (Phase 9).
 
     Args:
         draft: TicketDraft to display
@@ -179,20 +181,30 @@ def build_draft_preview_blocks_with_hash(
         draft_hash: Hash of draft content for version checking
         evidence_permalinks: Optional list of {permalink, user, preview} dicts
         potential_duplicates: Optional list of {key, summary, url} dicts for duplicate display
+        validator_findings: Optional ValidationFindings dict with findings
     """
     from src.schemas.draft import TicketDraft
 
     blocks = []
+
+    # Check for blocking findings
+    has_blocking = validator_findings and validator_findings.get("has_blocking", False)
 
     # Header
     blocks.append({
         "type": "header",
         "text": {
             "type": "plain_text",
-            "text": "Ticket Preview",
+            "text": ":ticket: Draft Preview" if not has_blocking else ":warning: Draft Preview - Issues Found",
             "emoji": True
         }
     })
+
+    # If blocking findings, show them first (prominently)
+    if has_blocking:
+        findings_blocks = build_findings_blocks(validator_findings, max_inline=2, max_review=3)
+        blocks.extend(findings_blocks)
+        blocks.append({"type": "divider"})
 
     # Title
     blocks.append({
@@ -266,6 +278,12 @@ def build_draft_preview_blocks_with_hash(
             }
         })
 
+    # Non-blocking findings at bottom (Review Notes) - only if no blocking findings shown
+    if validator_findings and not has_blocking:
+        findings_blocks = build_findings_blocks(validator_findings, max_inline=0, max_review=5)
+        if findings_blocks:
+            blocks.extend(findings_blocks)
+
     # Potential duplicates warning (if found)
     if potential_duplicates:
         blocks.append({"type": "divider"})
@@ -302,33 +320,63 @@ def build_draft_preview_blocks_with_hash(
     # Build button value with session_id:draft_hash for version checking
     button_value = f"{session_id}:{draft_hash}" if draft_hash else session_id
 
-    # Approval buttons with embedded hash
-    blocks.append({
-        "type": "actions",
-        "elements": [
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Approve & Create",
-                    "emoji": True
+    # Approval buttons - different based on blocking status
+    if has_blocking:
+        # Blocking findings: "Resolve Issues" instead of "Approve"
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Resolve Issues",
+                        "emoji": True
+                    },
+                    "value": button_value,
+                    "action_id": "resolve_issues",
+                    "style": "primary",
                 },
-                "value": button_value,
-                "action_id": "approve_draft",
-                "style": "primary",
-            },
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Needs Changes",
-                    "emoji": True
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Edit Draft",
+                        "emoji": True
+                    },
+                    "value": button_value,
+                    "action_id": "reject_draft",
                 },
-                "value": button_value,
-                "action_id": "reject_draft",
-            },
-        ]
-    })
+            ]
+        })
+    else:
+        # No blocking: standard approval flow
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Approve & Create",
+                        "emoji": True
+                    },
+                    "value": button_value,
+                    "action_id": "approve_draft",
+                    "style": "primary",
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Needs Changes",
+                        "emoji": True
+                    },
+                    "value": button_value,
+                    "action_id": "reject_draft",
+                },
+            ]
+        })
 
     # Context with evidence count
     evidence_count = len(draft.evidence_links) if draft.evidence_links else 0
