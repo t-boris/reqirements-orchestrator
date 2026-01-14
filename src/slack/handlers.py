@@ -503,11 +503,12 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
     """Handle 'Approve & Create' button click on draft preview.
 
     Implements version-checked approval:
-    1. Parse session_id:draft_hash from button value
-    2. Check if already approved (duplicate click)
-    3. Compute current draft hash and compare
-    4. Record approval if valid
-    5. Update preview message to show approved state
+    1. Check in-memory dedup (handles Slack retries)
+    2. Parse session_id:draft_hash from button value
+    3. Check if already approved in DB (duplicate click)
+    4. Compute current draft hash and compare
+    5. Record approval if valid
+    6. Update preview message to show approved state
     """
     ack()
 
@@ -519,6 +520,15 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
 
     # Parse session_id:draft_hash from button value
     button_value = action.get("value", "")
+    action_id = action.get("action_id", "approve_draft")
+
+    # In-memory dedup for Slack retries and rage-clicks
+    from src.slack.dedup import try_process_button
+    if not try_process_button(action_id, user_id, button_value):
+        # Duplicate click - silently ignore (already processing)
+        logger.debug(f"Ignoring duplicate approve click: {button_value}")
+        return
+
     if ":" in button_value:
         session_id, button_hash = button_value.rsplit(":", 1)
     else:
@@ -735,12 +745,31 @@ def _build_approved_preview_blocks(draft: "TicketDraft", approved_by: str) -> li
 
 
 async def handle_reject_draft(ack, body, client: WebClient, action):
-    """Handle 'Needs Changes' button click on draft preview."""
+    """Handle 'Needs Changes' button click on draft preview.
+
+    Implements idempotent rejection handling:
+    1. Check in-memory dedup (handles Slack retries)
+    2. Update state to return to COLLECTING
+    3. Update preview message to show rejected state
+    """
     ack()
 
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]  # Preview message to update
     team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value
+    button_value = action.get("value", "")
+    action_id = action.get("action_id", "reject_draft")
+
+    # In-memory dedup for Slack retries and rage-clicks
+    from src.slack.dedup import try_process_button
+    if not try_process_button(action_id, user_id, button_value):
+        # Duplicate click - silently ignore
+        logger.debug(f"Ignoring duplicate reject click: {button_value}")
+        return
 
     identity = SessionIdentity(
         team_id=team_id,
@@ -750,14 +779,90 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
 
     logger.info(
         "Draft rejected for changes",
-        extra={"session_id": identity.session_id}
+        extra={
+            "session_id": identity.session_id,
+            "user_id": user_id,
+        }
     )
 
     runner = get_runner(identity)
+    state = runner._get_current_state()
+    draft = state.get("draft")
+
     await runner.handle_approval(approved=False)
+
+    # Update preview message to show rejected state
+    try:
+        if draft:
+            rejected_blocks = _build_rejected_preview_blocks(draft, user_id)
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                text=f"Changes requested by <@{user_id}>",
+                blocks=rejected_blocks,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to update preview message: {e}")
 
     client.chat_postMessage(
         channel=channel,
         thread_ts=thread_ts,
         text="No problem! Tell me what needs to be changed.",
     )
+
+
+def _build_rejected_preview_blocks(draft: "TicketDraft", rejected_by: str) -> list[dict]:
+    """Build preview blocks with rejection status (no action buttons).
+
+    Used to update the preview message after rejection.
+    """
+    from src.schemas.draft import TicketDraft
+    from datetime import datetime
+
+    blocks = []
+
+    # Header with rejected status
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": "Changes Requested",
+            "emoji": True
+        }
+    })
+
+    # Title
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Title:* {draft.title or '_Not set_'}"
+        }
+    })
+
+    # Problem (abbreviated)
+    problem_preview = draft.problem[:100] if draft.problem else "_Not set_"
+    if draft.problem and len(draft.problem) > 100:
+        problem_preview += "..."
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Problem:* {problem_preview}"
+        }
+    })
+
+    # Divider
+    blocks.append({"type": "divider"})
+
+    # Rejection context (instead of buttons)
+    rejection_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": f"Changes requested by <@{rejected_by}> at {rejection_time}"
+        }]
+    })
+
+    return blocks
