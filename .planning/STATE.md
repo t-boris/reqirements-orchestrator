@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 2 of 10 (Database Layer)
-Plan: 1 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-14 — Completed 02-01-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-14 — Completed 02-03-PLAN.md
 
-Progress: ████░░░░░░ 13%
+Progress: ██████░░░░ 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 1.5 min
-- Total execution time: 0.1 hours
+- Total plans completed: 6
+- Average duration: 1.7 min
+- Total execution time: 0.17 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 4 min | 1.3 min |
-| 02-database-layer | 1 | 2 min | 2 min |
+| 02-database-layer | 3 | 6 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (1 min), 01-02 (1 min), 01-03 (2 min), 02-01 (2 min)
+- Last 5 plans: 01-03 (2 min), 02-01 (2 min), 02-02 (2 min), 02-03 (2 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -49,6 +49,10 @@ Recent decisions affecting current work:
 - 01-03: JiraTicketSchema fields have defaults for partial drafts
 - 02-01: psycopg v3 (not psycopg2) for native async support
 - 02-01: Module-level connection pool singleton with init/close lifecycle
+- 02-02: PostgresSaver.from_conn_string() for LangGraph checkpointer
+- 02-02: setup_checkpointer() idempotent, safe to call at every startup
+- 02-03: Pydantic models as DTOs, not ORM entities - SQL in SessionStore
+- 02-03: Thread sessions keyed by (channel_id, thread_ts) with unique constraint
 
 ### Deferred Issues
 
@@ -60,6 +64,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T14:22:52Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-01-14T14:27:04Z
+Stopped at: Completed 02-03-PLAN.md (Phase 2 complete)
 Resume file: None
