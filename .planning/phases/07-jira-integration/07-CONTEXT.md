@@ -25,6 +25,12 @@ Without this discipline:
 5. Create issue only after all guards pass
 6. Post-create: update session → CREATED, save jira_key, update Epic, update Slack UI
 
+### Audit Trail
+Every jira_create must produce an audit record: who approved, which draft_hash, which Jira issue key. This answers the question: "Who created this ticket and based on what?"
+
+### Failure Semantics
+jira_create must be **all-or-nothing**: if Jira API fails, session state must NOT advance. This makes it a true transaction.
+
 ### jira_search Flow
 - Fast JQL search by summary, project, status
 - Returns compact results: key, summary, status, assignee, url
@@ -42,6 +48,10 @@ Without this discipline:
 - **Draft hash validation** — If user approved, then something changed, then clicked Create → "Please re-approve". Draft drift is blocked.
 
 - **Environment separation** — JIRA_BASE_URL, JIRA_PROJECT_KEY, JIRA_ENV (dev|staging|prod). Never accidentally create test ticket in production.
+
+- **Audit trail** — Every create leaves a trace: who approved, what draft, what ticket. Answerable: "Why does this ticket exist?"
+
+- **All-or-nothing** — If Jira fails, session state doesn't advance. True transactional semantics.
 
 </essential>
 
