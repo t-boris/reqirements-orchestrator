@@ -45,6 +45,7 @@ JSON response:'''
 async def extraction_node(state: AgentState) -> dict[str, Any]:
     """Extract requirements from latest message and patch draft.
 
+    - Injects channel context on new thread (Phase 8)
     - Processes only the most recent human message
     - Uses answer matcher if pending questions exist
     - Uses LLM to identify new information
@@ -60,6 +61,27 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     thread_ts = state.get("thread_ts", "")
     channel_id = state.get("channel_id", "")
     pending_questions = state.get("pending_questions")
+
+    # Inject channel context if not already present (Phase 8 - Global State)
+    channel_context = state.get("channel_context")
+    if channel_context is None and channel_id:
+        try:
+            from src.context.retriever import ChannelContextRetriever, RetrievalMode
+            from src.db.connection import get_connection
+
+            async with get_connection() as conn:
+                retriever = ChannelContextRetriever(conn)
+                team_id = state.get("team_id", "default")  # Get from session if available
+                ctx_result = await retriever.get_context(
+                    team_id=team_id,
+                    channel_id=channel_id,
+                    mode=RetrievalMode.COMPACT,
+                )
+                channel_context = ctx_result.to_dict()
+                logger.debug(f"Injected channel context v{ctx_result.context_version}")
+        except Exception as e:
+            logger.warning(f"Failed to inject channel context: {e}")
+            # Non-blocking - continue without context
 
     # Find most recent human message
     latest_human = None
@@ -172,6 +194,10 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
         "step_count": step_count + 1,
         "phase": AgentPhase.COLLECTING,  # Stay in collecting after extraction
     }
+
+    # Include channel context if newly fetched
+    if channel_context is not None and state.get("channel_context") is None:
+        state_update["channel_context"] = channel_context
 
     # Include answer match result for decision node
     if answer_match_result:
