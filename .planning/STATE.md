@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 4 of 10 (Slack Router)
-Plan: 2 of 9 in current phase
+Plan: 3 of 9 in current phase
 Status: In progress
-Last activity: 2026-01-14 — Completed 04-06-PLAN.md
+Last activity: 2026-01-14 — Completed 04-07-PLAN.md
 
-Progress: ████████░░ 44%
+Progress: █████████░ 47%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: 1.8 min
-- Total execution time: 0.45 hours
+- Total execution time: 0.50 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: ████████░░ 44%
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
 | 03-llm-integration | 6 | 12 min | 2 min |
-| 04-slack-router | 2 | 5 min | 2.5 min |
+| 04-slack-router | 3 | 8 min | 2.7 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-06 (3 min), 03-05 (2 min), 04-01 (2 min), 04-06 (3 min)
+- Last 5 plans: 03-05 (2 min), 04-01 (2 min), 04-06 (3 min), 04-07 (3 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - 03-05: get_llm() as primary entry point for business logic
 - 04-01: Singleton pattern for Slack App matches get_settings() pattern
 - 04-01: Socket Mode lifecycle via start_socket_mode()/stop_socket_mode()
+- 04-06: Structured constraints (subject/value/status) over free-form text
+- 04-06: use_enum_values in Pydantic for JSON-compatible status field
+- 04-06: Unique constraint on (epic_id, subject, status) allows same subject with different status
 
 ### Deferred Issues
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T15:43:31Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-01-14T15:43:43Z
+Stopped at: Completed 04-06-PLAN.md
 Resume file: None
