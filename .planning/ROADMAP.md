@@ -171,15 +171,22 @@ Plans:
 - [x] 09-04: Persona commands + UX (Wave 2)
 
 ### Phase 10: Deployment
-**Goal**: Docker container configuration, environment setup, production deployment
+**Goal**: Docker container configuration, environment setup, production deployment to GCE VM
 **Depends on**: All previous phases
-**Research**: Unlikely (Docker + PostgreSQL is established)
-**Plans**: TBD
+**Research**: Unlikely (Docker + GCP established)
+**Architecture**: Single VM with Docker Compose, Cloud Build → Artifact Registry → SSH deploy
+
+**Key Decisions:**
+- Socket Mode bot with minimal health server (no FastAPI)
+- Cloud Build for image building, Artifact Registry for storage
+- One-command deploy.sh script (build + SSH restart)
+- `restart: always` for 24/7 uptime
+- LangSmith tracing for production debugging
 
 Plans:
-- [ ] 10-01: Dockerfile and docker-compose
-- [ ] 10-02: Environment configuration and secrets
-- [ ] 10-03: Production deployment scripts
+- [x] 10-01: Dockerfile and docker-compose (Wave 1)
+- [x] 10-02: Environment configuration (Wave 1)
+- [ ] 10-03: Production deployment scripts (Wave 2)
 
 ## Progress
 
@@ -197,4 +204,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
 | 8. Global State | 5/5 | Complete | 2026-01-14 |
 | 9. Personas | 4/4 | Complete | 2026-01-14 |
-| 10. Deployment | 0/3 | Not started | - |
+| 10. Deployment | 2/3 | In progress | - |
