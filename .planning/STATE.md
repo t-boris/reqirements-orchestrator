@@ -78,6 +78,10 @@ Recent decisions affecting current work:
 - 04-06: Structured constraints (subject/value/status) over free-form text
 - 04-06: use_enum_values in Pydantic for JSON-compatible status field
 - 04-06: Unique constraint on (epic_id, subject, status) allows same subject with different status
+- 04-07: pypdf for PDF extraction (modern, actively maintained)
+- 04-07: python-docx for DOCX extraction (standard library)
+- 04-07: latin-1 fallback for text encoding issues
+- 04-07: 10000 char default max_length for LLM normalization
 
 ### Deferred Issues
 
@@ -89,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T15:43:43Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-01-14T15:55:00Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
