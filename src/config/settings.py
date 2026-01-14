@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     google_api_key: str  # For Gemini
     openai_api_key: Optional[str] = None  # For OpenAI (optional)
     anthropic_api_key: Optional[str] = None  # For Anthropic (optional)
-    default_llm_model: str = "gemini-1.5-flash"
+    default_llm_model: str = "gemini-3-flash-preview"
 
     # Zep (semantic memory)
     zep_api_url: str = "http://localhost:8000"
