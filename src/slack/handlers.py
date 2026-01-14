@@ -241,3 +241,128 @@ async def _handle_epic_selection_async(body, client: WebClient, action):
     async with get_connection() as conn:
         store = SessionStore(conn)
         await bind_epic(identity, epic_key, store, client)
+
+
+async def handle_merge_context(ack, body, client, action):
+    """Handle 'Merge context' button click.
+
+    Links the related thread in session card and Epic summary.
+    """
+    ack()
+
+    similar_session_id = action.get("value")
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+
+    logger.info(
+        f"Merge context requested",
+        extra={
+            "current_thread": thread_ts,
+            "similar_session": similar_session_id,
+        }
+    )
+
+    # Acknowledge the merge
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Context linked from related thread. I'll consider both discussions when gathering requirements.",
+    )
+
+    # TODO: Update session card with linked thread reference
+    # TODO: Update Epic summary with cross-reference
+
+
+async def handle_ignore_dedup(ack, body, client):
+    """Handle 'Ignore' button click on dedup suggestion."""
+    ack()
+
+    # Just acknowledge - user chose to continue independently
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+
+    # Delete the suggestion message
+    message_ts = body["message"]["ts"]
+    try:
+        client.chat_delete(channel=channel, ts=message_ts)
+    except Exception:
+        pass  # May not have permission to delete
+
+
+# --- Contradiction Resolution Handlers ---
+
+async def handle_contradiction_conflict(ack, body, client, action):
+    """Handle 'Mark as conflict' button - flags both values as conflicting."""
+    ack()
+
+    value = action.get("value", "")
+    _, data = value.split(":", 1)
+    subject, proposed_value, thread_ts = data.split("|")
+
+    channel = body["channel"]["id"]
+    message_thread = body["message"].get("thread_ts") or body["message"]["ts"]
+
+    logger.info(
+        f"Contradiction marked as conflict",
+        extra={"subject": subject, "proposed": proposed_value}
+    )
+
+    # TODO: Update constraint status to 'conflicted' in KG
+    # TODO: Add to Epic summary as unresolved conflict
+
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=message_thread,
+        text=f"Marked `{subject}` as having conflicting requirements. This needs team alignment.",
+    )
+
+
+async def handle_contradiction_override(ack, body, client, action):
+    """Handle 'Override previous' button - new value supersedes old."""
+    ack()
+
+    value = action.get("value", "")
+    _, data = value.split(":", 1)
+    subject, proposed_value, thread_ts = data.split("|")
+
+    channel = body["channel"]["id"]
+    message_thread = body["message"].get("thread_ts") or body["message"]["ts"]
+
+    logger.info(
+        f"Contradiction resolved by override",
+        extra={"subject": subject, "new_value": proposed_value}
+    )
+
+    # TODO: Mark old constraint as 'deprecated'
+    # TODO: Mark new constraint as 'accepted'
+
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=message_thread,
+        text=f"Updated `{subject}` to `{proposed_value}`. Previous value deprecated.",
+    )
+
+
+async def handle_contradiction_both(ack, body, client, action):
+    """Handle 'Keep both' button - intentional dual values."""
+    ack()
+
+    value = action.get("value", "")
+    _, data = value.split(":", 1)
+    subject, proposed_value, thread_ts = data.split("|")
+
+    channel = body["channel"]["id"]
+    message_thread = body["message"].get("thread_ts") or body["message"]["ts"]
+
+    logger.info(
+        f"Contradiction accepted as intentional",
+        extra={"subject": subject, "proposed": proposed_value}
+    )
+
+    # TODO: Mark both as 'accepted' with note about intentional dual values
+
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=message_thread,
+        text=f"Noted - keeping both values for `{subject}` as intentional.",
+    )

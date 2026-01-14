@@ -9,6 +9,11 @@ from src.slack.handlers import (
     handle_message,
     handle_jira_command,
     handle_epic_selection_sync,
+    handle_merge_context,
+    handle_ignore_dedup,
+    handle_contradiction_conflict,
+    handle_contradiction_override,
+    handle_contradiction_both,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,4 +37,13 @@ def register_handlers(app: App) -> None:
     # Pattern matches: select_epic_PROJ-123, select_epic_new, etc.
     app.action(re.compile(r"^select_epic_.*"))(handle_epic_selection_sync)
 
-    logger.info("Slack handlers registered: app_mention, message, /jira, select_epic_*")
+    # Action handlers for dedup suggestions
+    app.action("merge_thread_context")(handle_merge_context)
+    app.action("ignore_dedup_suggestion")(handle_ignore_dedup)
+
+    # Action handlers for contradiction resolution
+    app.action("resolve_contradiction_conflict")(handle_contradiction_conflict)
+    app.action("resolve_contradiction_override")(handle_contradiction_override)
+    app.action("resolve_contradiction_both")(handle_contradiction_both)
+
+    logger.info("Slack handlers registered: app_mention, message, /jira, select_epic_*, dedup, contradiction")
