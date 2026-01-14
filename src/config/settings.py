@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = None  # For Anthropic (optional)
     default_llm_model: str = "gemini-1.5-flash"
 
+    # Zep (semantic memory)
+    zep_api_url: str = "http://localhost:8000"
+    zep_api_key: Optional[str] = None  # Optional for local dev
+
     # Logging
     log_level: str = "INFO"
 
