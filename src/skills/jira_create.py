@@ -38,7 +38,7 @@ class JiraCreateResult:
     was_duplicate: bool = False  # True if already created (idempotent return)
 
 
-def _format_description(draft: TicketDraft) -> str:
+def _format_description(draft: TicketDraft, slack_permalink: Optional[str] = None) -> str:
     """Format draft into Jira description.
 
     Builds a structured description with:
@@ -47,6 +47,7 @@ def _format_description(draft: TicketDraft) -> str:
     - Acceptance criteria
     - Constraints (if present)
     - Risks (if present)
+    - Slack thread link (if provided)
     """
     sections = []
 
@@ -81,6 +82,10 @@ def _format_description(draft: TicketDraft) -> str:
         deps_text = "\n".join(f"* {dep}" for dep in draft.dependencies)
         sections.append(f"h3. Dependencies\n{deps_text}")
 
+    # Slack thread link
+    if slack_permalink:
+        sections.append(f"----\n*Slack thread:* {slack_permalink}")
+
     return "\n\n".join(sections)
 
 
@@ -102,6 +107,7 @@ async def jira_create(
     jira_service: JiraService,
     conn: AsyncConnection,
     settings: Optional[Settings] = None,
+    slack_permalink: Optional[str] = None,
 ) -> JiraCreateResult:
     """Create a Jira issue with strict approval validation.
 
@@ -119,6 +125,7 @@ async def jira_create(
         jira_service: JiraService instance for API calls
         conn: Database connection for approval/operation stores
         settings: Optional settings override (defaults to get_settings())
+        slack_permalink: Optional Slack thread permalink to include in description
 
     Returns:
         JiraCreateResult with success/error status and Jira details
@@ -249,7 +256,7 @@ async def jira_create(
         request = JiraCreateRequest(
             project_key=project_key,
             summary=draft.title or "Untitled Ticket",
-            description=_format_description(draft),
+            description=_format_description(draft, slack_permalink),
             issue_type=JiraIssueType.STORY,
             priority=_map_priority(draft),
             epic_key=draft.epic_id,  # Link to Epic if set

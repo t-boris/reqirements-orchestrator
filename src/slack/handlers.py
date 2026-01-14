@@ -662,6 +662,15 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
         settings = get_settings()
         jira_service = JiraService(settings)
 
+        # Get Slack permalink for Jira description
+        slack_permalink = ""
+        try:
+            from src.context.jira_linker import JiraLinker
+            linker = JiraLinker(client, jira_service)
+            slack_permalink = linker.get_thread_permalink(channel, thread_ts)
+        except Exception as e:
+            logger.warning(f"Failed to get Slack permalink: {e}")
+
         try:
             create_result = await jira_create(
                 session_id=session_id,
@@ -670,6 +679,7 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
                 jira_service=jira_service,
                 conn=conn,
                 settings=settings,
+                slack_permalink=slack_permalink,
             )
         finally:
             await jira_service.close()
@@ -686,6 +696,29 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
         else:
             # New creation - update session state
             await runner.handle_approval(approved=True)
+
+            # Update thread pin with ticket link
+            try:
+                from src.context.jira_linker import JiraLinker
+                from src.jira.client import JiraService
+                from src.config.settings import get_settings
+
+                settings = get_settings()
+                jira = JiraService(settings)
+
+                linker = JiraLinker(client, jira)
+                await linker.on_ticket_created(
+                    channel_id=channel,
+                    thread_ts=thread_ts,
+                    ticket_key=create_result.jira_key,
+                    ticket_url=create_result.jira_url,
+                    existing_pin_ts=None,  # Could track from epic binding if available
+                )
+
+                await jira.close()
+            except Exception as e:
+                logger.warning(f"Failed to update ticket pin: {e}")
+                # Non-blocking
 
             # Update preview message to show created state
             _update_preview_to_created(
