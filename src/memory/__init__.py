@@ -1,15 +1,17 @@
-"""Zep memory module."""
+"""Memory layer for semantic search and storage."""
 
 from src.memory.zep_client import (
-    clear_channel_memory,
-    get_relevant_context,
     get_zep_client,
-    store_requirement,
+    store_epic,
+    search_epics,
+    store_thread_summary,
+    search_similar_threads,
 )
 
 __all__ = [
     "get_zep_client",
-    "get_relevant_context",
-    "store_requirement",
-    "clear_channel_memory",
+    "store_epic",
+    "search_epics",
+    "store_thread_summary",
+    "search_similar_threads",
 ]
