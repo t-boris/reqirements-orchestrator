@@ -52,51 +52,13 @@ async def _process_mention(
     thread_ts: str,
     channel: str,
 ):
-    """Async processing for @mention - runs graph."""
+    """Async processing for @mention - runs graph and dispatches to skills."""
     try:
         runner = get_runner(identity)
         result = await runner.run_with_message(text, user)
 
-        # Handle result
-        if result["action"] == "ask":
-            # Format questions as bullet list
-            questions_text = "I need a bit more information:\n"
-            for q in result["questions"]:
-                questions_text += f"• {q}\n"
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=questions_text,
-            )
-        elif result["action"] == "preview":
-            # Show preview with approval buttons
-            from src.slack.blocks import build_draft_preview_blocks
-            blocks = build_draft_preview_blocks(result["draft"])
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="Here's the ticket preview:",
-                blocks=blocks,
-            )
-        elif result["action"] == "ready":
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="Ticket approved and ready to create in Jira!",
-            )
-        elif result["action"] == "error":
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=f"Sorry, I encountered an error: {result.get('error', 'Unknown error')}",
-            )
-        else:
-            # Continue - no response needed
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="Got it! I'm collecting the requirements.",
-            )
+        # Use dispatcher for skill execution
+        await _dispatch_result(result, identity, client, runner)
 
     except Exception as e:
         logger.error(f"Error processing mention: {e}", exc_info=True)
@@ -104,6 +66,76 @@ async def _process_mention(
             channel=channel,
             thread_ts=thread_ts,
             text="Sorry, something went wrong. Please try again.",
+        )
+
+
+async def _dispatch_result(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+    runner,
+):
+    """Dispatch graph result to appropriate skill via dispatcher.
+
+    Clean separation:
+    - Runner: manages graph execution, returns DecisionResult
+    - Dispatcher: calls appropriate skill based on decision
+    - Handler: orchestrates and handles Slack-specific response
+    """
+    from src.skills.dispatcher import SkillDispatcher
+    from src.graph.nodes.decision import DecisionResult
+
+    action = result.get("action", "continue")
+
+    if action == "ask":
+        # Build DecisionResult from runner result
+        decision = DecisionResult(
+            action="ask",
+            questions=result.get("questions", []),
+            reason=result.get("reason", ""),
+            is_reask=result.get("pending_questions", {}).get("re_ask_count", 0) > 0 if result.get("pending_questions") else False,
+            reask_count=result.get("pending_questions", {}).get("re_ask_count", 0) if result.get("pending_questions") else 0,
+        )
+
+        dispatcher = SkillDispatcher(client, identity)
+        skill_result = await dispatcher.dispatch(decision, result.get("draft"))
+
+        # Store pending questions in runner state
+        if skill_result.get("success") and skill_result.get("pending_questions"):
+            await runner.store_pending_questions(skill_result["pending_questions"])
+
+    elif action == "preview":
+        draft = result.get("draft")
+        if draft:
+            decision = DecisionResult(
+                action="preview",
+                reason=result.get("reason", ""),
+            )
+
+            dispatcher = SkillDispatcher(client, identity)
+            await dispatcher.dispatch(decision, draft)
+
+    elif action == "ready":
+        # Approved - notify user
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text="Ticket approved and ready to create in Jira!",
+        )
+
+    elif action == "error":
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Sorry, I encountered an error: {result.get('error', 'Unknown error')}",
+        )
+
+    else:
+        # Continue - acknowledge receipt
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text="Got it! I'm collecting the requirements.",
         )
 
 
@@ -165,43 +197,13 @@ async def _process_thread_message(
     thread_ts: str,
     channel: str,
 ):
-    """Async processing for thread message - continues graph."""
+    """Async processing for thread message - continues graph and dispatches to skills."""
     try:
         runner = get_runner(identity)
         result = await runner.run_with_message(text, user)
 
-        # Handle result (same as _process_mention)
-        if result["action"] == "ask":
-            questions_text = "I need a bit more information:\n"
-            for q in result["questions"]:
-                questions_text += f"• {q}\n"
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=questions_text,
-            )
-        elif result["action"] == "preview":
-            from src.slack.blocks import build_draft_preview_blocks
-            blocks = build_draft_preview_blocks(result["draft"])
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="Here's the ticket preview:",
-                blocks=blocks,
-            )
-        elif result["action"] == "ready":
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text="Ticket approved and ready to create in Jira!",
-            )
-        elif result["action"] == "error":
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=f"Sorry, I encountered an error: {result.get('error', 'Unknown error')}",
-            )
-        # For "continue" - no response needed, silently processing
+        # Use dispatcher for skill execution (same as _process_mention)
+        await _dispatch_result(result, identity, client, runner)
 
     except Exception as e:
         logger.error(f"Error processing thread message: {e}", exc_info=True)
