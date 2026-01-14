@@ -443,3 +443,46 @@ class ChannelContextStore:
             rows = await cur.fetchall()
 
         return [self._row_to_context(row) for row in rows]
+
+    async def needs_pin_refresh(
+        self, team_id: str, channel_id: str, current_digest: str
+    ) -> bool:
+        """Check if pins need re-extraction based on digest.
+
+        Compares the current digest (computed from fresh pins) against
+        the stored digest. If they differ, pins have changed and need
+        re-extraction.
+
+        Args:
+            team_id: Slack team/workspace ID.
+            channel_id: Slack channel ID.
+            current_digest: Digest computed from current pins.
+
+        Returns:
+            True if digest changed or context doesn't exist.
+        """
+        ctx = await self.get_by_channel(team_id, channel_id)
+        if not ctx:
+            return True
+        return ctx.pinned_digest != current_digest
+
+    def is_stale_knowledge(self, ctx: ChannelContext, stale_months: int = 3) -> bool:
+        """Check if pinned knowledge might be stale.
+
+        Knowledge is considered stale if it was last updated more than
+        the specified number of months ago. This allows prompting users
+        to refresh their pinned channel rules.
+
+        Args:
+            ctx: Channel context.
+            stale_months: How many months before suggesting refresh.
+
+        Returns:
+            True if knowledge last updated > stale_months ago.
+        """
+        if not ctx.knowledge.source_pin_ids:
+            return False  # No knowledge to be stale
+        if not ctx.updated_at:
+            return True
+        age = datetime.now(timezone.utc) - ctx.updated_at
+        return age.days > (stale_months * 30)
