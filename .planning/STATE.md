@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-14)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** Phase 2 — Database Layer
+**Current focus:** Phase 3 — LLM Integration
 
 ## Current Position
 
-Phase: 2 of 10 (Database Layer)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-14 — Completed 02-03-PLAN.md
+Phase: 3 of 10 (LLM Integration)
+Plan: 1 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-14 — Completed 03-01-PLAN.md
 
-Progress: ██████░░░░ 20%
+Progress: ███████░░░ 23%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 1.7 min
-- Total execution time: 0.17 hours
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: ██████░░░░ 20%
 |-------|-------|-------|----------|
 | 01-foundation | 3 | 4 min | 1.3 min |
 | 02-database-layer | 3 | 6 min | 2 min |
+| 03-llm-integration | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (2 min), 02-01 (2 min), 02-02 (2 min), 02-03 (2 min)
+- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (2 min), 03-01 (2 min)
 - Trend: Steady
 
 ## Accumulated Context
@@ -53,6 +54,9 @@ Recent decisions affecting current work:
 - 02-02: setup_checkpointer() idempotent, safe to call at every startup
 - 02-03: Pydantic models as DTOs, not ORM entities - SQL in SessionStore
 - 02-03: Thread sessions keyed by (channel_id, thread_ts) with unique constraint
+- 03-01: Pydantic BaseModel for all LLM types (serializable, validated)
+- 03-01: str Enum for LLMProvider (JSON-compatible)
+- 03-01: Frozen dataclass for ProviderCapabilities (immutable config)
 
 ### Deferred Issues
 
@@ -64,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-14T14:27:04Z
-Stopped at: Completed 02-03-PLAN.md (Phase 2 complete)
+Last session: 2026-01-14T14:32:00Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
