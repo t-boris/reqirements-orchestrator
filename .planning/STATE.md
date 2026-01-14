@@ -156,6 +156,9 @@ Recent decisions affecting current work:
 - 09-04: /persona defaults to status when no args
 - 09-04: Persona switch notification only on detected, not explicit
 - 09-04: Preview card shows Resolve Issues instead of Approve when has_blocking
+- 10-01: Used venv copy instead of wheel installation for simpler Docker builds
+- 10-01: Health server runs in daemon thread to not block Socket Mode
+- 10-01: Memory limits: 256MB postgres, 512MB bot for e2-small VM
 - 10-02: Settings.py already has all production settings with sensible defaults
 - 10-02: .env.example grouped by category for easier configuration
 
