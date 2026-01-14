@@ -165,7 +165,7 @@ Plans:
 - Hybrid findings UX: inline BLOCK + "Review Notes" section
 
 Plans:
-- [ ] 09-01: Persona definitions and config model (Wave 1)
+- [x] 09-01: Persona definitions and config model (Wave 1)
 - [ ] 09-02: Topic detection + switching logic (Wave 1)
 - [ ] 09-03: Persona-specific validators + integration (Wave 2)
 - [ ] 09-04: Persona commands + UX (Wave 2)
@@ -196,5 +196,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Skills | 3/3 | Complete | 2026-01-14 |
 | 7. Jira Integration | 3/3 | Complete | 2026-01-14 |
 | 8. Global State | 5/5 | Complete | 2026-01-14 |
-| 9. Personas | 0/4 | Planned | - |
+| 9. Personas | 1/4 | In progress | - |
 | 10. Deployment | 0/3 | Not started | - |

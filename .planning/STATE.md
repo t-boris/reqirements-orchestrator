@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 9 of 10 (Personas)
-Plan: 0 of 4 in current phase
-Status: Phase planned, ready for execution
-Last activity: 2026-01-14 — Created 4 PLAN.md files for Phase 9
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-14 — Completed 09-01-PLAN.md
 
-Progress: ████████████████░░░░ 80% (code), plans ready for Phase 9
+Progress: █████████████████░░░ 85%
 
 ## Performance Metrics
 
@@ -140,6 +140,11 @@ Recent decisions affecting current work:
 - 08-05: Deferred imports for retriever to avoid circular dependencies
 - 08-05: Default team_id to 'default' if not in state - graceful fallback
 - 08-05: Non-blocking context injection - continue without context on failure
+- 09-01: PersonaName as str Enum for JSON compatibility
+- 09-01: ValidatorFinding uses Pydantic with max_length for message/fix_hint
+- 09-01: PersonaConfig as frozen dataclass (immutable, deterministic)
+- 09-01: Silent validators threshold-based (security=0.75, architect=0.60)
+- 09-01: SENSITIVE_OPS always trigger Security validator regardless of detection
 
 ### Deferred Issues
 
@@ -152,6 +157,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: Created 4 PLAN.md files for Phase 9 (Personas)
+Stopped at: Completed 09-01-PLAN.md (Persona definitions and config model)
 Resume file: None
-Next action: Execute Phase 9 with /gsd:execute-phase 9
+Next action: Execute 09-02-PLAN.md (Topic detection)
