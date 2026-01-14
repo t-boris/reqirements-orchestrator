@@ -36,6 +36,11 @@ from src.personas.switcher import (
     PersonaSwitcher,
     SwitchResult,
 )
+from src.personas.commands import (
+    PersonaCommandHandler,
+    CommandResult,
+    handle_persona_command,
+)
 
 __all__ = [
     # Types
@@ -61,4 +66,8 @@ __all__ = [
     # Switcher
     "PersonaSwitcher",
     "SwitchResult",
+    # Commands
+    "PersonaCommandHandler",
+    "CommandResult",
+    "handle_persona_command",
 ]
