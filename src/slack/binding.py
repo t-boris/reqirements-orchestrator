@@ -112,6 +112,36 @@ async def bind_epic(
         }
     )
 
+    # Post and pin epic link message
+    try:
+        from src.context.jira_linker import JiraLinker
+        from src.jira.client import JiraService
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        jira = JiraService(settings)
+
+        linker = JiraLinker(client, jira)
+
+        # Get epic summary from Jira (or use epic_key if unavailable)
+        try:
+            epic = await jira.get_issue(epic_key)
+            epic_summary = epic.summary
+        except Exception:
+            epic_summary = "Epic"
+
+        await linker.on_epic_bound(
+            channel_id=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            epic_key=epic_key,
+            epic_summary=epic_summary,
+        )
+
+        await jira.close()
+    except Exception as e:
+        logger.warning(f"Failed to create epic pin: {e}")
+        # Non-blocking - don't fail the binding
+
     # Post session card
     blocks = build_session_card(
         epic_key=epic_key,
