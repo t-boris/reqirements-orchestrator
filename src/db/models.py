@@ -2,7 +2,7 @@
 
 These are data transfer objects, not ORM models. SQL operations are in session_store.py.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -35,17 +35,53 @@ class ThreadSession(BaseModel):
     updated_at: datetime = Field(description="When the session was last updated")
 
 
-class ChannelContext(BaseModel):
-    """Channel-level accumulated context.
+class ChannelConfig(BaseModel):
+    """Layer 1: Manual channel configuration (highest priority for defaults)."""
 
-    Placeholder for Phase 8 - stores accumulated knowledge per channel
-    for proactive analyst behavior.
-    """
+    default_jira_project: Optional[str] = None
+    secondary_projects: list[str] = Field(default_factory=list)
+    trigger_rule: Literal["mention_only", "listen_all"] = "mention_only"
+    epic_binding_behavior: Literal["suggest", "require", "skip"] = "suggest"
+    config_permissions: Literal["locked", "open"] = "open"
+
+
+class ChannelKnowledge(BaseModel):
+    """Layer 2: Extracted from pinned content (highest priority for facts)."""
+
+    naming_convention: Optional[str] = None
+    definition_of_done: Optional[str] = None
+    api_format_rules: Optional[str] = None
+    custom_rules: dict[str, str] = Field(default_factory=dict)
+    source_pin_ids: list[str] = Field(default_factory=list)
+
+
+class ChannelActivitySnapshot(BaseModel):
+    """Layer 3: Live summary of channel activity."""
+
+    active_epics: list[str] = Field(default_factory=list)
+    recent_tickets: list[str] = Field(default_factory=list)  # Last 10 ticket keys
+    top_constraints: list[dict] = Field(default_factory=list)
+    unresolved_conflicts: list[dict] = Field(default_factory=list)
+    last_updated: Optional[datetime] = None
+
+
+class ChannelContext(BaseModel):
+    """Full channel context with 4 layers."""
 
     id: str = Field(description="UUID for the context record")
+    team_id: str = Field(description="Slack team/workspace ID")
     channel_id: str = Field(description="Slack channel ID (unique)")
-    context_data: dict = Field(
-        default_factory=dict,
-        description="JSON blob for flexible context storage",
-    )
-    updated_at: datetime = Field(description="When the context was last updated")
+
+    # 4 layers with priority order: knowledge > jira > config > derived
+    config: ChannelConfig = Field(default_factory=ChannelConfig)
+    knowledge: ChannelKnowledge = Field(default_factory=ChannelKnowledge)
+    activity: ChannelActivitySnapshot = Field(default_factory=ChannelActivitySnapshot)
+    derived_signals: dict = Field(default_factory=dict)  # Layer 4: TTL-based
+
+    # Version tracking
+    version: int = Field(default=1)
+    pinned_digest: Optional[str] = None  # Hash of pinned content
+    jira_sync_cursor: Optional[str] = None
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
