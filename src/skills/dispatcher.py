@@ -71,6 +71,7 @@ class SkillDispatcher:
         if decision.action == "ask":
             return await self._dispatch_ask(decision)
         elif decision.action == "preview":
+            logger.info(f"Dispatching preview with {len(decision.potential_duplicates)} duplicates")
             return await self._dispatch_preview(draft, decision.potential_duplicates)
         elif decision.action == "ready_to_create":
             return self._dispatch_ready(draft)

@@ -73,6 +73,10 @@ async def preview_ticket(
     # Compute hash for version checking
     draft_hash = compute_draft_hash(draft)
 
+    logger.info(
+        f"preview_ticket called with {len(potential_duplicates) if potential_duplicates else 0} duplicates"
+    )
+
     # Import blocks builder
     from src.slack.blocks import build_draft_preview_blocks_with_hash
 
