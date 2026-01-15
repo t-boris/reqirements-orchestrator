@@ -18,6 +18,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Decision extraction prompt for architecture decisions (Phase 14)
+DECISION_EXTRACTION_PROMPT = '''Based on this architecture review, extract the decision:
+
+Review: {review_summary}
+User's approval: {approval_message}
+
+Return a JSON object:
+{{
+    "topic": "What was being decided (1 line)",
+    "decision": "The chosen approach (1-2 sentences)"
+}}
+
+Be concise. This will be posted to the channel as a permanent record.
+'''
+
 # Persistent background event loop for all async operations
 # This ensures all async code (including the checkpointer) uses the same event loop
 _background_loop: asyncio.AbstractEventLoop | None = None
@@ -511,6 +526,93 @@ async def _dispatch_result(
                 thread_ts=identity.thread_ts,
                 text=f"I'm not sure how to help with *{ticket_key}*. Try 'create subtasks for {ticket_key}' or 'link to {ticket_key}'.",
             )
+
+    elif action == "decision_approval":
+        # Architecture decision approval (Phase 14)
+        # When user approves a review ("let's go with this"), extract and post decision to channel
+        review_context = result.get("review_context")
+
+        if not review_context:
+            # No recent review to approve
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text="No recent review to approve. I can only record a decision after giving you a review.",
+            )
+        else:
+            # Extract decision from review context using LLM
+            from src.llm import get_llm
+            from src.slack.blocks import build_decision_blocks
+
+            try:
+                # Get latest human message for context
+                approval_message = result.get("approval_message", "approved")
+
+                llm = get_llm()
+                extraction_prompt = DECISION_EXTRACTION_PROMPT.format(
+                    review_summary=review_context.get("review_summary", ""),
+                    approval_message=approval_message,
+                )
+
+                extraction_result = await llm.chat(extraction_prompt)
+
+                # Parse JSON response
+                import re
+                # Try to extract JSON from response (handles markdown code blocks)
+                json_match = re.search(r'\{[^{}]*\}', extraction_result, re.DOTALL)
+                if json_match:
+                    decision_data = json.loads(json_match.group())
+                else:
+                    decision_data = json.loads(extraction_result)
+
+                topic = decision_data.get("topic", review_context.get("topic", "Architecture decision"))
+                decision_text = decision_data.get("decision", "Approved")
+
+                # Get user who approved
+                user_id = result.get("user_id", "unknown")
+                thread_ts = review_context.get("thread_ts", identity.thread_ts)
+                channel_id = review_context.get("channel_id", identity.channel_id)
+
+                logger.info(
+                    "Architecture decision detected",
+                    extra={
+                        "channel_id": channel_id,
+                        "thread_ts": thread_ts,
+                        "topic": topic,
+                        "user_id": user_id,
+                    }
+                )
+
+                # Build and post decision blocks to CHANNEL (not thread!)
+                decision_blocks = build_decision_blocks(
+                    topic=topic,
+                    decision=decision_text,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                    user_id=user_id,
+                )
+
+                # Post to channel (no thread_ts = channel root)
+                client.chat_postMessage(
+                    channel=channel_id,
+                    blocks=decision_blocks,
+                    text=f"Architecture Decision: {topic}",  # Fallback text
+                )
+
+                # Confirm in thread
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text="Decision recorded in channel.",
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text="I understood that as approval, but couldn't extract the decision. The review is still available above.",
+                )
 
     elif action == "error":
         client.chat_postMessage(
