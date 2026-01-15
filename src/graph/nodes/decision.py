@@ -110,8 +110,8 @@ If they don't seem related, respond with empty string."""
 
         result = await llm.chat(prompt)
 
-        # Clean and validate response
-        explanation = result.content.strip().strip('"').strip()
+        # Clean and validate response (llm.chat returns str directly)
+        explanation = result.strip().strip('"').strip()
 
         # Truncate if too long
         if len(explanation) > 100:
