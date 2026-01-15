@@ -1,10 +1,17 @@
 """Custom LangGraph for PM-machine workflow.
 
 Graph structure:
-  START -> extraction -> should_continue -> validation -> decision -> (ask: END, preview: END, ready: END)
-           ^                    |
-           |                    v
-           +---- loop back ----+
+  START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
+
+  ticket_flow: extraction -> validation -> decision -> END
+  review_flow: (Plan 02)
+  discussion_flow: (Plan 03)
+
+Within ticket_flow:
+  extraction -> should_continue -> validation -> decision -> (ask: END, preview: END, ready: END)
+       ^                    |
+       |                    v
+       +---- loop back ----+
 
 Loop protection:
 - max_steps=10 enforced via step_count
@@ -16,6 +23,7 @@ from typing import Literal
 from langgraph.graph import StateGraph, END
 
 from src.schemas.state import AgentState, AgentPhase
+from src.graph.intent import intent_router_node
 from src.graph.nodes.extraction import extraction_node
 from src.graph.nodes.validation import validation_node
 from src.graph.nodes.decision import decision_node, get_decision_action
@@ -64,22 +72,62 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow"]:
+    """Route based on classified intent.
+
+    Used as conditional edge from intent_router node.
+    Routes to appropriate flow based on intent classification.
+    """
+    intent_result = state.get("intent_result", {})
+    intent = intent_result.get("intent", "TICKET")
+
+    if intent == "REVIEW":
+        logger.info("Intent router: routing to review_flow")
+        return "review_flow"
+    elif intent == "DISCUSSION":
+        logger.info("Intent router: routing to discussion_flow")
+        return "discussion_flow"
+    else:
+        logger.info("Intent router: routing to ticket_flow")
+        return "ticket_flow"
+
+
 def create_graph() -> StateGraph:
     """Create the PM-machine workflow graph.
 
     Returns uncompiled StateGraph. Call .compile() with checkpointer.
+
+    Graph structure:
+      START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
+
+      ticket_flow: extraction -> validation -> decision -> END
+      review_flow: END (placeholder - Plan 02 adds review node)
+      discussion_flow: END (placeholder - Plan 03 adds discussion node)
     """
     # Create graph with AgentState
     workflow = StateGraph(AgentState)
 
     # Add nodes
+    workflow.add_node("intent_router", intent_router_node)
     workflow.add_node("extraction", extraction_node)
     workflow.add_node("validation", validation_node)
     workflow.add_node("decision", decision_node)
 
-    # Set entry point
-    workflow.set_entry_point("extraction")
+    # Set entry point to intent_router
+    workflow.set_entry_point("intent_router")
 
+    # Route from intent_router based on classified intent
+    workflow.add_conditional_edges(
+        "intent_router",
+        route_after_intent,
+        {
+            "ticket_flow": "extraction",  # Existing ticket creation flow
+            "review_flow": END,           # Placeholder - Plan 02 adds review node
+            "discussion_flow": END,       # Placeholder - Plan 03 adds discussion node
+        }
+    )
+
+    # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
     workflow.add_conditional_edges(
         "extraction",

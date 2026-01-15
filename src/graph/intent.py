@@ -37,6 +37,15 @@ class IntentResult(BaseModel):
 # Explicit override patterns (checked BEFORE LLM)
 # These force specific intents with confidence=1.0
 
+# NEGATION PATTERNS - checked FIRST (highest priority)
+# These override positive TICKET patterns when user explicitly says "don't create ticket"
+NEGATION_PATTERNS = [
+    (r"\bdon'?t\s+create\s+(?:a\s+)?ticket\b", "pattern: don't create ticket"),
+    (r"\bno\s+ticket\b", "pattern: no ticket"),
+    (r"\bwithout\s+(?:a\s+)?(?:jira\s+)?ticket\b", "pattern: without ticket"),
+    (r"\bjust\s+(?:review|analyze|discuss)\b", "pattern: just review"),
+]
+
 TICKET_PATTERNS = [
     # Explicit ticket creation requests
     (r"\bcreate\s+(?:a\s+)?ticket\b", "pattern: create ticket"),
@@ -66,9 +75,6 @@ REVIEW_PATTERNS = [
     (r"\bpm\s+perspective\b", "pattern: pm perspective", "pm"),
     # Generic review patterns (no persona)
     (r"^/maro\s+review\b", "command: /maro review"),
-    (r"\bdon'?t\s+create\s+(?:a\s+)?ticket\b", "pattern: don't create ticket"),
-    (r"\bno\s+ticket\b", "pattern: no ticket"),
-    (r"\bjust\s+(?:review|analyze|discuss)\b", "pattern: just review"),
     (r"\banalyze\s+(?:this|the)\b", "pattern: analyze"),
     (r"\bevaluate\b", "pattern: evaluate"),
     (r"\bwhat\s+are\s+the\s+risks\b", "pattern: risks"),
@@ -94,10 +100,28 @@ def _check_patterns(message: str) -> Optional[IntentResult]:
     """Check message against explicit override patterns.
 
     Returns IntentResult if a pattern matches, None otherwise.
+
+    Pattern priority:
+    1. NEGATION patterns (e.g., "don't create ticket") -> REVIEW
+    2. TICKET patterns (e.g., "create ticket") -> TICKET
+    3. REVIEW patterns (e.g., "review as security") -> REVIEW
+    4. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
     """
     message_lower = message.lower().strip()
 
-    # Check TICKET patterns first (highest priority)
+    # Check NEGATION patterns first (highest priority)
+    # These override positive TICKET patterns when user explicitly says "don't create ticket"
+    for pattern_tuple in NEGATION_PATTERNS:
+        pattern = pattern_tuple[0]
+        reason = pattern_tuple[1]
+        if re.search(pattern, message_lower, re.IGNORECASE):
+            return IntentResult(
+                intent=IntentType.REVIEW,
+                confidence=1.0,
+                reasons=[reason],
+            )
+
+    # Check TICKET patterns
     for pattern_tuple in TICKET_PATTERNS:
         pattern = pattern_tuple[0]
         reason = pattern_tuple[1]
