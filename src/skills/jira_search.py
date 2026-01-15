@@ -77,7 +77,7 @@ async def jira_search(
     except Exception as e:
         # Log error but don't fail the workflow - duplicates are a nice-to-have
         logger.warning(
-            "Failed to search for duplicates",
+            f"Failed to search for duplicates: {e}",
             extra={
                 "error": str(e),
                 "query": query[:100],
