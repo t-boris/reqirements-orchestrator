@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 11 of 12 (Conversation History)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-15 — Completed 11-01-PLAN.md
+Last activity: 2026-01-14 — Completed 11-02-PLAN.md
 
-Progress: ██████████░░░░░░░░░░ 33% (Phase 11)
+Progress: ████████████████░░░░ 67% (Phase 11)
 
 ## v1.0 Summary
 
@@ -51,6 +51,11 @@ Progress: ██████████░░░░░░░░░░ 33% (Phas
 
 All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
+| Phase | Decision | Rationale |
+|-------|----------|-----------|
+| 11-02 | Preserve summary/buffer on disable | Allows context to persist if re-enabled later |
+| 11-02 | UPSERT for enable operation | Handles new and re-enable cases in one operation |
+
 ### Deferred Issues
 
 - Conversation history: Bot should read channel messages before @mention
@@ -62,10 +67,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-15
-Stopped at: Completed 11-01-PLAN.md (History Fetching Service)
+Last session: 2026-01-14
+Stopped at: Completed 11-02-PLAN.md (Channel Listening State)
 Resume file: None
-Next action: Execute 11-02-PLAN.md or 11-03-PLAN.md
+Next action: Execute 11-03-PLAN.md (Handler Integration)
 
 ## Phase 11 Plan Summary
 

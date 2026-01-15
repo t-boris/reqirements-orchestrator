@@ -37,7 +37,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
 Plans:
 - [x] 11-01: History Fetching Service (Wave 1) — completed 2026-01-15
-- [ ] 11-02: Channel Listening State + Commands (Wave 1)
+- [x] 11-02: Channel Listening State + Commands (Wave 1) — completed 2026-01-14
 - [ ] 11-03: Handler Integration + Rolling Summary (Wave 2)
 
 Features:
@@ -70,5 +70,5 @@ Planned features:
 | 8. Global State | v1.0 | 5/5 | Complete | 2026-01-14 |
 | 9. Personas | v1.0 | 4/4 | Complete | 2026-01-14 |
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
-| 11. Conversation History | v1.1 | 1/3 | In progress | - |
+| 11. Conversation History | v1.1 | 2/3 | In progress | - |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
