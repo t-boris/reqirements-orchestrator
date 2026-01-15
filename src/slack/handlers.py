@@ -1994,3 +1994,48 @@ async def _handle_create_anyway_async(body, client: WebClient, action):
             text=f"Ticket preview for: {draft.title or 'Untitled'}",
             blocks=preview_blocks,
         )
+
+
+def handle_add_to_duplicate(ack, body, client: WebClient, action):
+    """Synchronous wrapper for add to duplicate action.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_add_to_duplicate_async(body, client, action))
+
+
+async def _handle_add_to_duplicate_async(body, client: WebClient, action):
+    """Handle 'Add as info' button click on duplicate display.
+
+    Stub implementation for MVP - full functionality in Phase 11.3.
+    Posts message explaining this feature will be available soon.
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash:issue_key
+    button_value = action.get("value", "")
+    parts = button_value.split(":")
+
+    # Last part is issue_key
+    issue_key = parts[-1] if parts else "the ticket"
+
+    logger.info(
+        "Add to duplicate requested (stub)",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "issue_key": issue_key,
+            "user_id": user_id,
+        }
+    )
+
+    # Post stub message
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Adding info to existing tickets will be available soon. "
+             f"For now, you can *Link to {issue_key}* or *Create a new ticket*.",
+    )
