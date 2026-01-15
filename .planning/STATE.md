@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 11.2 of 12 (Progress & Status Indicators)
-Plan: 0 of 4 in current phase (PLANNED)
-Status: Phase 11.2 planned, ready for execution
-Last activity: 2026-01-15 — Created 11.2 PLAN.md files
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-15 — Completed 11.2-01-PLAN.md
 
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 11.2)
+Progress: █████░░░░░░░░░░░░░░░ 25% (Phase 11.2)
 
 ## v1.0 Summary
 
@@ -57,6 +57,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 11-02 | UPSERT for enable operation | Handles new and re-enable cases in one operation |
 | 11-03 | Pre-graph context injection | Context available to all nodes without individual fetches |
 | 11-03 | Buffer 30, keep 20 raw, compress 10+ | Balance token cost vs context quality |
+| 11.2-01 | 4s threshold for status | No spam for fast ops, visible feedback for slow ones |
+| 11.2-01 | Dual client support | asyncio.to_thread() for sync client in async context |
 
 ### Roadmap Evolution
 
@@ -74,9 +76,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Created 11.2 PLAN.md files (Progress & Status Indicators)
+Stopped at: Completed 11.2-01-PLAN.md (ProgressTracker Core)
 Resume file: None
-Next action: Execute Phase 11.2
+Next action: Execute 11.2-02-PLAN.md (Skill-Specific Status)
 
 ## Phase 11 Summary (Complete)
 

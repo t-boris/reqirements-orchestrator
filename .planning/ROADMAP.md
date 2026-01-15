@@ -75,7 +75,7 @@ Plans:
 **Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 11.2-01: ProgressTracker Core (Wave 1) — timing thresholds, basic status
+- [x] 11.2-01: ProgressTracker Core (Wave 1) — completed 2026-01-15
 - [ ] 11.2-02: Skill-Specific Status (Wave 2) — operation names, long operation handling
 - [ ] 11.2-03: Draft State Badges (Wave 2) — lifecycle indicators in preview
 - [ ] 11.2-04: Error Handling Protocol (Wave 3) — retry visibility, action buttons
@@ -113,5 +113,5 @@ Planned features:
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
 | 11. Conversation History | v1.1 | 3/3 | Complete | 2026-01-14 |
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 11.2 Progress & Status Indicators | v1.1 | 0/4 | Planned | - |
+| 11.2 Progress & Status Indicators | v1.1 | 1/4 | In progress | - |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
