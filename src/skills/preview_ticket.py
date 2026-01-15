@@ -82,8 +82,8 @@ async def preview_ticket(
         evidence_permalinks=evidence_permalinks,
     )
 
-    # Post preview
-    response = await client.chat_postMessage(
+    # Post preview (WebClient is sync, not async)
+    response = client.chat_postMessage(
         channel=channel,
         thread_ts=thread_ts,
         text=f"Here's the ticket preview for: {draft.title or 'Untitled'}",
