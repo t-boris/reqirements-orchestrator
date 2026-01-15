@@ -57,6 +57,11 @@ def _format_updated_time(iso_timestamp: str) -> str:
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# Exceptions
+# =============================================================================
+
+
 class JiraAPIError(Exception):
     """Exception for Jira API errors."""
 
@@ -72,6 +77,11 @@ class JiraAPIError(Exception):
         super().__init__(f"Jira API error {status_code}: {message}")
 
 
+# =============================================================================
+# Jira Service
+# =============================================================================
+
+
 class JiraService:
     """Service for interacting with Jira API.
 
@@ -80,7 +90,16 @@ class JiraService:
     - Dry-run mode for testing without API calls
     - Structured logging for all operations
     - Environment-aware configuration
+
+    Sections:
+    - Core: init, session, close, _request
+    - CRUD: create_issue, search_issues, get_issue
+    - Operations (Phase 16): update_issue, add_comment, create_subtask
     """
+
+    # -------------------------------------------------------------------------
+    # Core: Initialization and HTTP request handling
+    # -------------------------------------------------------------------------
 
     def __init__(self, settings: Settings):
         """Initialize JiraService.
@@ -283,6 +302,10 @@ class JiraService:
             status_code=0,
             message=f"Request failed after {max_retries + 1} attempts: {last_error}",
         )
+
+    # -------------------------------------------------------------------------
+    # CRUD: Create, Read, Search operations
+    # -------------------------------------------------------------------------
 
     async def create_issue(
         self,
@@ -490,6 +513,10 @@ class JiraService:
         except Exception as e:
             logger.error(f"Failed to parse Jira response: {e}, response={response}")
             raise
+
+    # -------------------------------------------------------------------------
+    # Operations (Phase 16): Update, comment, subtask
+    # -------------------------------------------------------------------------
 
     async def update_issue(
         self,
