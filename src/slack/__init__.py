@@ -8,6 +8,7 @@ from src.slack.history import (
     format_messages_for_context,
 )
 from src.slack.router import register_handlers
+from src.slack.summarizer import should_update_summary, update_rolling_summary
 
 __all__ = [
     "get_slack_app",
@@ -18,4 +19,6 @@ __all__ = [
     "fetch_thread_history",
     "format_messages_for_context",
     "ConversationContext",
+    "should_update_summary",
+    "update_rolling_summary",
 ]
