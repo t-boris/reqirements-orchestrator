@@ -9,6 +9,7 @@ from src.slack.handlers import (
     handle_message,
     handle_jira_command,
     handle_help_command,
+    handle_maro_command,
     handle_epic_selection_sync,
     handle_merge_context,
     handle_ignore_dedup,
@@ -37,6 +38,7 @@ def register_handlers(app: App) -> None:
     # Slash commands
     app.command("/jira")(handle_jira_command)
     app.command("/help")(handle_help_command)
+    app.command("/maro")(handle_maro_command)
 
     # Action handlers for Epic selection buttons
     # Pattern matches: select_epic_PROJ-123, select_epic_new, etc.
@@ -58,4 +60,4 @@ def register_handlers(app: App) -> None:
     # View submission handlers
     app.view("edit_draft_modal")(handle_edit_draft_submit)
 
-    logger.info("Slack handlers registered: app_mention, message, /jira, /help, select_epic_*, dedup, contradiction, draft_approval, edit_modal")
+    logger.info("Slack handlers registered: app_mention, message, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal")
