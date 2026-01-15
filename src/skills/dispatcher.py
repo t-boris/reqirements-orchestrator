@@ -5,7 +5,7 @@ Decision node returns action (ask/preview/ready_to_create), dispatcher
 handles the execution of that action via skills.
 """
 import logging
-from typing import Any
+from typing import Any, Optional, TYPE_CHECKING
 
 from slack_sdk.web import WebClient
 from slack_sdk.web.async_client import AsyncWebClient
@@ -13,6 +13,9 @@ from slack_sdk.web.async_client import AsyncWebClient
 from src.slack.session import SessionIdentity
 from src.schemas.draft import TicketDraft
 from src.graph.nodes.decision import DecisionResult
+
+if TYPE_CHECKING:
+    from src.slack.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +35,18 @@ class SkillDispatcher:
         self,
         client: WebClient | AsyncWebClient,
         identity: SessionIdentity,
+        tracker: Optional["ProgressTracker"] = None,
     ):
         """Initialize dispatcher with Slack client and session identity.
 
         Args:
             client: Slack WebClient or AsyncWebClient for posting messages
             identity: Session identity (team:channel:thread_ts)
+            tracker: Optional ProgressTracker for status updates
         """
         self.client = client
         self.identity = identity
+        self.tracker = tracker
 
     async def dispatch(
         self,
@@ -67,6 +73,15 @@ class SkillDispatcher:
                 "reason": decision.reason,
             },
         )
+
+        # Update progress tracker with skill-specific status
+        if self.tracker:
+            if decision.action == "preview":
+                await self.tracker.set_operation("preparing_preview")
+            elif decision.action == "ask":
+                await self.tracker.set_operation("processing")
+            elif decision.action == "ready_to_create":
+                await self.tracker.set_operation("creating_ticket")
 
         if decision.action == "ask":
             return await self._dispatch_ask(decision)

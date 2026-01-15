@@ -3,12 +3,17 @@
 import asyncio
 import logging
 import threading
+from typing import TYPE_CHECKING
+
 from slack_bolt import Ack, BoltContext
 from slack_bolt.kwargs_injection.args import Args
 from slack_sdk.web import WebClient
 
 from src.slack.session import SessionIdentity
 from src.graph.runner import get_runner
+
+if TYPE_CHECKING:
+    from src.slack.progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -192,15 +197,8 @@ async def _process_mention(
 
         result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
-        # Update status before dispatching
-        action = result.get("action", "continue")
-        if action == "preview":
-            await tracker.update("Preparing preview...")
-        elif action == "ask":
-            await tracker.update("Formulating questions...")
-
-        # Use dispatcher for skill execution
-        await _dispatch_result(result, identity, client, runner)
+        # Use dispatcher for skill execution (dispatcher handles status updates)
+        await _dispatch_result(result, identity, client, runner, tracker)
 
     except Exception as e:
         logger.error(f"Error processing mention: {e}", exc_info=True)
@@ -268,6 +266,7 @@ async def _dispatch_result(
     identity: SessionIdentity,
     client: WebClient,
     runner,
+    tracker: "ProgressTracker | None" = None,
 ):
     """Dispatch graph result to appropriate skill via dispatcher.
 
@@ -275,6 +274,13 @@ async def _dispatch_result(
     - Runner: manages graph execution, returns DecisionResult
     - Dispatcher: calls appropriate skill based on decision
     - Handler: orchestrates and handles Slack-specific response
+
+    Args:
+        result: Graph result dict with action and data
+        identity: Session identity
+        client: Slack WebClient
+        runner: Graph runner instance
+        tracker: Optional ProgressTracker for status updates
     """
     from src.skills.dispatcher import SkillDispatcher
     from src.graph.nodes.decision import DecisionResult
@@ -299,7 +305,7 @@ async def _dispatch_result(
             reask_count=result.get("pending_questions", {}).get("re_ask_count", 0) if result.get("pending_questions") else 0,
         )
 
-        dispatcher = SkillDispatcher(client, identity)
+        dispatcher = SkillDispatcher(client, identity, tracker)
         skill_result = await dispatcher.dispatch(decision, result.get("draft"))
 
         # Store pending questions in runner state
@@ -315,7 +321,7 @@ async def _dispatch_result(
                 potential_duplicates=result.get("potential_duplicates", []),
             )
 
-            dispatcher = SkillDispatcher(client, identity)
+            dispatcher = SkillDispatcher(client, identity, tracker)
             await dispatcher.dispatch(decision, draft)
 
     elif action == "ready":
@@ -504,15 +510,8 @@ async def _process_thread_message(
 
         result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
-        # Update status before dispatching
-        action = result.get("action", "continue")
-        if action == "preview":
-            await tracker.update("Preparing preview...")
-        elif action == "ask":
-            await tracker.update("Formulating questions...")
-
-        # Use dispatcher for skill execution (same as _process_mention)
-        await _dispatch_result(result, identity, client, runner)
+        # Use dispatcher for skill execution (dispatcher handles status updates)
+        await _dispatch_result(result, identity, client, runner, tracker)
 
     except Exception as e:
         logger.error(f"Error processing thread message: {e}", exc_info=True)
