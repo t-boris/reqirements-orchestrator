@@ -112,6 +112,8 @@ class GraphRunner:
             # Question tracking (Phase 6)
             "pending_questions": None,
             "question_history": [],
+            # First message tracking
+            "is_first_message": True,
         }
 
     async def _run_until_interrupt(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -152,7 +154,17 @@ class GraphRunner:
         decision_result = state.get("decision_result", {})
         action = decision_result.get("action", "continue")
 
-        if action == "ask":
+        if action == "intro":
+            return {
+                "action": "intro",
+                "message": decision_result.get("message", ""),
+            }
+        elif action == "nudge":
+            return {
+                "action": "nudge",
+                "message": decision_result.get("message", ""),
+            }
+        elif action == "ask":
             return {
                 "action": "ask",
                 "questions": decision_result.get("questions", []),

@@ -129,8 +129,6 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
         response_text = await llm.chat(prompt)
         response_text = response_text.strip()
 
-        logger.info(f"LLM response (first 500 chars): {response_text[:500]}")
-
         # Parse JSON response
         # Handle markdown code blocks
         if response_text.startswith("```"):
@@ -138,8 +136,6 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
             if response_text.startswith("json"):
                 response_text = response_text[4:]
             response_text = response_text.strip()
-
-        logger.info(f"Parsed response: {response_text[:200]}")
 
         extracted = json.loads(response_text) if response_text and response_text != "{}" else {}
 
@@ -213,5 +209,30 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
         # Clear pending questions if all answered
         if answer_match_result.all_answered:
             state_update["pending_questions"] = None
+
+    # Handle empty draft - return intro or nudge instead of looping
+    is_first_message = state.get("is_first_message", True)
+    if draft.is_empty():
+        if is_first_message:
+            # First message intro
+            state_update["decision_result"] = {
+                "action": "intro",
+                "message": (
+                    "Hi! I'm MARO. I help turn ideas, bugs, and features into Jira tickets.\n"
+                    "Tell me what you want to build or fix, and I'll help structure it."
+                ),
+            }
+        else:
+            # Nudge for subsequent messages
+            state_update["decision_result"] = {
+                "action": "nudge",
+                "message": (
+                    "I didn't catch any concrete requirements yet.\n"
+                    "Can you describe the feature, bug, or change you'd like to work on?"
+                ),
+            }
+        # Mark first message as done
+        state_update["is_first_message"] = False
+        logger.info(f"Draft empty, returning {'intro' if is_first_message else 'nudge'}")
 
     return state_update

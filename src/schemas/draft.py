@@ -67,6 +67,20 @@ class TicketDraft(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     version: int = 1  # Increment on each update for race detection
 
+    def is_empty(self) -> bool:
+        """Check if draft has no meaningful content yet."""
+        return not (
+            self.title.strip()
+            or self.problem.strip()
+            or self.proposed_solution.strip()
+            or self.acceptance_criteria
+            or self.constraints
+        )
+
+    def has_content(self) -> bool:
+        """Check if draft has any content (opposite of is_empty)."""
+        return not self.is_empty()
+
     def is_preview_ready(self) -> bool:
         """Check if draft has minimum viable content for PREVIEW.
 

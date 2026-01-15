@@ -162,7 +162,15 @@ async def _dispatch_result(
 
     action = result.get("action", "continue")
 
-    if action == "ask":
+    if action == "intro" or action == "nudge":
+        # Empty draft - send intro or nudge message
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=result.get("message", "Tell me what you'd like to work on."),
+        )
+
+    elif action == "ask":
         # Build DecisionResult from runner result
         decision = DecisionResult(
             action="ask",

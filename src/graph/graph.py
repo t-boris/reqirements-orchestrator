@@ -28,13 +28,19 @@ def should_continue(state: AgentState) -> Literal["extraction", "validation", "e
     """Router: decide next step based on state.
 
     Routes to:
+    - "end" if intro/nudge set (empty draft response)
     - "end" if max_steps reached (loop protection)
     - "validation" if draft exists and has content
     - "extraction" to continue collecting
     """
     step_count = state.get("step_count", 0)
     draft = state.get("draft")
-    phase = state.get("phase", AgentPhase.COLLECTING)
+    decision_result = state.get("decision_result", {})
+
+    # If extraction set intro/nudge, stop and send response
+    if decision_result.get("action") in ["intro", "nudge"]:
+        logger.info(f"Draft empty, sending {decision_result.get('action')}")
+        return "end"
 
     # Loop protection
     if step_count >= MAX_STEPS:

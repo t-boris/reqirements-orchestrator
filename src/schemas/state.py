@@ -88,6 +88,9 @@ class AgentState(TypedDict):
     pending_questions: Optional[dict[str, Any]]  # Current unanswered QuestionSet (as dict for TypedDict compat)
     question_history: list[dict[str, Any]]  # Past QuestionSets for re-ask tracking
 
+    # First message tracking (for intro/nudge behavior)
+    is_first_message: bool  # True on first interaction, False after
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
