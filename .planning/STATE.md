@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 15 of 16 (Review Conversation Flow)
-Plan: 0 of 1 in current phase
-Status: Planned, ready for execution
-Last activity: 2026-01-15 — Created 15-01-PLAN.md
+Plan: 1 of 1 in current phase
+Status: Phase complete
+Last activity: 2026-01-15 — Completed 15-01-PLAN.md
 
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 15)
+Progress: ████████████████████ 100% (Phase 15)
 
 ## v1.0 Summary
 
@@ -89,6 +89,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 14-01 | DECISION_APPROVAL patterns only with review_context | Prevents false positives in other contexts |
 | 14-01 | review_context stored then cleared after posting | State lifecycle: review -> approval -> clear |
 | 14-01 | Decision posted to channel not thread | Thread = thinking process, Channel = decisions |
+| 15-01 | Continuation patterns only with has_review_context | Prevents "IdP: Okta" misclassification without review |
+| 15-01 | NOT_CONTINUATION patterns checked first | "create new ticket" overrides continuation detection |
+| 15-01 | LLM fallback uses context-aware prompt | Biases toward REVIEW_CONTINUATION with review context |
+| 15-01 | review_context kept after continuation | Enables DECISION_APPROVAL after user answers questions |
 
 ### Roadmap Evolution
 
@@ -114,9 +118,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Created Phase 15 and 16 context
+Stopped at: Completed Phase 15 plan 01 (Review Conversation Flow)
 Resume file: None
-Next action: Plan Phase 15 (Review Conversation Flow)
+Next action: Plan Phase 16 (Ticket Operations)
 
 ## Phase 11 Summary (Complete)
 
@@ -244,3 +248,19 @@ Wave 3:
 - Decisions posted to channel (not thread) as permanent record
 
 **Core Principle:** Thread = thinking process (architecture discussions), Channel = approved decisions (permanent record).
+
+## Phase 15 Summary (Complete)
+
+**1 plan — COMPLETE:**
+
+- 15-01: Review Conversation Flow [DONE]
+
+**Phase 15 accomplishments:**
+- REVIEW_CONTINUATION intent type with 5 answer patterns
+- Context-aware intent classification (has_review_context parameter)
+- review_continuation_node synthesizes answers and asks for approval
+- NOT_CONTINUATION patterns prevent false positives
+- Handler posts continuation with persona prefix
+- 24 tests verify pattern matching for common answer formats
+
+**Core Principle:** When user replies with answers after a review, continue the conversation instead of misclassifying as ticket creation.
