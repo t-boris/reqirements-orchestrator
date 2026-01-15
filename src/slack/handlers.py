@@ -1768,6 +1768,7 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro enable - Enable listening in channel
     - /maro disable - Disable listening in channel
     - /maro status - Show current listening state
+    - /maro help - Interactive help with examples
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -1790,14 +1791,11 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
         await _handle_maro_disable(team_id, channel, say)
     elif text == "status":
         await _handle_maro_status(team_id, channel, say)
+    elif text == "help":
+        await _handle_maro_help(channel, client)
     else:
-        say(
-            text="*Usage:* `/maro enable | disable | status`\n\n"
-                 "- `enable` - Start listening in this channel to maintain context\n"
-                 "- `disable` - Stop listening in this channel\n"
-                 "- `status` - Show current listening state",
-            channel=channel,
-        )
+        # Default to help for empty or unknown
+        await _handle_maro_help(channel, client)
 
 
 async def _handle_maro_enable(
@@ -1925,6 +1923,19 @@ async def _handle_maro_status(
             text="Sorry, I couldn't retrieve the listening status. Please try again.",
             channel=channel_id,
         )
+
+
+async def _handle_maro_help(channel: str, client: WebClient):
+    """Handle /maro help - show interactive help with example buttons."""
+    from src.slack.onboarding import get_help_blocks
+
+    blocks = get_help_blocks()
+
+    client.chat_postMessage(
+        channel=channel,
+        text="What MARO can do",
+        blocks=blocks,
+    )
 
 
 # --- Hint Button Action Handlers (Phase 12 Onboarding) ---
