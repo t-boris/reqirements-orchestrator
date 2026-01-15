@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import threading
 from slack_bolt import Ack, BoltContext
 from slack_bolt.kwargs_injection.args import Args
 from slack_sdk.web import WebClient
@@ -12,25 +12,39 @@ from src.graph.runner import get_runner
 
 logger = logging.getLogger(__name__)
 
-# Background executor for async tasks
-_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="async_handler_")
+# Persistent background event loop for all async operations
+# This ensures all async code (including the checkpointer) uses the same event loop
+_background_loop: asyncio.AbstractEventLoop | None = None
+_loop_thread: threading.Thread | None = None
+
+
+def _get_background_loop() -> asyncio.AbstractEventLoop:
+    """Get or create the persistent background event loop."""
+    global _background_loop, _loop_thread
+
+    if _background_loop is None or not _background_loop.is_running():
+        _background_loop = asyncio.new_event_loop()
+
+        def run_loop():
+            asyncio.set_event_loop(_background_loop)
+            _background_loop.run_forever()
+
+        _loop_thread = threading.Thread(target=run_loop, daemon=True, name="async_event_loop")
+        _loop_thread.start()
+        logger.info("Started persistent background event loop")
+
+    return _background_loop
 
 
 def _run_async(coro):
     """Run an async coroutine from a sync context.
 
-    Creates a new event loop in a background thread to run the coroutine.
-    This is needed because Slack Bolt handlers run in threads without event loops.
+    Submits the coroutine to the persistent background event loop.
+    This ensures all async code uses the same event loop, which is required
+    for the AsyncPostgresSaver checkpointer locks to work correctly.
     """
-    def run_in_thread():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    _executor.submit(run_in_thread)
+    loop = _get_background_loop()
+    asyncio.run_coroutine_threadsafe(coro, loop)
 
 
 def handle_app_mention(event: dict, say, client: WebClient, context: BoltContext):
