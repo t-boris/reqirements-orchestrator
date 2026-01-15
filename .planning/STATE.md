@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 17 of 17 (Review Flow Fixes)
-Plan: 2 of 2 in current phase
+Plan: 3 of 3 in current phase
 Status: Phase complete
-Last activity: 2026-01-15 — Completed 17-02-PLAN.md
+Last activity: 2026-01-15 — Completed 17-03-PLAN.md (Channel Join Welcome Message Debug)
 
 Progress: ████████████████████ 100% (Phase 17)
 
@@ -101,6 +101,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 17-02 | Block new review when active review exists | Prevents overwriting review_context (Bug #3) |
 | 17-02 | Reference pattern detection | Detect "the architecture", "this review", "from above" for thread context |
 | 17-02 | Thread context extraction for references | Include bot messages and long user messages when reference detected |
+| 17-03 | Enhanced logging for channel join debugging | Log event receipt, user check, post status, pin status at each step |
+| 17-03 | Slack app setup documentation | Document event subscriptions and scopes with troubleshooting guide |
 
 ### Roadmap Evolution
 
@@ -126,9 +128,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed Phase 17 plan 01 (Intent Classification Bug Fixes)
+Stopped at: Completed Phase 17 plan 03 (Channel Join Welcome Message Debug)
 Resume file: None
-Next action: Phase 17 complete - Intent classification fixes ready
+Next action: Phase 17 complete - All review flow fixes and debugging complete
 
 ## Phase 11 Summary (Complete)
 
@@ -292,9 +294,11 @@ Wave 3:
 
 ## Phase 17 Summary (Complete)
 
-**1 plan — COMPLETE:**
+**3 plans — ALL COMPLETE:**
 
 - 17-01: Intent Classification Bug Fixes [DONE]
+- 17-02: Review Flow Fixes [DONE]
+- 17-03: Channel Join Welcome Message Debug [DONE]
 
 **Phase 17 accomplishments:**
 - Added 3 new REVIEW_CONTINUATION patterns for user deferring to bot
@@ -303,6 +307,12 @@ Wave 3:
 - NOT_CONTINUATION pattern for "propose new/different architecture"
 - Fixed Bug #1: "I like architecture" now correctly classified as REVIEW_CONTINUATION
 - Fixed Bug #3: "propose default, how you see it" now correctly classified as REVIEW_CONTINUATION
-- 13 new tests added (35 total tests passing)
+- ReviewState enum with 4 lifecycle states (ACTIVE, CONTINUATION, APPROVED, POSTED)
+- Block new review when active review exists (prevents context overwriting)
+- Reference detection for thread context extraction
+- Enhanced logging in member_joined_channel handler for debugging
+- Comprehensive Slack app setup documentation
+- 3 unit tests for channel join handler
+- Total: 38 tests added across all Phase 17 plans
 
-**Core Principle:** User responses during review conversations should be recognized as continuations, not misclassified as new requests. User deferring to bot ("propose default") indicates engagement, not a new topic.
+**Core Principle:** User responses during review conversations should be recognized as continuations, not misclassified as new requests. Review context has lifecycle states to prevent loss. Debugging tools help diagnose production issues.
