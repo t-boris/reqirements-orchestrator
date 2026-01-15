@@ -193,8 +193,8 @@ async def ask_user(
             ]
         })
 
-    # Post message
-    result = await slack_client.chat_postMessage(
+    # Post message (WebClient is sync, not async)
+    result = slack_client.chat_postMessage(
         channel=channel,
         thread_ts=thread_ts,
         blocks=blocks,
