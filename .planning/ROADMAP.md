@@ -78,14 +78,14 @@ Plans:
 - [x] 11.2-01: ProgressTracker Core (Wave 1) — completed 2026-01-15
 - [x] 11.2-02: Skill-Specific Status (Wave 2) — completed 2026-01-15
 - [x] 11.2-03: Draft State Badges (Wave 2) — completed 2026-01-15
-- [ ] 11.2-04: Error Handling Protocol (Wave 3) — retry visibility, action buttons
+- [x] 11.2-04: Error Handling Protocol (Wave 3) — completed 2026-01-15
 
 **Features (from 11.2-CONTEXT.md):**
-- [ ] Timing-based status (only show if >4s)
-- [ ] Skill-specific status messages
-- [ ] Long operation handling (>15s bottleneck info)
-- [ ] Draft state badges (Draft/Approved/Created)
-- [ ] Error retry visibility with action buttons
+- [x] Timing-based status (only show if >4s)
+- [x] Skill-specific status messages
+- [x] Long operation handling (>15s bottleneck info)
+- [x] Draft state badges (Draft/Approved/Created)
+- [x] Error retry visibility with action buttons
 
 ### Phase 12: Onboarding UX
 **Goal**: Improve first-time user experience and command discoverability
@@ -113,5 +113,5 @@ Planned features:
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
 | 11. Conversation History | v1.1 | 3/3 | Complete | 2026-01-14 |
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 11.2 Progress & Status Indicators | v1.1 | 3/4 | In progress | - |
+| 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
