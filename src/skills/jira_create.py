@@ -12,7 +12,7 @@ All-or-nothing: Jira failure doesn't advance session state.
 """
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from psycopg import AsyncConnection
 
@@ -108,6 +108,7 @@ async def jira_create(
     conn: AsyncConnection,
     settings: Optional[Settings] = None,
     slack_permalink: Optional[str] = None,
+    progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
 ) -> JiraCreateResult:
     """Create a Jira issue with strict approval validation.
 
@@ -126,6 +127,8 @@ async def jira_create(
         conn: Database connection for approval/operation stores
         settings: Optional settings override (defaults to get_settings())
         slack_permalink: Optional Slack thread permalink to include in description
+        progress_callback: Optional async callback for retry visibility.
+            Called as progress_callback(error_type, attempt, max_attempts)
 
     Returns:
         JiraCreateResult with success/error status and Jira details
@@ -271,7 +274,7 @@ async def jira_create(
             },
         )
 
-        issue = await jira_service.create_issue(request)
+        issue = await jira_service.create_issue(request, progress_callback=progress_callback)
         logger.info(f"Jira issue object created: key={issue.key}, url={issue.url}")
 
         # --- Step 5: Record success in audit trail ---

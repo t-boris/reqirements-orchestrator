@@ -950,14 +950,17 @@ def handle_approve_draft(ack, body, client: WebClient, action):
 async def _handle_approve_draft_async(body, client: WebClient, action):
     """Handle 'Approve & Create' button click on draft preview.
 
-    Implements version-checked approval:
+    Implements version-checked approval with progress visibility:
     1. Check in-memory dedup (handles Slack retries)
     2. Parse session_id:draft_hash from button value
     3. Check if already approved in DB (duplicate click)
     4. Compute current draft hash and compare
     5. Record approval if valid
-    6. Update preview message to show approved state
+    6. Show progress during Jira creation (with retry visibility)
+    7. Update preview message to show approved state
     """
+    from src.slack.progress import ProgressTracker
+
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
     message_ts = body["message"]["ts"]  # Preview message to update
@@ -1048,6 +1051,9 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
         )
         return
 
+    # Create progress tracker for Jira creation status
+    tracker = ProgressTracker(client, channel, thread_ts)
+
     # Check for existing approval and record new one
     async with get_connection() as conn:
         approval_store = ApprovalStore(conn)
@@ -1102,7 +1108,7 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             )
             return
 
-        # Approval recorded - now create Jira ticket
+        # Approval recorded - now create Jira ticket with progress visibility
         settings = get_settings()
         jira_service = JiraService(settings)
 
@@ -1116,6 +1122,13 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             logger.warning(f"Failed to get Slack permalink: {e}")
 
         try:
+            # Start progress tracking
+            await tracker.start("Creating ticket...")
+
+            # Create callback for Jira retry visibility
+            async def on_jira_retry(error_type: str, attempt: int, max_attempts: int):
+                await tracker.set_error(error_type, "Jira", attempt, max_attempts)
+
             create_result = await jira_create(
                 session_id=session_id,
                 draft=draft,
@@ -1124,9 +1137,16 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 conn=conn,
                 settings=settings,
                 slack_permalink=slack_permalink,
+                progress_callback=on_jira_retry,
             )
+        except Exception as e:
+            # Unexpected error during creation
+            await tracker.set_failure("Jira", str(e))
+            await _post_error_actions(client, channel, thread_ts, session_id, button_hash, str(e))
+            return
         finally:
             await jira_service.close()
+            await tracker.complete()
 
     # Handle Jira creation result
     if create_result.success:
@@ -1182,13 +1202,74 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 text=f"Ticket created: <{create_result.jira_url}|{create_result.jira_key}>",
             )
     else:
-        # Creation failed - don't advance state, notify error
-        # Update preview to show error state (keep buttons for retry)
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text=f"Could not create ticket: {create_result.error}",
-        )
+        # Creation failed after retries - show error with action buttons
+        await _post_error_actions(client, channel, thread_ts, session_id, button_hash, create_result.error)
+
+
+async def _post_error_actions(
+    client: WebClient,
+    channel: str,
+    thread_ts: str,
+    session_id: str,
+    draft_hash: str,
+    error_msg: str,
+) -> None:
+    """Post error message with action buttons after Jira creation failure.
+
+    Shows factual error message and offers user action options:
+    - Retry: Try creating the ticket again
+    - Skip Jira: Continue without Jira (session still has draft)
+    - Cancel: Abort the operation
+
+    Args:
+        client: Slack WebClient for posting message
+        channel: Channel ID to post in
+        thread_ts: Thread timestamp
+        session_id: Session ID for button values
+        draft_hash: Draft hash for button values
+        error_msg: Error message to display
+    """
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f":x: Could not create ticket: {error_msg}",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Retry", "emoji": True},
+                    "style": "primary",
+                    "action_id": "retry_jira_create",
+                    "value": f"{session_id}:{draft_hash}",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Skip Jira", "emoji": True},
+                    "action_id": "skip_jira_create",
+                    "value": f"{session_id}:{draft_hash}",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel", "emoji": True},
+                    "style": "danger",
+                    "action_id": "cancel_jira_create",
+                    "value": f"{session_id}:{draft_hash}",
+                },
+            ],
+        },
+    ]
+
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Could not create ticket: {error_msg}",
+        blocks=blocks,
+    )
 
 
 def _update_preview_to_created(
