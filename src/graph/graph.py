@@ -4,8 +4,8 @@ Graph structure:
   START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
 
   ticket_flow: extraction -> should_continue -> validation -> decision -> END
-  review_flow: review -> END
-  discussion_flow: discussion -> END
+  review_flow: review -> END (persona-based architectural analysis)
+  discussion_flow: discussion -> END (brief conversational response)
 
 Intent classification:
   - TICKET: User wants Jira ticket created
@@ -147,13 +147,16 @@ def create_graph() -> StateGraph:
         route_after_intent,
         {
             "ticket_flow": "extraction",  # Existing ticket creation flow
-            "review_flow": END,           # Placeholder - Plan 02 adds review node
+            "review_flow": "review",      # Review generates persona-based analysis
             "discussion_flow": "discussion",  # Discussion generates brief response
         }
     )
 
     # Discussion goes directly to END after generating response
     workflow.add_edge("discussion", END)
+
+    # Review goes directly to END after generating analysis
+    workflow.add_edge("review", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
