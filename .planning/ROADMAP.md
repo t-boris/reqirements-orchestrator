@@ -226,9 +226,9 @@ Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
 **Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 18-01: Split handlers.py (3193 lines → 8 modules) (Wave 1)
-- [ ] 18-02: Split blocks.py and jira/client.py (Wave 1)
-- [ ] 18-03: ISSUES.md + Docstrings (Wave 2)
+- [x] 18-01: Split handlers.py (3193 lines → 10 modules) (Wave 1) — completed 2026-01-15
+- [x] 18-02: Split blocks.py and jira/client.py (Wave 1) — completed 2026-01-15
+- [x] 18-03: ISSUES.md + Docstrings (Wave 2) — completed 2026-01-15
 - [ ] 18-04: Clean Code Audit (naming, function length, DRY) (Wave 3)
 
 **Problem solved:**
@@ -268,4 +268,4 @@ Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-l
 | 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 15. Review Conversation Flow | v1.1 | 0/1 | Planned | - |
 | 16. Ticket Operations | v1.1 | 0/1 | Planned | - |
-| 18. Clean Code | v1.1 | 0/4 | Planned | - |
+| 18. Clean Code | v1.1 | 3/4 | In Progress | - |
