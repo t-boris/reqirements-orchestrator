@@ -674,6 +674,46 @@ def build_duplicate_blocks(
     return blocks
 
 
+def build_welcome_blocks() -> list[dict]:
+    """Build pinned quick-reference message for channel join.
+
+    This is installation instructions, not a greeting.
+    Posted once when MARO joins a channel.
+    """
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*MARO is active in this channel*\n\nI help turn discussions into Jira tickets and keep context in sync."
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Try:*\n• `@MARO Create a Jira story for...`\n• `@MARO What do you think about this?`\n• `@MARO Review this as security`"
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Commands:*\n• `/maro status` – show channel settings\n• `/maro help` – quick help\n• `/persona pm | architect | security`"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "I stay silent unless you mention me."
+                }
+            ]
+        }
+    ]
+
+
 def build_linked_confirmation_blocks(
     issue_key: str,
     issue_url: str,
