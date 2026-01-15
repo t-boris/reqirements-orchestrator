@@ -547,6 +547,42 @@ def build_persona_indicator(
     return f"{emoji} *{names.get(persona, 'PM')}:*"
 
 
+def build_hint_with_buttons(message: str, buttons: list[dict]) -> list[dict]:
+    """Build hint message with action buttons.
+
+    Used for contextual hints that offer choices (e.g., persona selection).
+
+    Args:
+        message: Hint text to display
+        buttons: List of {text, value} dicts for button options
+
+    Returns:
+        Slack blocks with message and action buttons
+    """
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": message
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": btn["text"], "emoji": True},
+                    "action_id": f"hint_select_{btn['value']}",
+                    "value": btn["value"],
+                }
+                for btn in buttons
+            ]
+        }
+    ]
+    return blocks
+
+
 def build_duplicate_blocks(
     potential_duplicates: list[dict],
     session_id: str,

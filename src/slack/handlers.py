@@ -287,13 +287,29 @@ async def _dispatch_result(
 
     action = result.get("action", "continue")
 
-    if action == "intro" or action == "nudge":
-        # Empty draft - send intro or nudge message
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            text=result.get("message", "Tell me what you'd like to work on."),
-        )
+    if action == "intro" or action == "nudge" or action == "hint":
+        # Empty draft - send contextual hint message
+        message = result.get("message", "Tell me what you'd like to work on.")
+        show_buttons = result.get("show_buttons", False)
+        buttons = result.get("buttons", [])
+
+        if show_buttons and buttons:
+            # Build message with buttons
+            from src.slack.blocks import build_hint_with_buttons
+            blocks = build_hint_with_buttons(message, buttons)
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=message,
+                blocks=blocks,
+            )
+        else:
+            # Simple text message
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=message,
+            )
 
     elif action == "ask":
         # Build DecisionResult from runner result
