@@ -28,6 +28,8 @@ from src.slack.handlers import (
     handle_modal_create_anyway,
     # Hint button handling (Phase 12 Onboarding)
     handle_hint_selection,
+    # Help example button handling (Phase 12 Onboarding)
+    handle_help_example,
     # Channel join handling (Phase 12)
     handle_member_joined_channel,
 )
@@ -86,4 +88,7 @@ def register_handlers(app: App) -> None:
     # Hint button actions (Phase 12 onboarding)
     app.action(re.compile(r"^hint_select_.*"))(handle_hint_selection)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select")
+    # Help example buttons (Phase 12 onboarding)
+    app.action(re.compile(r"^help_example_.*"))(handle_help_example)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example")

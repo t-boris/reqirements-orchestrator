@@ -2012,6 +2012,53 @@ async def _handle_hint_selection_async(body, client: WebClient, action):
             )
 
 
+# --- Help Example Button Handlers (Phase 12 Onboarding) ---
+
+def handle_help_example(ack, body, client: WebClient, action):
+    """Handle help example button click.
+
+    Shows example conversation for the selected feature.
+    """
+    ack()
+
+    channel = body["channel"]["id"]
+    user_id = body["user"]["id"]
+
+    # Get example key from action_id (help_example_create_ticket -> create_ticket)
+    action_id = action.get("action_id", "")
+    example_key = action_id.replace("help_example_", "")
+
+    logger.info(
+        "Help example requested",
+        extra={
+            "channel": channel,
+            "example_key": example_key,
+            "user_id": user_id,
+        }
+    )
+
+    from src.slack.onboarding import get_example_blocks
+
+    blocks = get_example_blocks(example_key)
+
+    # Post example as ephemeral message (only visible to user who clicked)
+    try:
+        client.chat_postEphemeral(
+            channel=channel,
+            user=user_id,
+            text=f"Example: {example_key.replace('_', ' ').title()}",
+            blocks=blocks,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to post ephemeral example: {e}")
+        # Fall back to regular message
+        client.chat_postMessage(
+            channel=channel,
+            text=f"Example: {example_key.replace('_', ' ').title()}",
+            blocks=blocks,
+        )
+
+
 # --- Duplicate Action Handlers ---
 
 def handle_link_duplicate(ack, body, client: WebClient, action):
