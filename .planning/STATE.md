@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 13.1 of 14 (Ticket Reference Handling)
-Plan: 0 of ? in current phase
-Status: Context gathered, ready for planning
-Last activity: 2026-01-15 — Created Phase 13.1 and Phase 14 context
+Plan: 1 of 1 in current phase
+Status: Phase complete
+Last activity: 2026-01-15 — Completed 13.1-01-PLAN.md
 
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 13.1)
+Progress: █████████████████████ 100% (Phase 13.1)
 
 ## v1.0 Summary
 
@@ -83,6 +83,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 13-04 | Scope gate with 3 options | Decision only / Full review / Custom - user controls ticket content |
 | 13-04 | Modal-to-flow via context message | Scope submission posts message that triggers normal intent flow |
 | 13-04 | Tests use direct module loading | importlib avoids circular imports in test suite |
+| 13.1-01 | TICKET_ACTION patterns checked after NEGATION | "create subtasks for SCRUM-XXX" should not match "create ticket" |
+| 13.1-01 | Ticket key normalized to uppercase | Jira uses uppercase keys; ensures consistency |
+| 13.1-01 | Skip duplicate detection for bound threads | Prevents unnecessary Jira API calls |
 
 ### Roadmap Evolution
 
@@ -108,9 +111,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Created Phase 13.1 and Phase 14 context
+Stopped at: Completed Phase 13.1
 Resume file: None
-Next action: Plan Phase 13.1 (Ticket Reference Handling)
+Next action: Plan Phase 14 (Architecture Decision Records)
 
 ## Phase 11 Summary (Complete)
 
@@ -208,3 +211,16 @@ Wave 3:
 - Discussion flow for casual interactions (brief responses, no threads)
 - Review-to-ticket transition with scope selection modal
 - 53 regression tests for intent classification patterns
+
+## Phase 13.1 Summary (Complete)
+
+**1 plan — COMPLETE:**
+
+- 13.1-01: Ticket Reference Handling [DONE]
+
+**Phase 13.1 accomplishments:**
+- TICKET_ACTION intent type with ticket_key and action_type fields
+- 5 TICKET_ACTION patterns: create_subtask, add_subtask, update, add_comment, link
+- Thread binding check at start of decision_node (skips duplicate detection if bound)
+- Fixed re-linking bug: same-ticket actions proceed with action, don't re-link
+- 21 new tests for TICKET_ACTION patterns (74 total tests pass)
