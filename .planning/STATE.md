@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 13 of 13 (Intent Router)
-Plan: 3 of 4 in current phase
+Plan: 3 of 4 in current phase (13-01, 13-02, 13-03 complete)
 Status: In progress
-Last activity: 2026-01-15 — Completed 13-03-PLAN.md
+Last activity: 2026-01-15 — Completed 13-02-PLAN.md (Review Flow)
 
 Progress: ███████████████░░░░░ 75% (Phase 13)
 
@@ -76,6 +76,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 12-03 | Default /maro to help | Unknown subcommands show interactive help |
 | 13-01 | Negation patterns highest priority | "don't create ticket" must override "create ticket" pattern |
 | 13-01 | Pattern-matching-first | Check explicit patterns before LLM call for performance |
+| 13-02 | Persona selection priority | intent_result.persona_hint > state.persona > architect default |
+| 13-02 | Review response format | *{Persona} Review:* prefix for clarity |
 | 13-03 | Discussion responds inline | No new thread creation for casual interactions |
 | 13-03 | 1-2 sentence response limit | DISCUSSION_PROMPT enforces brevity |
 
@@ -101,9 +103,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 13-03-PLAN.md (DiscussionFlow)
+Stopped at: Completed 13-02-PLAN.md (ReviewFlow)
 Resume file: None
-Next action: Execute 13-04-PLAN.md (Review -> Ticket Transition + Tests)
+Next action: Execute 13-04-PLAN.md (Scope Gate + Tests)
 
 ## Phase 11 Summary (Complete)
 
