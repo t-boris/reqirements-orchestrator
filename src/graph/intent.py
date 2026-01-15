@@ -96,10 +96,11 @@ DISCUSSION_PATTERNS = [
 ]
 
 
-def _check_patterns(message: str) -> Optional[IntentResult]:
-    """Check message against explicit override patterns.
+def classify_intent_patterns(message: str) -> Optional[IntentResult]:
+    """Classify intent using explicit patterns only.
 
-    Returns IntentResult if a pattern matches, None otherwise.
+    Returns IntentResult if explicit pattern found, None if LLM needed.
+    This function is pure/deterministic for testing.
 
     Pattern priority:
     1. NEGATION patterns (e.g., "don't create ticket") -> REVIEW
@@ -238,7 +239,7 @@ async def classify_intent(message: str) -> IntentResult:
         IntentResult with intent type, confidence, and reasons
     """
     # Pattern matching first (no LLM call)
-    pattern_result = _check_patterns(message)
+    pattern_result = classify_intent_patterns(message)
     if pattern_result is not None:
         logger.info(
             f"Intent classified by pattern: {pattern_result.intent.value}, "
