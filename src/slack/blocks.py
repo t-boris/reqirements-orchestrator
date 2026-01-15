@@ -3,6 +3,24 @@
 from typing import Any, Optional
 
 
+def get_draft_state_badge(state: str) -> str:
+    """Return emoji badge for draft state.
+
+    Args:
+        state: Draft lifecycle state (draft, approved, created, linked)
+
+    Returns:
+        Formatted badge string with emoji and state name
+    """
+    badges = {
+        "draft": "🟡 Draft",
+        "approved": "🟢 Approved",
+        "created": "✅ Created",
+        "linked": "🔗 Linked",
+    }
+    return badges.get(state, "🟡 Draft")
+
+
 def build_session_card(
     epic_key: Optional[str],
     epic_summary: Optional[str],
@@ -167,6 +185,7 @@ def build_draft_preview_blocks_with_hash(
     evidence_permalinks: Optional[list[dict]] = None,
     potential_duplicates: Optional[list[dict]] = None,
     validator_findings: Optional[dict[str, Any]] = None,
+    draft_state: str = "draft",
 ) -> list[dict]:
     """Build Slack blocks for ticket draft preview with version hash.
 
@@ -182,6 +201,7 @@ def build_draft_preview_blocks_with_hash(
         evidence_permalinks: Optional list of {permalink, user, preview} dicts
         potential_duplicates: Optional list of {key, summary, url} dicts for duplicate display
         validator_findings: Optional ValidationFindings dict with findings
+        draft_state: Lifecycle state of draft (draft, approved, created, linked)
     """
     from src.schemas.draft import TicketDraft
 
@@ -198,6 +218,15 @@ def build_draft_preview_blocks_with_hash(
             "text": ":ticket: Draft Preview" if not has_blocking else ":warning: Draft Preview - Issues Found",
             "emoji": True
         }
+    })
+
+    # State badge (Phase 11.2)
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": get_draft_state_badge(draft_state)
+        }]
     })
 
     # If blocking findings, show them first (prominently)
