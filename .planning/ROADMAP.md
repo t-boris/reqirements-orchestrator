@@ -114,8 +114,8 @@ Plans:
 
 Plans:
 - [x] 13-01: IntentRouter Node (Wave 1) — classify intent, extend state, wire into graph — completed 2026-01-15
-- [ ] 13-02: ReviewFlow Implementation (Wave 2) — persona-based analysis, no Jira
-- [ ] 13-03: DiscussionFlow + Guardrails (Wave 2) — light responses, graph docs
+- [x] 13-02: ReviewFlow Implementation (Wave 2) — persona-based analysis, no Jira — completed 2026-01-15
+- [x] 13-03: DiscussionFlow + Guardrails (Wave 2) — light responses, graph docs — completed 2026-01-15
 - [ ] 13-04: Review → Ticket Transition + Tests (Wave 3) — scope gate, regression tests
 
 **Problem solved:**
@@ -162,4 +162,4 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
-| 13. Intent Router | v1.1 | 1/4 | In progress | - |
+| 13. Intent Router | v1.1 | 3/4 | In progress | - |
