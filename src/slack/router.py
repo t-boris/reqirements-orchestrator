@@ -26,6 +26,8 @@ from src.slack.handlers import (
     handle_show_more_duplicates,
     handle_modal_link_duplicate,
     handle_modal_create_anyway,
+    # Channel join handling (Phase 12)
+    handle_member_joined_channel,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,9 @@ def register_handlers(app: App) -> None:
 
     # Messages - only processes in-thread replies
     app.event("message")(handle_message)
+
+    # Channel join - post pinned quick-reference (Phase 12)
+    app.event("member_joined_channel")(handle_member_joined_channel)
 
     # Slash commands
     app.command("/jira")(handle_jira_command)
@@ -76,4 +81,4 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^modal_link_duplicate_.*"))(handle_modal_link_duplicate)
     app.action("modal_create_anyway")(handle_modal_create_anyway)
 
-    logger.info("Slack handlers registered: app_mention, message, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions")
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions")
