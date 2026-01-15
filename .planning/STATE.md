@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 11.2 of 12 (Progress & Status Indicators)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-15 — Completed 11.2-03-PLAN.md
+Last activity: 2026-01-15 — Completed 11.2-02-PLAN.md
 
-Progress: ██████████░░░░░░░░░░ 50% (Phase 11.2)
+Progress: ███████████████░░░░░ 75% (Phase 11.2)
 
 ## v1.0 Summary
 
@@ -59,6 +59,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 11-03 | Buffer 30, keep 20 raw, compress 10+ | Balance token cost vs context quality |
 | 11.2-01 | 4s threshold for status | No spam for fast ops, visible feedback for slow ones |
 | 11.2-01 | Dual client support | asyncio.to_thread() for sync client in async context |
+| 11.2-02 | Predefined STATUS_MESSAGES | Consistent user-facing text for operations |
+| 11.2-02 | Bottleneck identification | Pattern match on status to identify slow component |
+| 11.2-02 | 15s/30s threshold updates | Limited updates to prevent status spam |
 
 ### Roadmap Evolution
 
@@ -76,9 +79,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 11.2-03-PLAN.md (Draft State Badges)
+Stopped at: Completed 11.2-02-PLAN.md (Skill-Specific Status)
 Resume file: None
-Next action: Execute 11.2-02-PLAN.md (Skill-Specific Status) or 11.2-04-PLAN.md (Error Handling)
+Next action: Execute 11.2-04-PLAN.md (Error Handling Protocol)
 
 ## Phase 11 Summary (Complete)
 
