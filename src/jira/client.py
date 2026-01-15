@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import aiohttp
@@ -12,6 +13,45 @@ from src.jira.types import (
     JiraIssue,
     PRIORITY_MAP,
 )
+
+
+def _format_updated_time(iso_timestamp: str) -> str:
+    """Format Jira updated timestamp to relative time string.
+
+    Args:
+        iso_timestamp: ISO 8601 timestamp from Jira (e.g., "2026-01-15T10:30:00.000+0000")
+
+    Returns:
+        Human-readable relative time (e.g., "3 days ago", "2 hours ago")
+    """
+    try:
+        # Parse ISO timestamp - Jira uses format like "2026-01-15T10:30:00.000+0000"
+        # Remove milliseconds and normalize timezone
+        ts = iso_timestamp.replace("+0000", "+00:00").replace("Z", "+00:00")
+        if "." in ts:
+            # Remove milliseconds
+            ts = ts.split(".")[0] + ts[-6:] if "+" in ts else ts.split(".")[0]
+
+        updated_dt = datetime.fromisoformat(ts.replace("+00:00", "")).replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - updated_dt
+
+        if delta.days > 30:
+            months = delta.days // 30
+            return f"{months} month{'s' if months > 1 else ''} ago"
+        elif delta.days > 0:
+            return f"{delta.days} day{'s' if delta.days > 1 else ''} ago"
+        elif delta.seconds >= 3600:
+            hours = delta.seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif delta.seconds >= 60:
+            minutes = delta.seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        else:
+            return "just now"
+    except Exception:
+        # Return raw timestamp if parsing fails
+        return iso_timestamp[:10] if len(iso_timestamp) > 10 else iso_timestamp
 
 
 logger = logging.getLogger(__name__)
@@ -303,7 +343,7 @@ class JiraService:
         payload = {
             "jql": jql,
             "maxResults": limit,
-            "fields": ["key", "summary", "status", "assignee"],
+            "fields": ["key", "summary", "status", "assignee", "updated"],
         }
 
         response = await self._request("POST", "/rest/api/3/search/jql", json_data=payload)
@@ -314,6 +354,8 @@ class JiraService:
             assignee = fields.get("assignee")
             assignee_name = assignee.get("displayName") if assignee else None
             status = fields.get("status", {}).get("name", "Unknown")
+            updated_raw = fields.get("updated", "")
+            updated = _format_updated_time(updated_raw) if updated_raw else None
 
             issues.append(
                 JiraIssue(
@@ -321,6 +363,7 @@ class JiraService:
                     summary=fields.get("summary", ""),
                     status=status,
                     assignee=assignee_name,
+                    updated=updated,
                     base_url=self.base_url,
                 )
             )
