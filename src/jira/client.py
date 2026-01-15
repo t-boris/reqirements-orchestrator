@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import aiohttp
 
@@ -117,6 +117,7 @@ class JiraService:
         endpoint: str,
         json_data: Optional[dict[str, Any]] = None,
         params: Optional[dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> dict[str, Any]:
         """Make HTTP request with retry and exponential backoff.
 
@@ -125,6 +126,9 @@ class JiraService:
             endpoint: API endpoint (e.g., /rest/api/3/issue)
             json_data: JSON body for POST/PUT requests
             params: Query parameters
+            progress_callback: Optional async callback for retry visibility.
+                Called as progress_callback(error_type, attempt, max_attempts)
+                where error_type is one of: "timeout", "api_error", "rate_limit"
 
         Returns:
             Response JSON as dict
@@ -186,8 +190,34 @@ class JiraService:
                             response_body=response_body,
                         )
 
+                    # 429: Rate limited - notify and retry
+                    if response.status == 429:
+                        if progress_callback:
+                            await progress_callback("rate_limit", attempt + 1, max_retries + 1)
+                        last_error = JiraAPIError(
+                            status_code=response.status,
+                            message="Rate limited",
+                            response_body=response_body,
+                        )
+                        if attempt < max_retries:
+                            # Use Retry-After header if present, else exponential backoff
+                            retry_after = response.headers.get("Retry-After")
+                            backoff = int(retry_after) if retry_after else 2 ** attempt * 5
+                            logger.warning(
+                                f"Jira API rate limited, retrying in {backoff}s",
+                                extra={
+                                    "attempt": attempt + 1,
+                                    "backoff_seconds": backoff,
+                                },
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+                        raise last_error
+
                     # 5xx: Server error - retry with backoff
                     if response.status >= 500:
+                        if progress_callback:
+                            await progress_callback("api_error", attempt + 1, max_retries + 1)
                         last_error = JiraAPIError(
                             status_code=response.status,
                             message=response.reason or "Server error",
@@ -207,9 +237,30 @@ class JiraService:
                             continue
                         raise last_error
 
+            except asyncio.TimeoutError:
+                duration_ms = (time.monotonic() - start_time) * 1000
+                last_error = asyncio.TimeoutError(f"Request timed out after {duration_ms}ms")
+                if progress_callback:
+                    await progress_callback("timeout", attempt + 1, max_retries + 1)
+                logger.warning(
+                    "Jira API timeout",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "attempt": attempt + 1,
+                        "duration_ms": round(duration_ms, 2),
+                    },
+                )
+                if attempt < max_retries:
+                    backoff = 5 * (attempt + 1)  # Linear backoff for timeouts: 5s, 10s, 15s
+                    await asyncio.sleep(backoff)
+                    continue
+
             except aiohttp.ClientError as e:
                 duration_ms = (time.monotonic() - start_time) * 1000
                 last_error = e
+                if progress_callback:
+                    await progress_callback("api_error", attempt + 1, max_retries + 1)
                 logger.warning(
                     f"Jira API connection error: {e}",
                     extra={
@@ -233,11 +284,17 @@ class JiraService:
             message=f"Request failed after {max_retries + 1} attempts: {last_error}",
         )
 
-    async def create_issue(self, request: JiraCreateRequest) -> JiraIssue:
+    async def create_issue(
+        self,
+        request: JiraCreateRequest,
+        progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    ) -> JiraIssue:
         """Create a Jira issue.
 
         Args:
             request: Issue creation request with all required fields.
+            progress_callback: Optional async callback for retry visibility.
+                Called as progress_callback(error_type, attempt, max_attempts)
 
         Returns:
             Created JiraIssue with key, summary, status, and URL.
@@ -304,8 +361,13 @@ class JiraService:
                 base_url=self.base_url,
             )
 
-        # Make API call
-        response = await self._request("POST", "/rest/api/3/issue", json_data=payload)
+        # Make API call with progress callback for retry visibility
+        response = await self._request(
+            "POST",
+            "/rest/api/3/issue",
+            json_data=payload,
+            progress_callback=progress_callback,
+        )
         logger.info(f"Create issue response: {response}")
 
         # Fetch full issue to get all fields
