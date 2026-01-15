@@ -33,6 +33,31 @@ Return a JSON object:
 Be concise. This will be posted to the channel as a permanent record.
 '''
 
+# Content extraction prompts for ticket operations (Phase 16)
+UPDATE_EXTRACTION_PROMPT = '''Based on this conversation, extract what should be added to the Jira ticket description.
+
+User request: {user_message}
+
+Review context (if available):
+{review_context}
+
+Return the content to add to the ticket description.
+Be concise and structured. Use Jira formatting:
+- h3. for headers
+- * for bullet points
+- Keep it factual and actionable
+'''
+
+COMMENT_EXTRACTION_PROMPT = '''Extract a comment to add to the Jira ticket based on this request.
+
+User request: {user_message}
+
+Review context (if available):
+{review_context}
+
+Return a concise comment summarizing the key points. 1-3 sentences.
+'''
+
 # Persistent background event loop for all async operations
 # This ensures all async code (including the checkpointer) uses the same event loop
 _background_loop: asyncio.AbstractEventLoop | None = None
@@ -275,6 +300,48 @@ async def _check_persona_switch(
     except Exception as e:
         # Non-blocking - log and continue
         logger.warning(f"Persona switch check failed: {e}")
+
+
+async def _extract_update_content(
+    result: dict,
+    client: WebClient,
+    channel_id: str,
+    thread_ts: str,
+) -> str:
+    """Extract update content from conversation context using LLM."""
+    from src.llm import get_llm
+
+    # Get user message and review context
+    user_message = result.get("user_message", "")
+    review_context = result.get("review_context", {})
+    review_summary = review_context.get("review_summary", "") if review_context else ""
+
+    llm = get_llm()
+    prompt = UPDATE_EXTRACTION_PROMPT.format(
+        user_message=user_message,
+        review_context=review_summary or "No review context available",
+    )
+
+    return await llm.chat(prompt)
+
+
+async def _extract_comment_content(
+    result: dict,
+) -> str:
+    """Extract comment content from conversation context using LLM."""
+    from src.llm import get_llm
+
+    user_message = result.get("user_message", "")
+    review_context = result.get("review_context", {})
+    review_summary = review_context.get("review_summary", "") if review_context else ""
+
+    llm = get_llm()
+    prompt = COMMENT_EXTRACTION_PROMPT.format(
+        user_message=user_message,
+        review_context=review_summary or "No review context available",
+    )
+
+    return await llm.chat(prompt)
 
 
 async def _dispatch_result(
@@ -541,13 +608,68 @@ async def _dispatch_result(
                 text=f"Linked this thread to *{ticket_key}*.",
             )
 
-        elif action_type in ("update", "add_comment"):
-            # Stub response for future implementation
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                text=f"I can help with {action_type.replace('_', ' ')} for *{ticket_key}*. (Full implementation coming soon)",
-            )
+        elif action_type == "update":
+            # Update ticket with extracted content
+            from src.jira.client import JiraService
+            from src.config.settings import get_settings
+
+            try:
+                settings = get_settings()
+                jira_service = JiraService(settings)
+
+                # Extract update content
+                update_content = await _extract_update_content(
+                    result, client, identity.channel_id, identity.thread_ts
+                )
+
+                # Update the ticket (append to description)
+                await jira_service.update_issue(
+                    ticket_key,
+                    {"description": update_content},
+                )
+                await jira_service.close()
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Updated *{ticket_key}* with the latest context.",
+                )
+            except Exception as e:
+                logger.error(f"Failed to update ticket: {e}", exc_info=True)
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Failed to update *{ticket_key}*: {str(e)}",
+                )
+
+        elif action_type == "add_comment":
+            # Add comment to ticket
+            from src.jira.client import JiraService
+            from src.config.settings import get_settings
+
+            try:
+                settings = get_settings()
+                jira_service = JiraService(settings)
+
+                # Extract comment content
+                comment_content = await _extract_comment_content(result)
+
+                # Add comment to the ticket
+                await jira_service.add_comment(ticket_key, comment_content)
+                await jira_service.close()
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Added comment to *{ticket_key}*.",
+                )
+            except Exception as e:
+                logger.error(f"Failed to add comment: {e}", exc_info=True)
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Failed to add comment to *{ticket_key}*: {str(e)}",
+                )
 
         else:
             # Unknown action type
