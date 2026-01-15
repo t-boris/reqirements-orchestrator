@@ -32,6 +32,7 @@ async def decision_approval_node(state: AgentState) -> dict:
         - user_id: Who approved
     """
     from langchain_core.messages import HumanMessage
+    from src.schemas.state import ReviewState
 
     # Get latest human message (the approval)
     messages = state.get("messages", [])
@@ -45,21 +46,26 @@ async def decision_approval_node(state: AgentState) -> dict:
     # Get review context
     review_context = state.get("review_context")
 
+    if review_context:
+        # Mark as POSTED before clearing (helps debugging)
+        review_context["state"] = ReviewState.POSTED
+
     logger.info(
         "Decision approval node processing",
         extra={
             "has_review_context": review_context is not None,
+            "review_state": review_context.get("state") if review_context else None,
             "approval_preview": approval_message[:50] if approval_message else "",
         }
     )
 
-    # Clear review_context after processing (state update)
+    # Return with POSTED state, handler will post to channel, then we clear
     return {
         "decision_result": {
             "action": "decision_approval",
-            "review_context": review_context,
+            "review_context": review_context,  # Now has state=POSTED
             "approval_message": approval_message,
             "user_id": state.get("user_id", "unknown"),
         },
-        "review_context": None,  # Clear after processing
+        "review_context": None,  # Clear after processing (already marked as POSTED)
     }
