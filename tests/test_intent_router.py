@@ -177,3 +177,85 @@ class TestPatternMatchReasons:
         assert result is not None
         assert len(result.reasons) > 0
         assert "pattern:" in result.reasons[0] or "command:" in result.reasons[0]
+
+
+class TestTicketActionPatterns:
+    """Test TICKET_ACTION pattern detection for existing ticket references."""
+
+    @pytest.mark.parametrize("message,expected_ticket,expected_action", [
+        # Subtask creation
+        ("create subtasks for SCRUM-1111", "SCRUM-1111", "create_subtask"),
+        ("create subtask for PROJ-123", "PROJ-123", "create_subtask"),
+        ("add subtasks to SCRUM-999", "SCRUM-999", "create_subtask"),
+        ("add subtask to ABC-1", "ABC-1", "create_subtask"),
+        # Update ticket
+        ("update SCRUM-1111", "SCRUM-1111", "update"),
+        ("update PROJ-456", "PROJ-456", "update"),
+        # Add comment
+        ("add comment to PROJ-456", "PROJ-456", "add_comment"),
+        ("add a comment to SCRUM-123", "SCRUM-123", "add_comment"),
+        # Link to ticket
+        ("link this to SCRUM-1111", "SCRUM-1111", "link"),
+        ("link to PROJ-789", "PROJ-789", "link"),
+    ])
+    def test_ticket_action_patterns(self, message, expected_ticket, expected_action):
+        """TICKET_ACTION patterns should extract ticket key and action type."""
+        result = classify_intent_patterns(message)
+        assert result is not None, f"Expected pattern match for: {message}"
+        assert result.intent == IntentType.TICKET_ACTION
+        assert result.ticket_key == expected_ticket
+        assert result.action_type == expected_action
+        assert result.confidence == 1.0
+
+
+class TestTicketActionPriority:
+    """Test that TICKET_ACTION takes priority over TICKET."""
+
+    def test_create_subtasks_not_create_ticket(self):
+        """'create subtasks for SCRUM-XXX' should NOT match 'create' -> TICKET."""
+        result = classify_intent_patterns("create subtasks for SCRUM-1111")
+        assert result is not None
+        # Should be TICKET_ACTION, not TICKET
+        assert result.intent == IntentType.TICKET_ACTION
+        assert result.intent != IntentType.TICKET
+        assert result.ticket_key == "SCRUM-1111"
+        assert result.action_type == "create_subtask"
+
+    def test_plain_create_is_ticket(self):
+        """Plain 'create ticket' should still be TICKET."""
+        result = classify_intent_patterns("create a ticket for this")
+        assert result is not None
+        assert result.intent == IntentType.TICKET
+
+
+class TestTicketKeyFormats:
+    """Test various ticket key formats."""
+
+    @pytest.mark.parametrize("message,expected_ticket", [
+        # Different project prefixes
+        ("create subtasks for SCRUM-1111", "SCRUM-1111"),
+        ("create subtasks for PROJ-123", "PROJ-123"),
+        ("create subtasks for ABC-1", "ABC-1"),
+        ("create subtasks for XYZ-99999", "XYZ-99999"),
+        # Case normalization (input should be normalized to uppercase)
+        ("create subtasks for scrum-1111", "SCRUM-1111"),
+        ("create subtasks for Scrum-123", "SCRUM-123"),
+    ])
+    def test_ticket_key_extraction(self, message, expected_ticket):
+        """Ticket keys should be extracted and normalized to uppercase."""
+        result = classify_intent_patterns(message)
+        assert result is not None
+        assert result.ticket_key == expected_ticket
+
+    @pytest.mark.parametrize("message", [
+        # Invalid formats should NOT match TICKET_ACTION patterns
+        "create subtasks for 1111",  # No project prefix
+        "create subtasks for SCRUM",  # No ticket number
+        "create subtasks for SCRUM-",  # Incomplete
+    ])
+    def test_invalid_ticket_formats_no_match(self, message):
+        """Invalid ticket formats should not match TICKET_ACTION patterns."""
+        result = classify_intent_patterns(message)
+        # Should either be None or match a different pattern (like TICKET for "create")
+        if result is not None:
+            assert result.intent != IntentType.TICKET_ACTION
