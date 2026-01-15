@@ -3,9 +3,19 @@
 Graph structure:
   START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
 
-  ticket_flow: extraction -> validation -> decision -> END
-  review_flow: (Plan 02)
-  discussion_flow: (Plan 03)
+  ticket_flow: extraction -> should_continue -> validation -> decision -> END
+  review_flow: review -> END
+  discussion_flow: discussion -> END
+
+Intent classification:
+  - TICKET: User wants Jira ticket created
+  - REVIEW: User wants analysis/review without Jira
+  - DISCUSSION: Casual conversation, single response
+
+Guardrails:
+  - ReviewFlow and DiscussionFlow do NOT access Jira
+  - jira_search, jira_create blocked at code level
+  - Override only via explicit mode switch to TicketFlow
 
 Within ticket_flow:
   extraction -> should_continue -> validation -> decision -> (ask: END, preview: END, ready: END)
@@ -27,6 +37,9 @@ from src.graph.intent import intent_router_node
 from src.graph.nodes.extraction import extraction_node
 from src.graph.nodes.validation import validation_node
 from src.graph.nodes.decision import decision_node, get_decision_action
+from src.graph.nodes.discussion import discussion_node
+from src.graph.nodes.review import review_node
+
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
@@ -101,8 +114,18 @@ def create_graph() -> StateGraph:
       START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
 
       ticket_flow: extraction -> validation -> decision -> END
-      review_flow: END (placeholder - Plan 02 adds review node)
-      discussion_flow: END (placeholder - Plan 03 adds discussion node)
+      review_flow: review -> END
+      discussion_flow: discussion -> END
+
+    Intent classification:
+      - TICKET: User wants Jira ticket created
+      - REVIEW: User wants analysis/review without Jira
+      - DISCUSSION: Casual conversation, single response
+
+    Guardrails:
+      - ReviewFlow and DiscussionFlow do NOT access Jira
+      - jira_search, jira_create blocked at code level
+      - Override only via explicit mode switch to TicketFlow
     """
     # Create graph with AgentState
     workflow = StateGraph(AgentState)
@@ -112,6 +135,8 @@ def create_graph() -> StateGraph:
     workflow.add_node("extraction", extraction_node)
     workflow.add_node("validation", validation_node)
     workflow.add_node("decision", decision_node)
+    workflow.add_node("discussion", discussion_node)
+    workflow.add_node("review", review_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -123,9 +148,12 @@ def create_graph() -> StateGraph:
         {
             "ticket_flow": "extraction",  # Existing ticket creation flow
             "review_flow": END,           # Placeholder - Plan 02 adds review node
-            "discussion_flow": END,       # Placeholder - Plan 03 adds discussion node
+            "discussion_flow": "discussion",  # Discussion generates brief response
         }
     )
+
+    # Discussion goes directly to END after generating response
+    workflow.add_edge("discussion", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
