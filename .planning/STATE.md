@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 11 of 12 (Conversation History)
-Plan: 3 of 3 in current phase (COMPLETE)
-Status: Phase 11 complete
-Last activity: 2026-01-15 — Completed 11-03-PLAN.md
+Phase: 11.1 of 12 (Jira Duplicate Handling)
+Plan: 1 of 1 in current phase (COMPLETE)
+Status: Phase 11.1 complete, ready for Phase 11.2
+Last activity: 2026-01-15 — Executed 11.1-01-PLAN.md
 
-Progress: ████████████████████ 100% (Phase 11)
+Progress: ████████████████████ 100% (Phase 11.1)
 
 ## v1.0 Summary
 
@@ -58,6 +58,11 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 11-03 | Pre-graph context injection | Context available to all nodes without individual fetches |
 | 11-03 | Buffer 30, keep 20 raw, compress 10+ | Balance token cost vs context quality |
 
+### Roadmap Evolution
+
+- Phase 11.1 inserted after Phase 11: Jira Duplicate Handling (URGENT) — Allow users to link to existing tickets when duplicates found
+- Phase 11.2 inserted after Phase 11: Progress & Status Indicators — Visual feedback during bot processing
+
 ### Deferred Issues
 
 - Onboarding: Better intro when bot joins channel
@@ -69,9 +74,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 11-03-PLAN.md (Handler Integration)
+Stopped at: Completed 11.1-01-PLAN.md (Jira Duplicate Handling)
 Resume file: None
-Next action: Phase 12 (Onboarding UX) or v1.1 milestone wrap-up
+Next action: Plan Phase 11.2 (Progress & Status Indicators)
 
 ## Phase 11 Summary (Complete)
 
@@ -89,3 +94,17 @@ Wave 2:
 - Listening-enabled channels maintain rolling context
 - Non-listening channels fetch on-demand at @mention
 - Context injected into AgentState before graph runs
+
+## Phase 11.1 Summary (Complete)
+
+**1 plan — COMPLETE:**
+
+- 11.1-01: Jira Duplicate Handling Interactive UX [DONE]
+
+**Phase 11.1 accomplishments:**
+- Enhanced duplicate metadata (status, assignee, updated time)
+- LLM match explanation for best duplicate
+- Interactive UX: Link to this, Add as info, Create new, Show more
+- ThreadBindingStore for thread → Jira ticket bindings (in-memory MVP)
+- Show More modal for viewing all duplicate matches
+- Confirmation display after linking to existing ticket

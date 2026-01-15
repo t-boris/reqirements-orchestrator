@@ -46,9 +46,53 @@ Features:
 - [x] `/maro enable|disable|status` commands for opt-in listening
 - [x] Rolling summary for enabled channels (two-layer context)
 
+### Phase 11.1: Jira Duplicate Handling (INSERTED)
+**Goal**: When duplicates found, allow user to link to existing ticket instead of creating new
+**Depends on**: Phase 11
+**Research**: None needed
+**Plans**: 1 plan
+
+Plans:
+- [ ] 11.1-01: MVP Duplicate Actions — Link/Create/Add/Show more buttons, match explanation, thread binding
+
+**Features (from 11.1-CONTEXT.md):**
+- [ ] Smart matching with WHY explanation (LLM-generated)
+- [ ] Link to existing ticket action
+- [ ] Create new anyway action
+- [ ] Add as info stub (full implementation in 11.3)
+- [ ] Show more matches modal
+- [ ] Confirmation after linking
+
+**Deferred to future phases:**
+- Bidirectional sync (Phase 11.4)
+- Channel Jira Board (Phase 11.3)
+- Comment vs Description contributions (Phase 11.3)
+
+### Phase 11.2: Progress & Status Indicators (INSERTED)
+**Goal**: Show visual progress feedback during bot processing
+**Depends on**: Phase 11
+**Research**: None needed
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 11.2 to break down)
+
+**Proposed Features:**
+- [ ] Processing status bar in Slack messages
+- [ ] Phase icons (thinking, extracting, validating, etc.)
+- [ ] Typing indicator while bot is working
+- [ ] Progress updates for long operations
+- [ ] Visual state indicators (draft, pending approval, approved, created)
+
+**Ideas to explore:**
+- Emoji-based status: 🔄 Processing → ✅ Done
+- Live message updates showing current step
+- Estimated time remaining for complex operations
+- Collapse/expand for detailed progress
+
 ### Phase 12: Onboarding UX
 **Goal**: Improve first-time user experience and command discoverability
-**Depends on**: Phase 11
+**Depends on**: Phase 11.1
 **Research**: Unlikely
 
 Planned features:
@@ -71,4 +115,6 @@ Planned features:
 | 9. Personas | v1.0 | 4/4 | Complete | 2026-01-14 |
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
 | 11. Conversation History | v1.1 | 3/3 | Complete | 2026-01-14 |
+| 11.1 Jira Duplicate Handling | v1.1 | 0/1 | Planned | - |
+| 11.2 Progress & Status Indicators | v1.1 | 0/? | Not started | - |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
