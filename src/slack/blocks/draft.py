@@ -1,4 +1,4 @@
-"""Slack Block Kit builders for rich messages."""
+"""Slack blocks for ticket draft preview, approval, and rejection."""
 
 from typing import Any, Optional
 
@@ -13,12 +13,12 @@ def get_draft_state_badge(state: str) -> str:
         Formatted badge string with emoji and state name
     """
     badges = {
-        "draft": "🟡 Draft",
-        "approved": "🟢 Approved",
-        "created": "✅ Created",
-        "linked": "🔗 Linked",
+        "draft": "Draft",
+        "approved": "Approved",
+        "created": "Created",
+        "linked": "Linked",
     }
-    return badges.get(state, "🟡 Draft")
+    return badges.get(state, "Draft")
 
 
 def build_session_card(
@@ -203,7 +203,7 @@ def build_draft_preview_blocks_with_hash(
         validator_findings: Optional ValidationFindings dict with findings
         draft_state: Lifecycle state of draft (draft, approved, created, linked)
     """
-    from src.schemas.draft import TicketDraft
+    from src.slack.blocks.duplicates import build_duplicate_blocks
 
     blocks = []
 
@@ -280,7 +280,7 @@ def build_draft_preview_blocks_with_hash(
     if draft.constraints:
         constraints_text = "*Constraints:*\n"
         for c in draft.constraints:
-            constraints_text += f"• `{c.key}` = `{c.value}` ({c.status.value})\n"
+            constraints_text += f"* `{c.key}` = `{c.value}` ({c.status.value})\n"
         blocks.append({
             "type": "section",
             "text": {
@@ -298,7 +298,7 @@ def build_draft_preview_blocks_with_hash(
             preview = evidence.get("preview", "")[:50]
             if len(evidence.get("preview", "")) > 50:
                 preview += "..."
-            sources_text += f"• <{permalink}|Message from @{user}>: \"{preview}\"\n"
+            sources_text += f"* <{permalink}|Message from @{user}>: \"{preview}\"\n"
         blocks.append({
             "type": "section",
             "text": {
@@ -511,245 +511,6 @@ def build_findings_blocks(
     return blocks
 
 
-def build_persona_indicator(
-    persona: str,
-    message_count: int,
-    max_indicator_messages: int = 2,
-) -> Optional[str]:
-    """Build persona indicator prefix for messages.
-
-    Only shows indicator on first 1-2 messages after switch.
-
-    Args:
-        persona: Current persona name.
-        message_count: Messages since persona change.
-        max_indicator_messages: How many messages to show indicator.
-
-    Returns:
-        Indicator prefix string or None if past threshold.
-    """
-    if message_count >= max_indicator_messages:
-        return None
-
-    indicators = {
-        "pm": ":memo:",
-        "security": ":shield:",
-        "architect": ":building_construction:",
-    }
-
-    emoji = indicators.get(persona, ":memo:")
-    names = {
-        "pm": "PM",
-        "security": "Security",
-        "architect": "Architect",
-    }
-
-    return f"{emoji} *{names.get(persona, 'PM')}:*"
-
-
-def build_hint_with_buttons(message: str, buttons: list[dict]) -> list[dict]:
-    """Build hint message with action buttons.
-
-    Used for contextual hints that offer choices (e.g., persona selection).
-
-    Args:
-        message: Hint text to display
-        buttons: List of {text, value} dicts for button options
-
-    Returns:
-        Slack blocks with message and action buttons
-    """
-    blocks = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": message
-            }
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": btn["text"], "emoji": True},
-                    "action_id": f"hint_select_{btn['value']}",
-                    "value": btn["value"],
-                }
-                for btn in buttons
-            ]
-        }
-    ]
-    return blocks
-
-
-def build_duplicate_blocks(
-    potential_duplicates: list[dict],
-    session_id: str,
-    draft_hash: str,
-) -> list[dict]:
-    """Build blocks for duplicate detection with action buttons.
-
-    Shows rich duplicate display with match explanation and action buttons:
-    - Link to this: Bind thread to existing ticket
-    - Add as info: Add conversation info to existing ticket (stub)
-    - Create new: Proceed with new ticket creation
-    - Show more: Open modal with all matches
-
-    Args:
-        potential_duplicates: List of dicts with key, summary, url, status, assignee, updated, match_reason
-        session_id: Session ID for button value encoding
-        draft_hash: Hash of draft content for version checking
-
-    Returns:
-        List of Slack block dicts for duplicate display
-    """
-    if not potential_duplicates:
-        return []
-
-    blocks = []
-
-    # Header
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": ":mag: *Possible existing ticket found*"
-        }
-    })
-
-    # Best match (first duplicate)
-    best = potential_duplicates[0]
-    key = best.get("key", "Unknown")
-    summary = best.get("summary", "")[:60]
-    if len(best.get("summary", "")) > 60:
-        summary += "..."
-    url = best.get("url", "#")
-    status = best.get("status", "Unknown")
-    assignee = best.get("assignee", "Unassigned") or "Unassigned"
-    updated = best.get("updated", "Unknown")
-    match_reason = best.get("match_reason", "")
-
-    # Main ticket info
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": f"I found a Jira ticket that looks very similar:\n\n"
-                    f"*<{url}|{key}>* - \"{summary}\"\n"
-                    f"Status: {status} | Assignee: {assignee} | Updated: {updated}"
-        }
-    })
-
-    # Match reason (if available)
-    if match_reason:
-        blocks.append({
-            "type": "context",
-            "elements": [{
-                "type": "mrkdwn",
-                "text": f":bulb: *This matches because:* {match_reason}"
-            }]
-        })
-
-    # Action buttons
-    # Button value encoding: action:session_id:draft_hash:issue_key
-    has_more = len(potential_duplicates) > 1
-
-    action_buttons = [
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "text": "Link to this",
-                "emoji": True
-            },
-            "value": f"{session_id}:{draft_hash}:{key}",
-            "action_id": "link_duplicate",
-            "style": "primary",
-        },
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "text": "Add as info",
-                "emoji": True
-            },
-            "value": f"{session_id}:{draft_hash}:{key}",
-            "action_id": "add_to_duplicate",
-        },
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "text": "Create new",
-                "emoji": True
-            },
-            "value": f"{session_id}:{draft_hash}",
-            "action_id": "create_anyway",
-        },
-    ]
-
-    # Add "Show more" button if there are additional matches
-    if has_more:
-        action_buttons.append({
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "text": f"Show more ({len(potential_duplicates) - 1})",
-                "emoji": True
-            },
-            "value": f"{session_id}:{draft_hash}",
-            "action_id": "show_more_duplicates",
-        })
-
-    blocks.append({
-        "type": "actions",
-        "elements": action_buttons
-    })
-
-    return blocks
-
-
-def build_welcome_blocks() -> list[dict]:
-    """Build pinned quick-reference message for channel join.
-
-    This is installation instructions, not a greeting.
-    Posted once when MARO joins a channel.
-    """
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*MARO is active in this channel*\n\nI help turn discussions into Jira tickets and keep context in sync."
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*Try:*\n• `@MARO Create a Jira story for...`\n• `@MARO What do you think about this?`\n• `@MARO Review this as security`"
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*Commands:*\n• `/maro status` – show channel settings\n• `/maro help` – quick help\n• `/persona pm | architect | security`"
-            }
-        },
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "I stay silent unless you mention me."
-                }
-            ]
-        }
-    ]
-
-
 def build_linked_confirmation_blocks(
     issue_key: str,
     issue_url: str,
@@ -796,55 +557,3 @@ def build_linked_confirmation_blocks(
     })
 
     return blocks
-
-
-def build_decision_blocks(
-    topic: str,
-    decision: str,
-    channel_id: str,
-    thread_ts: str,
-    user_id: str,
-) -> list[dict]:
-    """Build Slack blocks for architecture decision post.
-
-    Posted to channel (not thread) as permanent record of approved decisions.
-
-    Format:
-    📐 *Architecture Decision*
-
-    *Topic:* {topic}
-    *Decision:* {decision}
-
-    _View discussion • Decided by @user_
-
-    Args:
-        topic: What was being decided
-        decision: The chosen approach (1-2 sentences)
-        channel_id: Channel ID for thread link
-        thread_ts: Thread timestamp for link
-        user_id: User who approved the decision
-
-    Returns:
-        List of Slack block dicts for decision post
-    """
-    # Build thread link (removes dot from thread_ts for Slack permalink format)
-    thread_link = f"https://slack.com/archives/{channel_id}/p{thread_ts.replace('.', '')}"
-
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f":triangular_ruler: *Architecture Decision*\n\n*Topic:* {topic}\n\n*Decision:* {decision}"
-            }
-        },
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"<{thread_link}|View discussion> • Decided by <@{user_id}>"
-                }
-            ]
-        }
-    ]
