@@ -5,6 +5,8 @@ using Slack API. This is the foundation for context injection.
 """
 
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -137,3 +139,89 @@ def fetch_thread_history(
             exc_info=True
         )
         return []
+
+
+def format_messages_for_context(
+    messages: list[dict],
+    include_timestamps: bool = False
+) -> str:
+    """Format Slack messages for LLM context injection.
+
+    Converts a list of Slack message dicts into a human-readable format
+    suitable for including in prompts.
+
+    Args:
+        messages: List of Slack message dicts
+        include_timestamps: Whether to include timestamps in output
+
+    Returns:
+        Formatted string with one message per line.
+        Format: "[user] message" or "[user at ts] message" if include_timestamps
+
+    Example:
+        >>> messages = [{"user": "U123", "text": "Hello"}, {"user": "U456", "text": "Hi!"}]
+        >>> format_messages_for_context(messages)
+        '[U123] Hello\\n[U456] Hi!'
+    """
+    lines = []
+    for msg in messages:
+        user = msg.get("user", "unknown")
+        text = msg.get("text", "")
+
+        # Skip empty messages
+        if not text:
+            continue
+
+        if include_timestamps:
+            ts = msg.get("ts", "")
+            lines.append(f"[{user} at {ts}] {text}")
+        else:
+            lines.append(f"[{user}] {text}")
+
+    return "\n".join(lines)
+
+
+@dataclass
+class ConversationContext:
+    """Two-layer conversation context for LLM prompts.
+
+    Maintains both raw messages (bounded, recent) and a compressed summary
+    (older context). This pattern reduces token costs by 80-90% while
+    improving response quality through the combination of precision
+    (raw messages) and compression (summary).
+
+    Attributes:
+        messages: Raw Slack messages (bounded, typically 10-30)
+        summary: Compressed narrative of older conversation (None until summarized)
+        last_updated_at: When context was last updated
+
+    Example:
+        >>> ctx = ConversationContext(messages=[...])
+        >>> ctx.summary = "Team discussed auth implementation..."
+        >>> prompt_text = ctx.to_prompt_context()
+    """
+    messages: list[dict] = field(default_factory=list)
+    summary: str | None = None
+    last_updated_at: datetime | None = None
+
+    def to_prompt_context(self) -> str:
+        """Format for LLM prompt injection.
+
+        Combines summary and recent messages into a structured context
+        string suitable for including in prompts.
+
+        Returns:
+            Formatted string with optional summary section and recent messages.
+            Empty string if no context available.
+        """
+        parts = []
+
+        if self.summary:
+            parts.append(f"## Conversation Summary\n{self.summary}")
+
+        if self.messages:
+            formatted = format_messages_for_context(self.messages)
+            if formatted:
+                parts.append(f"## Recent Messages\n{formatted}")
+
+        return "\n\n".join(parts)
