@@ -2950,18 +2950,33 @@ def handle_member_joined_channel(event: dict, client: WebClient, context: BoltCo
 
     Pattern: Sync wrapper delegates to async.
     """
+    # Log the raw event for debugging
+    logger.info(
+        "member_joined_channel event received",
+        extra={
+            "event": event,
+            "user": event.get("user"),
+            "channel": event.get("channel"),
+            "bot_user_id": context.get("bot_user_id"),
+        }
+    )
+
     # Only respond to bot's own join
     user = event.get("user")
     bot_user_id = context.get("bot_user_id")
 
     if user != bot_user_id:
+        logger.info(
+            "Ignoring member join - not the bot",
+            extra={"user": user, "bot_user_id": bot_user_id}
+        )
         return  # Not our join, ignore
 
     channel = event.get("channel")
 
     logger.info(
         "Bot joined channel, posting quick-reference",
-        extra={"channel": channel}
+        extra={"channel": channel, "channel_type": event.get("channel_type")}
     )
 
     _run_async(_handle_channel_join_async(channel, client))
@@ -2971,35 +2986,64 @@ async def _handle_channel_join_async(channel: str, client: WebClient):
     """Async handler for channel join - posts and pins welcome message."""
     from src.slack.blocks import build_welcome_blocks
 
+    logger.info(
+        "Building welcome blocks",
+        extra={"channel": channel}
+    )
+
     blocks = build_welcome_blocks()
 
     try:
         # Post the quick-reference message
+        logger.info(
+            "Posting welcome message to channel",
+            extra={"channel": channel, "has_blocks": bool(blocks)}
+        )
+
         result = client.chat_postMessage(
             channel=channel,
             text="MARO is active in this channel",
             blocks=blocks,
+            # EXPLICITLY no thread_ts - post to channel root
         )
 
         message_ts = result.get("ts")
 
+        logger.info(
+            "Welcome message posted successfully",
+            extra={"channel": channel, "message_ts": message_ts}
+        )
+
         # Pin the message
         if message_ts:
             try:
+                logger.info(
+                    "Attempting to pin welcome message",
+                    extra={"channel": channel, "message_ts": message_ts}
+                )
+
                 client.pins_add(
                     channel=channel,
                     timestamp=message_ts,
                 )
+
                 logger.info(
-                    "Pinned welcome message",
+                    "Pinned welcome message successfully",
                     extra={"channel": channel, "message_ts": message_ts}
                 )
             except Exception as e:
                 # May fail if bot lacks pin permission - non-blocking
-                logger.warning(f"Could not pin welcome message: {e}")
+                logger.warning(
+                    f"Could not pin welcome message: {e}",
+                    extra={"channel": channel, "error": str(e)}
+                )
 
     except Exception as e:
-        logger.error(f"Failed to post welcome message: {e}", exc_info=True)
+        logger.error(
+            f"Failed to post welcome message: {e}",
+            extra={"channel": channel, "error": str(e)},
+            exc_info=True
+        )
 
 
 # --- Review to Ticket Handler (Phase 13) ---
