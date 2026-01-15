@@ -26,6 +26,14 @@ class AgentPhase(str, Enum):
     CREATED = "created"  # Ticket created in Jira
 
 
+class ReviewState(str, Enum):
+    """Lifecycle state for review_context."""
+    ACTIVE = "active"              # Review just posted, awaiting user response
+    CONTINUATION = "continuation"  # User responded, bot continuing discussion
+    APPROVED = "approved"          # User approved, ready to post decision to channel
+    POSTED = "posted"             # Decision posted to channel, can clear context
+
+
 class AgentState(TypedDict):
     """State for the Analyst Agent in LangGraph.
 
@@ -116,12 +124,14 @@ class AgentState(TypedDict):
     # Architecture decision tracking (Phase 14)
     review_context: Optional[dict[str, Any]]  # Saved review for decision extraction
     # Structure: {
+    #     "state": ReviewState,            # Lifecycle state (ACTIVE, CONTINUATION, APPROVED, POSTED)
     #     "topic": str,                    # From intent_result.topic
     #     "review_summary": str,           # The review analysis text
     #     "persona": str,                  # Which persona gave the review
     #     "review_timestamp": str,         # ISO timestamp
     #     "thread_ts": str,                # Thread where review happened
     #     "channel_id": str,               # Channel for posting decision
+    #     "created_at": float,             # Unix timestamp when review was created
     # }
 
     # Legacy fields (kept for backwards compatibility during migration)
