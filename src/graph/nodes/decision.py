@@ -72,10 +72,67 @@ def batch_questions(questions: list[str], max_batch: int = 3) -> list[str]:
     return questions[:max_batch]
 
 
+async def _explain_duplicate_match(
+    draft: TicketDraft,
+    duplicate: dict,
+) -> str:
+    """Generate concise explanation of why duplicate matches draft.
+
+    Uses LLM to identify matching aspects: feature area, action, entities.
+
+    Returns:
+        Explanation like "same feature area (notifications), same main action (scheduling)"
+        or empty string on error.
+    """
+    try:
+        from src.llm import get_llm
+
+        llm = get_llm()
+
+        prompt = f"""Compare these two ticket descriptions and explain why they might be related in ONE SHORT phrase (max 80 chars).
+
+Draft ticket title: "{draft.title}"
+Draft problem: "{draft.problem[:200] if draft.problem else 'Not specified'}"
+
+Existing ticket: "{duplicate.get('summary', '')}"
+
+Focus on what they have in common:
+- Same feature area? (e.g., "same feature area (notifications)")
+- Same action type? (e.g., "same action (scheduling)")
+- Same entities? (e.g., "same entities (user accounts)")
+
+Respond with ONLY a short phrase explaining the match. Examples:
+- "same feature area (notifications), same action (scheduling)"
+- "both about user authentication"
+- "related to payment processing"
+
+If they don't seem related, respond with empty string."""
+
+        result = await llm.chat(prompt)
+
+        # Clean and validate response
+        explanation = result.content.strip().strip('"').strip()
+
+        # Truncate if too long
+        if len(explanation) > 100:
+            explanation = explanation[:97] + "..."
+
+        # Reject if it looks like refusal or error
+        if any(word in explanation.lower() for word in ["sorry", "cannot", "don't", "i am", "i'm"]):
+            return ""
+
+        return explanation
+
+    except Exception as e:
+        logger.warning(f"Failed to generate match explanation: {e}")
+        return ""
+
+
 async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
     """Search for potential duplicate tickets.
 
-    Returns list of {key, summary, url} dicts for display.
+    Returns list of {key, summary, url, status, assignee, updated, match_reason} dicts.
+    For the best match (first), generates LLM explanation of why it matches.
     Fails gracefully - returns empty list on any error.
     """
     if not draft or not draft.title:
@@ -92,18 +149,32 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
         try:
             result = await search_similar_to_draft(draft, jira_service, limit=5)
 
-            # Convert to display format (max 3 shown)
-            duplicates = [
-                {"key": issue.key, "summary": issue.summary, "url": issue.url}
-                for issue in result.issues[:3]
-            ]
+            # Convert to display format with enhanced metadata
+            duplicates = []
+            for i, issue in enumerate(result.issues[:5]):  # Keep up to 5 for "show more"
+                dup = {
+                    "key": issue.key,
+                    "summary": issue.summary,
+                    "url": issue.url,
+                    "status": issue.status,
+                    "assignee": issue.assignee,
+                    "updated": issue.updated,
+                    "match_reason": "",
+                }
+                duplicates.append(dup)
 
+            # Generate match explanation for best match only
             if duplicates:
+                match_reason = await _explain_duplicate_match(draft, duplicates[0])
+                duplicates[0]["match_reason"] = match_reason
+
                 logger.info(
                     "Found potential duplicates",
                     extra={
                         "count": len(duplicates),
                         "draft_title": draft.title[:50],
+                        "best_match": duplicates[0]["key"],
+                        "match_reason": match_reason,
                     },
                 )
 
