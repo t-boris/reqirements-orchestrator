@@ -377,6 +377,36 @@ async def _dispatch_result(
                 text=discussion_msg,
             )
 
+    elif action == "review_continuation":
+        # Review continuation - synthesized response to user's answers
+        # Similar to review, but more concise (follow-up, not initial analysis)
+        continuation_msg = result.get("message", "")
+        persona = result.get("persona", "")
+
+        if persona:
+            prefix = f"*{persona}:*\n\n"
+        else:
+            prefix = ""
+
+        if continuation_msg:
+            full_text = prefix + continuation_msg
+
+            # Build blocks (similar to review, but no chunking needed for shorter response)
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": full_text[:2900]}  # Truncate if needed
+                }
+            ]
+
+            # Post continuation response
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                blocks=blocks,
+                text=full_text[:200],  # Fallback text
+            )
+
     elif action == "review":
         # Review response - persona-based analysis without Jira operations
         # Like discussion, responds where mentioned. Longer, thoughtful analysis.
