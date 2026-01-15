@@ -272,8 +272,10 @@ async def jira_create(
         )
 
         issue = await jira_service.create_issue(request)
+        logger.info(f"Jira issue object created: key={issue.key}, url={issue.url}")
 
         # --- Step 5: Record success in audit trail ---
+        logger.info(f"Marking operation success for {issue.key}")
         await op_store.mark_success(session_id, current_hash, "jira_create", issue.key)
 
         logger.info(
