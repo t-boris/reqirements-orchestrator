@@ -25,6 +25,7 @@ class IntentType(str, Enum):
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     TICKET_ACTION = "TICKET_ACTION"  # Work with existing ticket (subtask, update, etc.)
     DECISION_APPROVAL = "DECISION_APPROVAL"  # User approving review/architecture discussion
+    REVIEW_CONTINUATION = "REVIEW_CONTINUATION"  # Answering questions from previous review
 
 
 class IntentResult(BaseModel):
@@ -129,6 +130,56 @@ DECISION_APPROVAL_PATTERNS = [
     (r"\bsounds?\s+good\b", "pattern: sounds good"),
 ]
 
+# Review continuation patterns - user answering questions from previous review
+# These are checked ONLY when has_review_context=True
+REVIEW_CONTINUATION_PATTERNS = [
+    # Direct answers (key-value style)
+    (r"^[\w\s]+\s*[-:]\s*\w+", "pattern: key-value answer format"),
+    # Numbered answers
+    (r"^\d+[.)]\s*\w+", "pattern: numbered answer"),
+    # Bullet answers
+    (r"^[-•]\s*\w+", "pattern: bullet answer"),
+    # "For X, I'd choose Y" pattern
+    (r"\bfor\s+\w+.*(?:choose|select|go with|use)\b", "pattern: for X choose Y"),
+    # Multiple comma-separated items (answers to multiple questions)
+    (r"^[\w\s]+,\s*[\w\s]+,\s*[\w\s]+", "pattern: comma-separated answers"),
+]
+
+# NOT continuation patterns - these override continuation detection
+NOT_CONTINUATION_PATTERNS = [
+    (r"\bcreate\s+(?:a\s+)?(?:new\s+)?ticket\b", "pattern: create new ticket"),
+    (r"\bnew\s+(?:ticket|task|story|feature|bug)\b", "pattern: new ticket/task"),
+    (r"\bpropose\s+(?:new|another|different)\b", "pattern: propose new/different"),
+    (r"\blet'?s?\s+start\s+(?:over|fresh|new)\b", "pattern: start over"),
+    (r"\bactually\s*,?\s*(?:I\s+)?(?:want|need)\s+(?:a\s+)?(?:new|different)\b", "pattern: actually want new/different"),
+]
+
+
+def _check_review_continuation(message: str) -> Optional[IntentResult]:
+    """Check if message looks like answers to review questions.
+
+    Called only when has_review_context=True.
+    Returns IntentResult if continuation detected, None otherwise.
+    """
+    message_lower = message.lower().strip()
+
+    # First check NOT_CONTINUATION patterns (these override)
+    for pattern, reason in NOT_CONTINUATION_PATTERNS:
+        if re.search(pattern, message_lower, re.IGNORECASE):
+            # Explicit new request - not a continuation
+            return None
+
+    # Check continuation patterns
+    for pattern, reason in REVIEW_CONTINUATION_PATTERNS:
+        if re.search(pattern, message, re.IGNORECASE):  # Use original case for some patterns
+            return IntentResult(
+                intent=IntentType.REVIEW_CONTINUATION,
+                confidence=0.9,  # High but not 1.0 to allow LLM override
+                reasons=[reason],
+            )
+
+    return None
+
 
 def classify_intent_patterns(
     message: str,
@@ -164,6 +215,12 @@ def classify_intent_patterns(
                 confidence=1.0,
                 reasons=[reason],
             )
+
+    # Check REVIEW_CONTINUATION patterns (when in review context)
+    if has_review_context:
+        continuation_result = _check_review_continuation(message)
+        if continuation_result is not None:
+            return continuation_result
 
     # Check TICKET_ACTION patterns (before TICKET patterns)
     # These detect explicit ticket references like "create subtasks for SCRUM-1111"
@@ -235,16 +292,43 @@ def classify_intent_patterns(
     return None
 
 
-async def _llm_classify(message: str) -> IntentResult:
+async def _llm_classify(message: str, has_review_context: bool = False) -> IntentResult:
     """Use LLM to classify ambiguous messages.
 
     Called only when pattern matching doesn't produce a result.
+
+    Args:
+        message: User's message text
+        has_review_context: Whether there's a recent review (biases toward REVIEW_CONTINUATION)
     """
     from src.llm import get_llm
 
     llm = get_llm()
 
-    prompt = f"""Classify this user message for a Jira ticket assistant bot.
+    if has_review_context:
+        prompt = f"""Classify this user message. IMPORTANT: This message is a reply in a thread
+where the bot just provided an architecture review with open questions.
+
+User message: "{message}"
+
+If the message looks like answers to questions (e.g., "Option A", "Yes",
+key-value pairs, bullet points, comma-separated choices), classify as REVIEW_CONTINUATION.
+
+Only classify as TICKET if user explicitly asks for a new ticket.
+
+Categories:
+- REVIEW_CONTINUATION: Answering questions from previous review
+- DECISION_APPROVAL: Approving the reviewed approach ("let's go with this", "approved")
+- TICKET: Explicitly requesting a new Jira ticket
+- DISCUSSION: General conversation, clarifying question
+
+Respond in this exact format:
+INTENT: <REVIEW_CONTINUATION|DECISION_APPROVAL|TICKET|DISCUSSION>
+CONFIDENCE: <0.0-1.0>
+REASON: <brief explanation>
+"""
+    else:
+        prompt = f"""Classify this user message for a Jira ticket assistant bot.
 
 User message: "{message}"
 
@@ -280,7 +364,8 @@ If it's just conversation, choose DISCUSSION."""
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                if intent_value in ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION"]:
+                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "DECISION_APPROVAL", "REVIEW_CONTINUATION"]
+                if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
                 try:
@@ -342,7 +427,7 @@ async def classify_intent(
         return pattern_result
 
     # LLM fallback for ambiguous cases
-    llm_result = await _llm_classify(message)
+    llm_result = await _llm_classify(message, has_review_context=has_review_context)
     logger.info(
         f"Intent classified by LLM: {llm_result.intent.value}, "
         f"confidence={llm_result.confidence}, reasons={llm_result.reasons}"
