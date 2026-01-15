@@ -79,6 +79,86 @@ def handle_app_mention(event: dict, say, client: WebClient, context: BoltContext
     _run_async(_process_mention(identity, text, user, client, thread_ts, channel))
 
 
+async def _build_conversation_context(
+    client: WebClient,
+    team_id: str,
+    channel_id: str,
+    thread_ts: str | None,
+    message_ts: str,
+) -> dict | None:
+    """Build conversation context for injection into AgentState.
+
+    Fetches conversation history from either:
+    1. Stored summary + buffer (for listening-enabled channels)
+    2. On-demand Slack API fetch (for other channels)
+
+    Args:
+        client: Slack WebClient for API calls
+        team_id: Slack team/workspace ID
+        channel_id: Channel ID where mention occurred
+        thread_ts: Thread timestamp (if in a thread)
+        message_ts: Current message timestamp
+
+    Returns:
+        ConversationContext as dict for AgentState, or None if no context available
+    """
+    from src.slack.history import (
+        ConversationContext,
+        fetch_channel_history,
+        fetch_thread_history,
+    )
+    from src.db import get_connection, ListeningStore
+
+    try:
+        async with get_connection() as conn:
+            store = ListeningStore(conn)
+            listening_state = await store.get_state(team_id, channel_id)
+
+            if listening_state and listening_state.enabled:
+                # Use stored summary + buffer (listening-enabled channel)
+                context = ConversationContext(
+                    messages=listening_state.raw_buffer or [],
+                    summary=listening_state.summary,
+                    last_updated_at=listening_state.last_summary_at,
+                )
+                logger.debug(
+                    "Using stored context",
+                    extra={
+                        "channel_id": channel_id,
+                        "buffer_size": len(context.messages),
+                        "has_summary": bool(context.summary),
+                    }
+                )
+            else:
+                # On-demand fetch (disabled channel)
+                if thread_ts and thread_ts != message_ts:
+                    # In a thread - fetch thread history
+                    messages = fetch_thread_history(client, channel_id, thread_ts)
+                else:
+                    # Channel root - fetch recent channel messages
+                    messages = fetch_channel_history(client, channel_id, before_ts=message_ts, limit=20)
+
+                context = ConversationContext(messages=messages, summary=None)
+                logger.debug(
+                    "Fetched on-demand context",
+                    extra={
+                        "channel_id": channel_id,
+                        "message_count": len(messages),
+                    }
+                )
+
+        # Convert to dict for AgentState
+        return {
+            "messages": context.messages,
+            "summary": context.summary,
+            "last_updated_at": context.last_updated_at.isoformat() if context.last_updated_at else None,
+        }
+
+    except Exception as e:
+        logger.warning(f"Failed to build conversation context: {e}")
+        return None
+
+
 async def _process_mention(
     identity: SessionIdentity,
     text: str,
@@ -91,10 +171,19 @@ async def _process_mention(
     try:
         runner = get_runner(identity)
 
+        # Build conversation context BEFORE running graph (Phase 11)
+        conversation_context = await _build_conversation_context(
+            client=client,
+            team_id=identity.team_id,
+            channel_id=channel,
+            thread_ts=thread_ts,
+            message_ts=thread_ts,  # Use thread_ts as the reference point
+        )
+
         # Check for persona switch before running graph (Phase 9)
         await _check_persona_switch(runner, text, client, channel, thread_ts)
 
-        result = await runner.run_with_message(text, user)
+        result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
         # Use dispatcher for skill execution
         await _dispatch_result(result, identity, client, runner)
@@ -298,10 +387,19 @@ async def _process_thread_message(
     try:
         runner = get_runner(identity)
 
+        # Build conversation context BEFORE running graph (Phase 11)
+        conversation_context = await _build_conversation_context(
+            client=client,
+            team_id=identity.team_id,
+            channel_id=channel,
+            thread_ts=thread_ts,
+            message_ts=thread_ts,
+        )
+
         # Check for persona switch before running graph (Phase 9)
         await _check_persona_switch(runner, text, client, channel, thread_ts)
 
-        result = await runner.run_with_message(text, user)
+        result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
         # Use dispatcher for skill execution (same as _process_mention)
         await _dispatch_result(result, identity, client, runner)

@@ -47,10 +47,17 @@ class GraphRunner:
         self,
         message_text: str,
         user_id: str,
+        conversation_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run graph with new message.
 
         Adds message to state and runs until interrupt or completion.
+
+        Args:
+            message_text: The user's message text
+            user_id: Slack user ID of the sender
+            conversation_context: Optional conversation history context dict
+                containing messages, summary, and last_updated_at
 
         Returns:
             Result dict with:
@@ -77,6 +84,10 @@ class GraphRunner:
                 state["thread_ts"] = self.identity.thread_ts
                 state["channel_id"] = self.identity.channel_id
                 state["user_id"] = user_id
+
+                # Inject conversation context (Phase 11)
+                if conversation_context is not None:
+                    state["conversation_context"] = conversation_context
 
                 # Run graph
                 result_state = await self._run_until_interrupt(state)
