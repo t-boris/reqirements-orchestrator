@@ -121,3 +121,83 @@ class TestDecisionApprovalStillWorks:
         result = classify_intent_patterns(message, has_review_context=True)
         assert result is not None
         assert result.intent == IntentType.DECISION_APPROVAL
+
+
+class TestUserDeferringPatterns:
+    """Test new patterns added in Phase 17 for user deferring to bot."""
+
+    def test_propose_default(self):
+        """'propose default' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("propose default", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+        assert "deferring" in result.reasons[0].lower()
+
+    def test_propose_default_how_you_see_it(self):
+        """'propose default, how you see it' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("propose default, how you see it", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+        assert "deferring" in result.reasons[0].lower()
+
+    def test_you_decide(self):
+        """'you decide' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("you decide for me", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+
+    def test_how_you_see_it(self):
+        """'how you see it' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("how do you see it?", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+        assert "perspective" in result.reasons[0].lower()
+
+    def test_i_like_architecture(self):
+        """'I like architecture' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("I like architecture", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+
+    def test_i_like_the_approach(self):
+        """'I like the approach' with review context -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("I like the approach", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION
+
+    def test_propose_default_without_context_not_continuation(self):
+        """'propose default' WITHOUT review context -> NOT continuation."""
+        result = classify_intent_patterns("propose default approach", has_review_context=False)
+        # Should be None (fall to LLM) or not REVIEW_CONTINUATION
+        if result is not None:
+            assert result.intent != IntentType.REVIEW_CONTINUATION
+
+    def test_propose_new_architecture_overrides(self):
+        """'propose new architecture' EVEN WITH context -> NOT continuation."""
+        result = classify_intent_patterns("propose new architecture", has_review_context=True)
+        # Should be None (fall to LLM) because NOT_CONTINUATION overrides
+        assert result is None  # Falls to LLM which will classify as REVIEW
+
+    def test_propose_different_approach_overrides(self):
+        """'propose different approach' EVEN WITH context -> NOT continuation."""
+        result = classify_intent_patterns("propose different approach", has_review_context=True)
+        # Should be None because NOT_CONTINUATION overrides
+        assert result is None
+
+
+class TestBugReproduction:
+    """Reproduce exact bugs from production thread (2026-01-15)."""
+
+    def test_bug_1_i_like_architecture(self):
+        """Bug #1: 'I like architecture' after review -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("I like architecture", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION, \
+            "Bug #1: Should recognize positive response as continuation"
+
+    def test_bug_3_propose_default(self):
+        """Bug #3: 'propose default, how you see it' -> REVIEW_CONTINUATION."""
+        result = classify_intent_patterns("propose default, how you see it", has_review_context=True)
+        assert result is not None
+        assert result.intent == IntentType.REVIEW_CONTINUATION, \
+            "Bug #3: Should not start new REVIEW when user asks bot to decide"
