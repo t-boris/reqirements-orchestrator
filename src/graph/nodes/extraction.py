@@ -129,6 +129,8 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
         response_text = await llm.chat(prompt)
         response_text = response_text.strip()
 
+        logger.info(f"LLM response (first 500 chars): {response_text[:500]}")
+
         # Parse JSON response
         # Handle markdown code blocks
         if response_text.startswith("```"):
@@ -136,6 +138,8 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
             if response_text.startswith("json"):
                 response_text = response_text[4:]
             response_text = response_text.strip()
+
+        logger.info(f"Parsed response: {response_text[:200]}")
 
         extracted = json.loads(response_text) if response_text and response_text != "{}" else {}
 
