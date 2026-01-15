@@ -91,6 +91,18 @@ class AgentState(TypedDict):
     # First message tracking (for intro/nudge behavior)
     is_first_message: bool  # True on first interaction, False after
 
+    # Conversation context (Phase 11 - Conversation History)
+    # Two-layer context pattern for understanding conversation before @mention:
+    # - messages: Last 10-30 raw Slack messages for precision (from raw_buffer or on-demand fetch)
+    # - summary: Compressed narrative of older conversation (from rolling summary)
+    # This field is populated by handlers BEFORE the graph runs, giving all nodes access.
+    conversation_context: Optional[dict[str, Any]]  # Conversation history context
+    # Structure: {
+    #     "messages": [...],        # Raw Slack messages (list of dicts)
+    #     "summary": "...",         # Compressed narrative (str | None)
+    #     "last_updated_at": "..."  # ISO datetime string
+    # }
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
