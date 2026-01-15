@@ -376,36 +376,53 @@ async def _dispatch_result(
             prefix = ""
 
         if review_msg:
-            # Build blocks with review content and action button
-            blocks = [
-                {
+            # Split long messages into multiple blocks (Slack limit: 3000 chars per block)
+            full_text = prefix + review_msg
+            chunk_size = 2900  # Leave margin for safety
+
+            # Split into chunks
+            chunks = []
+            for i in range(0, len(full_text), chunk_size):
+                chunk = full_text[i:i + chunk_size]
+                if i + chunk_size < len(full_text):
+                    chunk += "..."  # Indicate continuation
+                chunks.append(chunk)
+
+            # Build blocks - one section per chunk
+            blocks = []
+            for chunk in chunks:
+                blocks.append({
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": prefix + review_msg}
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                            "action_id": "review_to_ticket",
-                            "value": json.dumps({
-                                "review_text": review_msg[:2000],  # Slack limit
-                                "topic": topic,
-                                "persona": persona,
-                            }),
-                            "style": "primary",
-                        }
-                    ]
-                }
-            ]
+                    "text": {"type": "mrkdwn", "text": chunk}
+                })
+
+            # Button value is JSON - keep it compact (< 2000 chars)
+            button_value = json.dumps({
+                "review_text": review_msg[:1500],  # Leave room for JSON overhead
+                "topic": (topic or "")[:100],
+                "persona": persona or "",
+            })
+
+            # Add action button at the end
+            blocks.append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                        "action_id": "review_to_ticket",
+                        "value": button_value,
+                        "style": "primary",
+                    }
+                ]
+            })
 
             # Post review analysis with action button
             client.chat_postMessage(
                 channel=identity.channel_id,
                 thread_ts=identity.thread_ts if identity.thread_ts else None,
                 blocks=blocks,
-                text=prefix + review_msg,  # Fallback text
+                text=chunks[0] if chunks else review_msg,  # Fallback text
             )
 
     elif action == "error":
