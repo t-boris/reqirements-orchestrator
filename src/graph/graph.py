@@ -39,6 +39,7 @@ from src.graph.nodes.validation import validation_node
 from src.graph.nodes.decision import decision_node, get_decision_action
 from src.graph.nodes.discussion import discussion_node
 from src.graph.nodes.review import review_node
+from src.graph.nodes.review_continuation import review_continuation_node
 from src.graph.nodes.ticket_action import ticket_action_node
 from src.graph.nodes.decision_approval import decision_approval_node
 
@@ -87,7 +88,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow"]:
     """Route based on classified intent.
 
     Used as conditional edge from intent_router node.
@@ -108,6 +109,9 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     elif intent == "DECISION_APPROVAL":
         logger.info("Intent router: routing to decision_approval_flow")
         return "decision_approval_flow"
+    elif intent == "REVIEW_CONTINUATION":
+        logger.info("Intent router: routing to review_continuation_flow")
+        return "review_continuation_flow"
     else:
         logger.info("Intent router: routing to ticket_flow")
         return "ticket_flow"
@@ -145,6 +149,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("decision", decision_node)
     workflow.add_node("discussion", discussion_node)
     workflow.add_node("review", review_node)
+    workflow.add_node("review_continuation", review_continuation_node)
     workflow.add_node("ticket_action", ticket_action_node)
     workflow.add_node("decision_approval", decision_approval_node)
 
@@ -161,6 +166,7 @@ def create_graph() -> StateGraph:
             "discussion_flow": "discussion",  # Discussion generates brief response
             "ticket_action_flow": "ticket_action",  # Work with existing ticket
             "decision_approval_flow": "decision_approval",  # User approved a review (Phase 14)
+            "review_continuation_flow": "review_continuation",  # User answered review questions (Phase 15)
         }
     )
 
@@ -169,6 +175,9 @@ def create_graph() -> StateGraph:
 
     # Review goes directly to END after generating analysis
     workflow.add_edge("review", END)
+
+    # Review continuation goes directly to END after synthesizing answers
+    workflow.add_edge("review_continuation", END)
 
     # Ticket action goes directly to END after setting up action
     workflow.add_edge("ticket_action", END)
