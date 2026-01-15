@@ -84,6 +84,12 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 None (onboarding addressed in Phase 12).
 
+### Pending Todos
+
+1. **Add intent detection to distinguish review requests from ticket creation** (graph)
+   - Bot treats "propose architecture" as ticket creation instead of review request
+   - File: `.planning/todos/pending/2026-01-15-intent-detection-review-vs-ticket.md`
+
 ### Blockers/Concerns
 
 None.
