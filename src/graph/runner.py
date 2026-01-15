@@ -61,9 +61,10 @@ class GraphRunner:
 
         Returns:
             Result dict with:
-            - action: "ask" | "preview" | "ready" | "continue" | "error"
+            - action: "ask" | "preview" | "ready" | "review" | "discussion" | "hint" | "intro" | "nudge" | "continue" | "error"
             - questions: list[str] (if action=ask)
             - draft: TicketDraft (if action=preview)
+            - message: str (if action=review/discussion/hint/intro/nudge)
             - error: str (if action=error)
         """
         from src.slack.session import get_session_lock
@@ -143,7 +144,7 @@ class GraphRunner:
             decision_result = current_state.get("decision_result", {})
             action = decision_result.get("action")
 
-            if action in ["ask", "preview", "ready_to_create"]:
+            if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint"]:
                 # Interrupt - return current state
                 logger.info(f"Graph interrupted at {action}")
                 return self._merge_state(state, current_state)
@@ -193,6 +194,25 @@ class GraphRunner:
             return {
                 "action": "ready",
                 "draft": state.get("draft"),
+            }
+        elif action == "review":
+            return {
+                "action": "review",
+                "message": decision_result.get("message", ""),
+                "persona": decision_result.get("persona", ""),
+                "topic": decision_result.get("topic", ""),
+            }
+        elif action == "discussion":
+            return {
+                "action": "discussion",
+                "message": decision_result.get("message", ""),
+            }
+        elif action == "hint":
+            return {
+                "action": "hint",
+                "message": decision_result.get("message", ""),
+                "show_buttons": decision_result.get("show_buttons", False),
+                "buttons": decision_result.get("buttons", []),
             }
         else:
             return {"action": "continue"}
