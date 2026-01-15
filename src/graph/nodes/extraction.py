@@ -20,11 +20,11 @@ EXTRACTION_PROMPT = '''You are extracting requirements from a conversation to bu
 
 Current draft state:
 {draft_json}
-
+{conversation_context}
 New message to process:
 {message}
 
-Extract any new information that should update the draft. Return a JSON object with ONLY the fields that have new information. Do not repeat existing values.
+Extract any new information that should update the draft. Consider BOTH the conversation context above AND the new message. Return a JSON object with ONLY the fields that have new information. Do not repeat existing values.
 
 Fields you can update:
 - title: Clear, concise ticket title
@@ -118,8 +118,37 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
 
     # Prepare prompt
     draft_json = draft.model_dump_json(exclude={"evidence_links", "created_at", "updated_at"})
+
+    # Build conversation context string (Phase 11)
+    conversation_context = state.get("conversation_context")
+    context_str = ""
+    if conversation_context:
+        logger.info(
+            "Including conversation context in extraction",
+            extra={
+                "has_summary": bool(conversation_context.get("summary")),
+                "message_count": len(conversation_context.get("messages", [])),
+            }
+        )
+        parts = []
+        if conversation_context.get("summary"):
+            parts.append(f"Conversation summary:\n{conversation_context['summary']}")
+        if conversation_context.get("messages"):
+            # Format recent messages
+            msg_lines = []
+            for msg in conversation_context["messages"]:
+                user = msg.get("user", "unknown")
+                text = msg.get("text", "")
+                if text:
+                    msg_lines.append(f"[{user}]: {text}")
+            if msg_lines:
+                parts.append(f"Recent messages:\n" + "\n".join(msg_lines[-10:]))  # Last 10
+        if parts:
+            context_str = "\nConversation context:\n" + "\n\n".join(parts) + "\n"
+
     prompt = EXTRACTION_PROMPT.format(
         draft_json=draft_json,
+        conversation_context=context_str,
         message=message_text,
     )
 
