@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: Milestone complete
-Plan: N/A
-Status: Ready to plan v1.1
-Last activity: 2026-01-14 — v1.0 MVP shipped
+Phase: 11-conversation-history
+Plan: 3 plans ready (11-01, 11-02, 11-03)
+Status: Planned, ready to execute
+Last activity: 2026-01-14 — Phase 11 planned
 
-Progress: ████████████████████ 100% (v1.0)
+Progress: ██████████░░░░░░░░░░ 0% (Phase 11)
 
 ## v1.0 Summary
 
@@ -63,6 +63,17 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: v1.0 milestone complete
+Stopped at: Phase 11 planned
 Resume file: None
-Next action: Plan v1.1 phases with `/gsd:discuss-milestone` or `/gsd:new-milestone`
+Next action: Execute Phase 11 with `/gsd:execute-phase 11`
+
+## Phase 11 Plan Summary
+
+**3 plans in 2 waves:**
+
+Wave 1 (parallel):
+- 11-01: History Fetching Service — `fetch_channel_history()`, `fetch_thread_history()`, `ConversationContext`
+- 11-02: Channel Listening State — DB model, `ListeningStore`, `/maro enable|disable|status`
+
+Wave 2:
+- 11-03: Handler Integration — AgentState extension, context injection, rolling summary updates

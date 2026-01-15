@@ -32,12 +32,19 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 ### Phase 11: Conversation History
 **Goal**: Fetch channel messages before @mention to understand conversation context
 **Depends on**: Phase 10
-**Research**: Likely (Slack API pagination, context window management)
+**Research**: Complete (11-RESEARCH.md)
+**Plans**: 3 plans in 2 waves
 
-Planned features:
+Plans:
+- [ ] 11-01: History Fetching Service (Wave 1)
+- [ ] 11-02: Channel Listening State + Commands (Wave 1)
+- [ ] 11-03: Handler Integration + Rolling Summary (Wave 2)
+
+Features:
 - [ ] Fetch recent channel messages on @mention
 - [ ] Thread history fetching for mid-conversation joins
-- [ ] Context summarization for long conversations
+- [ ] `/maro enable|disable|status` commands for opt-in listening
+- [ ] Rolling summary for enabled channels (two-layer context)
 
 ### Phase 12: Onboarding UX
 **Goal**: Improve first-time user experience and command discoverability
@@ -63,5 +70,5 @@ Planned features:
 | 8. Global State | v1.0 | 5/5 | Complete | 2026-01-14 |
 | 9. Personas | v1.0 | 4/4 | Complete | 2026-01-14 |
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
-| 11. Conversation History | v1.1 | 0/? | Not started | - |
+| 11. Conversation History | v1.1 | 0/3 | Planned | - |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
