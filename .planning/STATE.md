@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 13 of 13 (Intent Router)
-Plan: 4 of 4 in current phase (ALL COMPLETE)
-Status: Phase complete
-Last activity: 2026-01-15 — Completed 13-04-PLAN.md (Scope Gate + Tests)
+Phase: 13.1 of 14 (Ticket Reference Handling)
+Plan: 0 of ? in current phase
+Status: Context gathered, ready for planning
+Last activity: 2026-01-15 — Created Phase 13.1 and Phase 14 context
 
-Progress: ████████████████████ 100% (Phase 13 COMPLETE)
+Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 13.1)
 
 ## v1.0 Summary
 
@@ -89,6 +89,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - Phase 11.1 inserted after Phase 11: Jira Duplicate Handling (URGENT) — Allow users to link to existing tickets when duplicates found
 - Phase 11.2 inserted after Phase 11: Progress & Status Indicators — Visual feedback during bot processing
 - Phase 13 added: Intent Router — Route messages to Ticket/Review/Discussion flows before extraction
+- Phase 13.1 inserted: Ticket Reference Handling — Handle "create subtasks for SCRUM-XXX", fix re-linking bug
+- Phase 14 added: Architecture Decision Records — Auto-detect decisions, post to channel
 
 ### Deferred Issues
 
@@ -106,9 +108,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 13-04-PLAN.md (Scope Gate + Tests)
+Stopped at: Created Phase 13.1 and Phase 14 context
 Resume file: None
-Next action: Phase 13 complete - milestone done
+Next action: Plan Phase 13.1 (Ticket Reference Handling)
 
 ## Phase 11 Summary (Complete)
 

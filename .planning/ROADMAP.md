@@ -144,6 +144,40 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 - [x] Logs: intent, confidence, reasons
 - [x] [Turn into Jira ticket] button after review
 
+### Phase 13.1: Ticket Reference Handling (INSERTED)
+**Goal**: Handle explicit ticket references (SCRUM-XXX) and thread bindings
+**Depends on**: Phase 13
+**Research**: Complete (13.1-CONTEXT.md)
+**Plans**: TBD
+
+**Problem solved:**
+When user says "create subtasks for SCRUM-1111", bot should work with that ticket directly instead of creating a new one and asking about duplicates.
+
+**Features:**
+- [ ] Ticket reference detection (SCRUM-XXX, PROJECT-123 patterns)
+- [ ] TICKET_ACTION intent with ticket_key and action_type
+- [ ] Thread binding check before duplicate detection
+- [ ] Subtask creation context for existing tickets
+
+### Phase 14: Architecture Decision Records
+**Goal**: Auto-detect architecture decisions and post to channel
+**Depends on**: Phase 13
+**Research**: Complete (14-CONTEXT.md)
+**Plans**: TBD
+
+**Problem solved:**
+After review discussion, when user approves ("let's go with this"), MARO should post the decision to channel as a permanent record.
+
+**Key concept:**
+- Thread = thinking process (working table with blueprints)
+- Channel = system state (board with approved decisions)
+
+**Features:**
+- [ ] Decision detection patterns ("let's go with this", "approved", etc.)
+- [ ] LLM extracts decision summary from review context
+- [ ] Post formatted decision to channel (not thread)
+- [ ] Link back to discussion thread
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -163,3 +197,5 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
+| 13.1 Ticket Reference Handling | v1.1 | 0/? | Not started | - |
+| 14. Architecture Decisions | v1.1 | 0/? | Not started | - |
