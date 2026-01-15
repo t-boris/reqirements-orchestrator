@@ -343,25 +343,30 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
         if answer_match_result.all_answered:
             state_update["pending_questions"] = None
 
-    # Handle empty draft - return intro or nudge instead of looping
+    # Handle empty draft - use contextual hints instead of static intro/nudge
     is_first_message = state.get("is_first_message", True)
     if draft.is_empty():
-        if is_first_message:
-            # First message intro with commands help
+        # Use onboarding module for contextual hints
+        from src.slack.onboarding import classify_hesitation, HintType, get_intro_message
+
+        # Get the user's message for classification
+        user_message = ""
+        if messages:
+            last_human = [m for m in messages if isinstance(m, HumanMessage)]
+            if last_human:
+                user_message = last_human[-1].content if isinstance(last_human[-1].content, str) else str(last_human[-1].content)
+
+        # Classify and get appropriate hint
+        hint_result = await classify_hesitation(user_message, is_first_message)
+
+        if hint_result.hint_type == HintType.NONE and is_first_message:
+            # No specific hint detected on first message, use intro
             state_update["decision_result"] = {
                 "action": "intro",
-                "message": (
-                    "Hi! I'm MARO. I help turn ideas, bugs, and features into Jira tickets.\n\n"
-                    "Tell me what you want to build or fix, and I'll help structure it.\n\n"
-                    "*Commands:*\n"
-                    "• `/jira create` - Start a new ticket\n"
-                    "• `/jira search <query>` - Search tickets\n"
-                    "• `/persona status` - Show current persona\n"
-                    "• `/help` - Show all commands"
-                ),
+                "message": get_intro_message(),
             }
-        else:
-            # Nudge for subsequent messages
+        elif hint_result.hint_type == HintType.NONE:
+            # No hint needed, use standard nudge
             state_update["decision_result"] = {
                 "action": "nudge",
                 "message": (
@@ -369,8 +374,17 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
                     "Can you describe the feature, bug, or change you'd like to work on?"
                 ),
             }
+        else:
+            # Return contextual hint
+            state_update["decision_result"] = {
+                "action": "hint",
+                "message": hint_result.hint_message,
+                "show_buttons": hint_result.show_buttons,
+                "buttons": [b.copy() if isinstance(b, dict) else b for b in hint_result.buttons],
+            }
+
         # Mark first message as done
         state_update["is_first_message"] = False
-        logger.info(f"Draft empty, returning {'intro' if is_first_message else 'nudge'}")
+        logger.info(f"Draft empty, returning contextual hint: {hint_result.hint_type}")
 
     return state_update
