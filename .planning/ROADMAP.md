@@ -162,14 +162,14 @@ When user says "create subtasks for SCRUM-1111", bot should work with that ticke
 - [ ] Thread binding check before duplicate detection
 - [ ] Subtask creation context for existing tickets
 
-### Phase 14: Architecture Decision Records
+### Phase 14: Architecture Decision Records — COMPLETE
 **Goal**: Auto-detect architecture decisions and post to channel
 **Depends on**: Phase 13
 **Research**: Complete (14-CONTEXT.md)
 **Plans**: 1 plan
 
 Plans:
-- [ ] 14-01: Decision Detection + Channel Posting (Wave 1)
+- [x] 14-01: Decision Detection + Channel Posting (Wave 1) — completed 2026-01-15
 
 **Problem solved:**
 After review discussion, when user approves ("let's go with this"), MARO should post the decision to channel as a permanent record.
@@ -179,10 +179,10 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 - Channel = system state (board with approved decisions)
 
 **Features:**
-- [ ] Decision detection patterns ("let's go with this", "approved", etc.)
-- [ ] LLM extracts decision summary from review context
-- [ ] Post formatted decision to channel (not thread)
-- [ ] Link back to discussion thread
+- [x] Decision detection patterns ("let's go with this", "approved", etc.)
+- [x] LLM extracts decision summary from review context
+- [x] Post formatted decision to channel (not thread)
+- [x] Link back to discussion thread
 
 ## Progress
 
@@ -204,4 +204,4 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 14. Architecture Decisions | v1.1 | 0/1 | Planned | - |
+| 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
