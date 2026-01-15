@@ -5,177 +5,64 @@
 See: .planning/PROJECT.md (updated 2026-01-14)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** Phase 10 — Deployment
+**Current focus:** v1.0 shipped — planning v1.1
 
 ## Current Position
 
-Phase: 10 of 10 (Deployment)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-14 — Completed 10-03-PLAN.md
+Phase: Milestone complete
+Plan: N/A
+Status: Ready to plan v1.1
+Last activity: 2026-01-14 — v1.0 MVP shipped
 
-Progress: ████████████████████ 100%
+Progress: ████████████████████ 100% (v1.0)
 
-## Performance Metrics
+## v1.0 Summary
 
-**Velocity:**
-- Total plans completed: 24
-- Average duration: 2.4 min
-- Total execution time: 0.97 hours
+**Shipped:** 2026-01-14
 
-**By Phase:**
+**Stats:**
+- 10 phases, 43 plans completed
+- 84 Python files, 13,248 LOC
+- 24 days development (Dec 22 → Jan 14)
+- 236 commits
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-foundation | 3 | 4 min | 1.3 min |
-| 02-database-layer | 3 | 6 min | 2 min |
-| 03-llm-integration | 6 | 12 min | 2 min |
-| 04-slack-router | 9 | 27 min | 3 min |
-| 05-agent-core | 4 | 8 min | 2 min |
-| 06-skills | 3 | 15 min | 5 min |
+**What shipped:**
+- Thread-first Slack bot with Socket Mode
+- LangGraph ReAct agent (extraction → validation → decision)
+- Multi-provider LLM (Gemini, OpenAI, Anthropic)
+- Skills: ask_user, preview_ticket, jira_create, jira_search
+- Channel context from pins
+- Dynamic personas (PM/Architect/Security)
+- Docker deployment to GCE VM
 
-**Recent Trend:**
-- Last 5 plans: 05-04 (2 min), 06-01 (5 min), 06-02 (5 min), 06-03 (5 min)
-- Trend: Steady
+## Next Milestone: v1.1 Context
+
+**Planned phases:**
+- Phase 11: Conversation History — fetch messages before @mention
+- Phase 12: Onboarding UX — improve first-time experience
+
+**Deferred from v1.0:**
+- Conversation history fetching (bot only sees @mention message)
+- `/help` command UX improvements
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- 01-01: Used modern pyproject.toml (PEP 621) over setup.py
-- 01-01: psycopg2-binary for easier installation
-- 01-02: Used pydantic-settings BaseSettings for env loading
-- 01-02: Singleton pattern via get_settings() for settings access
-- 01-03: TypedDict for AgentState (not Pydantic) for LangGraph compatibility
-- 01-03: JiraTicketSchema fields have defaults for partial drafts
-- 02-01: psycopg v3 (not psycopg2) for native async support
-- 02-01: Module-level connection pool singleton with init/close lifecycle
-- 02-02: PostgresSaver.from_conn_string() for LangGraph checkpointer
-- 02-02: setup_checkpointer() idempotent, safe to call at every startup
-- 02-03: Pydantic models as DTOs, not ORM entities - SQL in SessionStore
-- 02-03: Thread sessions keyed by (channel_id, thread_ts) with unique constraint
-- 03-01: Pydantic BaseModel for all LLM types (serializable, validated)
-- 03-01: str Enum for LLMProvider (JSON-compatible)
-- 03-01: Frozen dataclass for ProviderCapabilities (immutable config)
-- 03-02: BaseAdapter defines invoke/convert_messages/parse_response contract
-- 03-02: ToolDefinition uses JSON Schema for parameters
-- 03-02: langchain-google-genai for Gemini adapter (consistent with stack)
-- 03-03: langchain-openai for OpenAI adapter (same pattern as Gemini)
-- 03-03: openai_api_key optional in settings (allows Gemini-only deployments)
-- 03-04: langchain-anthropic for adapter (consistent with langchain stack)
-- 03-04: System messages extracted separately for Anthropic API requirements
-- 03-04: Content block parsing handles both text and tool_use response types
-- 03-06: Simple format() templating over Jinja2 DSL - sufficient for variable substitution
-- 03-06: Provider overlays as dict[LLMProvider, str] for clean lookup
-- 03-06: Secret redaction via regex on known field names
-- 03-06: SHA256[:8] prompt hashing for log identification
-- 03-05: Lazy adapter loading in UnifiedChatClient to avoid initialization overhead
-- 03-05: Capability validation in invoke() for clear error messages
-- 03-05: get_llm() as primary entry point for business logic
-- 04-01: Singleton pattern for Slack App matches get_settings() pattern
-- 04-01: Socket Mode lifecycle via start_socket_mode()/stop_socket_mode()
-- 04-06: Structured constraints (subject/value/status) over free-form text
-- 04-06: use_enum_values in Pydantic for JSON-compatible status field
-- 04-06: Unique constraint on (epic_id, subject, status) allows same subject with different status
-- 04-07: pypdf for PDF extraction (modern, actively maintained)
-- 04-07: python-docx for DOCX extraction (standard library)
-- 04-07: latin-1 fallback for text encoding issues
-- 04-07: 10000 char default max_length for LLM normalization
-- 04-05: zep-python v2 API (AsyncZep from zep_python.client, not ZepClient)
-- 04-05: Session-based storage: epic:KEY for epics, team:channel:thread_ts for threads
-- 04-05: record_filter for metadata queries in Zep search
-- 04-02: Fast-ack pattern - handlers ack immediately, process async
-- 04-02: Message handler filters bot messages, edits, deletes, non-thread messages
-- 04-03: Session identity canonical format: team:channel:thread_ts
-- 04-03: Per-session asyncio locks prevent race conditions
-- 04-03: Event dedup with 5-minute TTL handles Socket Mode retries
-- 04-04: Session cards pinned in threads show Epic link and status
-- 04-04: Epic binding uses Zep semantic search for suggestions
-- 04-04: Action handlers use sync wrapper with async implementation for Bolt
-- 04-08: Dedup threshold 0.85 (high confidence only)
-- 04-08: Non-blocking suggestions - continue discussion normally
-- 04-09: Contradiction detection only on accepted constraints
-- 04-09: Three resolution options: conflict, override, keep both
-- 05-01: TicketDraft Pydantic model with patch() for incremental updates
-- 05-01: AgentPhase enum for state machine (COLLECTING → VALIDATING → AWAITING_USER → READY_TO_CREATE → CREATED)
-- 05-01: Evidence links trace draft fields back to Slack messages
-- 05-02: Custom StateGraph (not prebuilt create_react_agent)
-- 05-02: MAX_STEPS=10 loop protection via step_count
-- 05-02: Extraction node uses LLM to identify new information only
-- 05-03: LLM-first validation with rule-based fallback
-- 05-03: ValidationReport with missing_fields, conflicts, suggestions, quality_score
-- 05-03: DecisionResult with action (ask/preview/ready_to_create) and questions[]
-- 05-03: Smart batching - max 3 questions, most impactful first
-- 05-04: GraphRunner manages interrupt/resume per session
-- 05-04: TYPE_CHECKING import to avoid circular import
-- 05-04: Deferred import of get_session_lock inside methods
-- 06-01: Skills are async functions with explicit parameters (not graph nodes)
-- 06-01: Yes/No button detection via question prefix heuristic (Is/Are/Do/Does/Should/Will)
-- 06-01: MAX_REASK_COUNT=2 to prevent infinite loops
-- 06-01: TypedDict-compatible question tracking (dict instead of Pydantic model in state)
-- 06-02: SHA256[:8] hash of title|problem|ACs for draft version checking
-- 06-02: Button value format session_id:draft_hash embeds version for validation
-- 06-02: ON CONFLICT DO NOTHING for first-wins approval semantics in PostgreSQL
-- 06-02: Two-layer idempotency: in-memory dedup for retries, DB constraint for races
-- 06-03: Modal opens on reject for direct field editing
-- 06-03: SkillDispatcher routes DecisionResult to skills (decision decides when, skills handle how)
-- 06-03: Shared _dispatch_result() for consistent handler behavior
-- 08-01: 4-layer model: config (manual) > knowledge (pins) > activity (live) > derived (computed)
-- 08-01: Team ID added for multi-workspace support (unique on team_id + channel_id)
-- 08-01: Version field for cache invalidation, pinned_digest for pin change detection
-- 08-02: SHA256[:16] digest for pin change detection (deterministic, readable)
-- 08-02: LLM extraction with JSON response format for structured knowledge output
-- 08-02: Max 10 pins, 2000 chars each to stay within LLM context limits
-- 08-02: Graceful fallback on extraction failure (return empty knowledge with source_pin_ids)
-- 08-03: Root index keyed by (team_id, channel_id, root_ts) with unique constraint
-- 08-03: Pinned threads exempt from retention window cleanup
-- 08-03: Entity extraction limited to 10 items (5 mentions, 3 channels, 5 tickets)
-- 08-04: Non-blocking pin operations - failures logged but don't break main flow
-- 08-04: Separate pinned message for Jira links (distinct from session card)
-- 08-04: Slack permalink stored in Jira description for bidirectional traceability
-- 08-05: Inject context in extraction_node (not separate intake node) - simpler integration
-- 08-05: Deferred imports for retriever to avoid circular dependencies
-- 08-05: Default team_id to 'default' if not in state - graceful fallback
-- 08-05: Non-blocking context injection - continue without context on failure
-- 09-01: PersonaName as str Enum for JSON compatibility
-- 09-01: ValidatorFinding uses Pydantic with max_length for message/fix_hint
-- 09-01: PersonaConfig as frozen dataclass (immutable, deterministic)
-- 09-01: Silent validators threshold-based (security=0.75, architect=0.60)
-- 09-01: SENSITIVE_OPS always trigger Security validator regardless of detection
-- 09-02: Heuristic scoring: 0.3 for first keyword match, +0.15 for each additional (max 0.9)
-- 09-02: Explicit triggers always work even when locked (with warning log)
-- 09-02: Auto-lock on any persona switch prevents oscillation
-- 09-02: Detection-based switches only work when unlocked
-- 09-03: Finding ID format: PERSONA-VALIDATOR-SUFFIX (e.g., SEC-AUTHZ-001)
-- 09-03: Validators auto-register on module import via _register_*_validators()
-- 09-03: Silent validators trigger when detection score >= threshold
-- 09-03: BLOCK severity findings cause is_valid=false in ValidationReport
-- 09-04: /persona defaults to status when no args
-- 09-04: Persona switch notification only on detected, not explicit
-- 09-04: Preview card shows Resolve Issues instead of Approve when has_blocking
-- 10-01: Used venv copy instead of wheel installation for simpler Docker builds
-- 10-01: Health server runs in daemon thread to not block Socket Mode
-- 10-01: Memory limits: 256MB postgres, 512MB bot for e2-small VM
-- 10-02: Settings.py already has all production settings with sensible defaults
-- 10-02: .env.example grouped by category for easier configuration
-- 10-03: Cloud Build with SHORT_SHA and latest tags for versioned + rolling deployments
-- 10-03: SSH-based deploy to GCE VM via gcloud compute ssh
-- 10-03: .deploy.env for local deployment config, separate from app .env
+All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ### Deferred Issues
 
-None yet.
+- Conversation history: Bot should read channel messages before @mention
+- Onboarding: Better intro when bot joins channel
 
 ### Blockers/Concerns
 
-None yet.
+None.
 
 ## Session Continuity
 
 Last session: 2026-01-14
-Stopped at: Completed 10-03-PLAN.md (Production deployment scripts)
+Stopped at: v1.0 milestone complete
 Resume file: None
-Next action: Milestone complete - all phases done
+Next action: Plan v1.1 phases with `/gsd:discuss-milestone` or `/gsd:new-milestone`
