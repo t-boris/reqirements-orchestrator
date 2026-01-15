@@ -107,6 +107,114 @@ class ProgressTracker:
         status = STATUS_MESSAGES.get(operation, operation)
         await self.update(status)
 
+    async def set_error(
+        self,
+        error_type: str,
+        service: str,
+        attempt: int = 1,
+        max_attempts: int = 3,
+    ) -> None:
+        """Set error state with retry info.
+
+        Shows transient error message during retry attempts.
+        Formats message based on error type for clear user feedback.
+
+        Args:
+            error_type: Type of error (api_error, timeout, rate_limit)
+            service: Service name (Jira, Slack, LLM)
+            attempt: Current attempt number
+            max_attempts: Maximum retry attempts
+        """
+        if error_type == "timeout":
+            msg = f":warning: {service} API timeout. Retrying... ({attempt}/{max_attempts})"
+        elif error_type == "rate_limit":
+            msg = f":warning: {service} API rate-limited. Backing off..."
+        else:
+            msg = f":warning: {service} API error. Retrying... ({attempt}/{max_attempts})"
+
+        await self.update(msg)
+
+    async def set_failure(self, service: str, error_msg: str = "") -> None:
+        """Set permanent failure state after retries exhausted.
+
+        Shows failure message. Does not auto-delete - keeps message visible
+        so user can see what failed and take action.
+
+        Args:
+            service: Service name that failed (Jira, Slack, LLM)
+            error_msg: Optional error details to include
+        """
+        if error_msg:
+            self._current_status = f":x: {service} unreachable: {error_msg}"
+        else:
+            self._current_status = f":x: {service} unreachable after retries."
+
+        # Post or update the failure status
+        if self._status_ts:
+            await self._update_failure_status()
+        else:
+            await self._post_failure_status()
+
+    async def _post_failure_status(self) -> None:
+        """Post failure status message (does not auto-delete)."""
+        if self._completed or self._status_ts:
+            return
+
+        try:
+            if isinstance(self.client, AsyncWebClient):
+                response = await self.client.chat_postMessage(
+                    channel=self.channel,
+                    thread_ts=self.thread_ts,
+                    text=self._current_status,
+                )
+            else:
+                response = await asyncio.to_thread(
+                    self.client.chat_postMessage,
+                    channel=self.channel,
+                    thread_ts=self.thread_ts,
+                    text=self._current_status,
+                )
+            self._status_ts = response.get("ts")
+            logger.debug(
+                "Posted failure status message",
+                extra={
+                    "channel": self.channel,
+                    "thread_ts": self.thread_ts,
+                    "status_ts": self._status_ts,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to post failure status message: {e}")
+
+    async def _update_failure_status(self) -> None:
+        """Update existing status message to failure state."""
+        if not self._status_ts:
+            return
+
+        try:
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=self._current_status,
+                )
+            else:
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=self._current_status,
+                )
+            logger.debug(
+                "Updated status to failure",
+                extra={
+                    "status_ts": self._status_ts,
+                    "status": self._current_status,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update failure status: {e}")
+
     async def update(self, status: str) -> None:
         """Update status text. Only posts if message already visible.
 
