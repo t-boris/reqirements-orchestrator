@@ -107,3 +107,20 @@ class RootIndex(BaseModel):
     is_pinned: bool = Field(default=False, description="Pinned threads live beyond retention window")
     created_at: datetime
     updated_at: datetime
+
+
+class ChannelListeningState(BaseModel):
+    """Tracks whether MARO is actively listening in a channel.
+
+    When enabled, MARO maintains a rolling summary of conversation context
+    so it can provide better responses when mentioned.
+    """
+
+    team_id: str = Field(description="Slack team/workspace ID")
+    channel_id: str = Field(description="Slack channel ID")
+    enabled: bool = Field(default=False, description="Whether listening is active")
+    enabled_at: datetime | None = Field(default=None, description="When listening was enabled")
+    enabled_by: str | None = Field(default=None, description="User ID who enabled listening")
+    summary: str | None = Field(default=None, description="Rolling conversation summary")
+    raw_buffer: list[dict] = Field(default_factory=list, description="Last N messages as JSON")
+    last_summary_at: datetime | None = Field(default=None, description="When summary was last updated")
