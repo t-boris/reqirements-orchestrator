@@ -1893,3 +1893,104 @@ async def _handle_link_duplicate_async(body, client: WebClient, action):
         thread_ts=thread_ts,
         text=f"Linked to <{issue_url}|{issue_key}>. I'll keep you posted on updates.",
     )
+
+
+def handle_create_anyway(ack, body, client: WebClient, action):
+    """Synchronous wrapper for create anyway action.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_create_anyway_async(body, client, action))
+
+
+async def _handle_create_anyway_async(body, client: WebClient, action):
+    """Handle 'Create new' button click when duplicates are shown.
+
+    User chose to create a new ticket despite potential duplicates.
+    Delegates to the existing approval flow.
+
+    Flow:
+    1. Parse button value: session_id:draft_hash
+    2. Post the standard approval preview (replaces duplicate view)
+    3. User can then approve or request changes
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]  # Preview message to update
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash
+    button_value = action.get("value", "")
+
+    if ":" in button_value:
+        # Handle session_id containing colons (team:channel:thread:hash)
+        parts = button_value.rsplit(":", 1)
+        session_id = parts[0]
+        draft_hash = parts[1] if len(parts) > 1 else ""
+    else:
+        session_id = button_value
+        draft_hash = ""
+
+    logger.info(
+        "User chose to create new ticket despite duplicates",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get current draft
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    draft = state.get("draft")
+
+    if not draft:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not find draft. Please start a new session.",
+        )
+        return
+
+    # Compute current hash
+    from src.skills.preview_ticket import compute_draft_hash
+    from src.slack.blocks import build_draft_preview_blocks_with_hash
+
+    current_hash = compute_draft_hash(draft)
+
+    # Build standard approval preview (without duplicates, with approval buttons)
+    preview_blocks = build_draft_preview_blocks_with_hash(
+        draft=draft,
+        session_id=session_id,
+        draft_hash=current_hash,
+        evidence_permalinks=None,
+        potential_duplicates=None,  # Don't show duplicates again
+        validator_findings=state.get("validation_report"),
+    )
+
+    # Update the message to show standard approval view
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            text=f"Ticket preview for: {draft.title or 'Untitled'}",
+            blocks=preview_blocks,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update preview message: {e}")
+        # Fall back to posting new message
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Ticket preview for: {draft.title or 'Untitled'}",
+            blocks=preview_blocks,
+        )
