@@ -6,6 +6,7 @@ Uses answer matcher for responses to pending questions.
 """
 import json
 import logging
+import re
 from typing import Any
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -56,6 +57,64 @@ Please generate content for these fields:
 Return a JSON object with the generated content. For acceptance_criteria, provide a list of 3-5 testable criteria. For other fields, provide appropriate content based on the context.
 
 JSON response:'''
+
+
+EXTRACTION_PROMPT_WITH_REFERENCE = '''You are extracting requirements from a conversation to build a Jira ticket draft.
+
+The user is referencing prior discussion in the thread. Here is the recent context:
+
+{thread_context}
+
+---
+
+Current draft state:
+{draft_json}
+
+New message to process:
+{message}
+
+Extract information from the user's request, using the thread context as reference material.
+If the user says "create tickets for the architecture" or similar, extract multiple tickets from
+the architecture review sections (components, risks, flows, etc.).
+
+Fields you can update:
+- title: Clear, concise ticket title
+- problem: What problem we're solving
+- proposed_solution: How we'll solve it
+- acceptance_criteria: List of testable criteria (append new ones)
+- constraints: List of {{"key", "value"}} technical decisions
+- dependencies: List of external dependencies
+- risks: List of potential risks
+
+Return empty object {{}} if no new information to extract.
+
+IMPORTANT: Only extract factual information stated in the message or thread context. Do not invent or assume.
+
+JSON response:'''
+
+
+def _detect_reference_to_prior_content(message: str) -> bool:
+    """Check if user message references prior content in thread.
+
+    Returns True if message contains patterns like:
+    - "the architecture" / "this architecture"
+    - "the review" / "this review" / "that analysis"
+    - "from above" / "mentioned above"
+    """
+    message_lower = message.lower()
+
+    reference_patterns = [
+        r"\bthe\s+(?:architecture|review|analysis|design|proposal|approach)\b",
+        r"\bthis\s+(?:architecture|review|analysis|design|proposal|approach)\b",
+        r"\bthat\s+(?:architecture|review|analysis|design|proposal|approach)\b",
+        r"\b(?:from|mentioned|discussed)\s+above\b",
+        r"\bour\s+(?:discussion|conversation|review)\b",
+    ]
+
+    for pattern in reference_patterns:
+        if re.search(pattern, message_lower):
+            return True
+    return False
 
 
 async def _generate_content_for_fields(draft, fields: list[str], state: dict) -> None:
@@ -182,6 +241,14 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
 
     message_text = latest_human.content if isinstance(latest_human.content, str) else str(latest_human.content)
 
+    # Check if message references prior content (Bug #2 fix)
+    references_prior_content = _detect_reference_to_prior_content(message_text)
+    if references_prior_content:
+        logger.info(
+            "User referenced prior content, will include thread context in extraction",
+            extra={"message_preview": message_text[:100]}
+        )
+
     # If we have pending questions, use answer matcher first
     answer_match_result = None
     if pending_questions and pending_questions.get("questions"):
@@ -225,36 +292,69 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
 
     # Build conversation context string (Phase 11)
     conversation_context = state.get("conversation_context")
-    context_str = ""
-    if conversation_context:
+
+    # If user referenced prior content, use special prompt with thread context
+    if references_prior_content and conversation_context:
+        # Build thread context from bot's messages (likely reviews/analyses)
+        messages = conversation_context.get("messages", [])
+        thread_context_parts = []
+
+        for msg in messages[-10:]:  # Last 10 messages
+            role = msg.get("role", "")
+            content = msg.get("text", "")
+
+            # Include bot messages (likely reviews) and longer human messages
+            if (role == "assistant" and len(content) > 100) or (role == "user" and len(content) > 50):
+                user = msg.get("user", "Assistant" if role == "assistant" else "User")
+                thread_context_parts.append(f"[{user}]: {content}")
+
+        thread_context = "\n\n".join(thread_context_parts) if thread_context_parts else "No prior content found"
+
         logger.info(
-            "Including conversation context in extraction",
+            "Using reference-aware extraction prompt",
             extra={
-                "has_summary": bool(conversation_context.get("summary")),
-                "message_count": len(conversation_context.get("messages", [])),
+                "has_thread_context": bool(thread_context_parts),
+                "context_messages": len(thread_context_parts),
             }
         )
-        parts = []
-        if conversation_context.get("summary"):
-            parts.append(f"Conversation summary:\n{conversation_context['summary']}")
-        if conversation_context.get("messages"):
-            # Format recent messages
-            msg_lines = []
-            for msg in conversation_context["messages"]:
-                user = msg.get("user", "unknown")
-                text = msg.get("text", "")
-                if text:
-                    msg_lines.append(f"[{user}]: {text}")
-            if msg_lines:
-                parts.append(f"Recent messages:\n" + "\n".join(msg_lines[-10:]))  # Last 10
-        if parts:
-            context_str = "\nConversation context:\n" + "\n\n".join(parts) + "\n"
 
-    prompt = EXTRACTION_PROMPT.format(
-        draft_json=draft_json,
-        conversation_context=context_str,
-        message=message_text,
-    )
+        prompt = EXTRACTION_PROMPT_WITH_REFERENCE.format(
+            thread_context=thread_context,
+            draft_json=draft_json,
+            message=message_text,
+        )
+    else:
+        # Standard extraction with conversation context
+        context_str = ""
+        if conversation_context:
+            logger.info(
+                "Including conversation context in extraction",
+                extra={
+                    "has_summary": bool(conversation_context.get("summary")),
+                    "message_count": len(conversation_context.get("messages", [])),
+                }
+            )
+            parts = []
+            if conversation_context.get("summary"):
+                parts.append(f"Conversation summary:\n{conversation_context['summary']}")
+            if conversation_context.get("messages"):
+                # Format recent messages
+                msg_lines = []
+                for msg in conversation_context["messages"]:
+                    user = msg.get("user", "unknown")
+                    text = msg.get("text", "")
+                    if text:
+                        msg_lines.append(f"[{user}]: {text}")
+                if msg_lines:
+                    parts.append(f"Recent messages:\n" + "\n".join(msg_lines[-10:]))  # Last 10
+            if parts:
+                context_str = "\nConversation context:\n" + "\n\n".join(parts) + "\n"
+
+        prompt = EXTRACTION_PROMPT.format(
+            draft_json=draft_json,
+            conversation_context=context_str,
+            message=message_text,
+        )
 
     # Call LLM for extraction
     try:
