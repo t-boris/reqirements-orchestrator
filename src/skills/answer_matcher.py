@@ -50,6 +50,7 @@ Rules:
 - Confidence should be high (0.8+) only if the answer is explicit
 - For Yes/No questions, "yes", "sure", "okay" = "yes"; "no", "not", "nope" = "no"
 - If response says "I don't know" or similar, mark as unanswered
+- IMPORTANT: If user says "propose yours", "suggest some", "you decide", "come up with", or similar delegation phrases, treat this as: answer="[GENERATE]", confidence=0.9. This signals the assistant should generate content autonomously.
 
 JSON response:'''
 

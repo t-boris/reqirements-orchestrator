@@ -42,6 +42,83 @@ IMPORTANT: Only extract factual information stated in the message. Do not invent
 JSON response:'''
 
 
+GENERATION_PROMPT = '''You are helping build a Jira ticket. The user has asked you to propose content for specific fields.
+
+Current draft:
+{draft_json}
+
+Context from the conversation:
+{context}
+
+Please generate content for these fields:
+{fields_to_generate}
+
+Return a JSON object with the generated content. For acceptance_criteria, provide a list of 3-5 testable criteria. For other fields, provide appropriate content based on the context.
+
+JSON response:'''
+
+
+async def _generate_content_for_fields(draft, fields: list[str], state: dict) -> None:
+    """Generate content for fields when user asks us to propose.
+
+    Modifies draft in-place with generated content.
+    """
+    if not fields:
+        return
+
+    llm = get_llm()
+    draft_json = draft.model_dump_json(exclude={"evidence_links", "created_at", "updated_at"})
+
+    # Build context from conversation and draft
+    context_parts = []
+    if draft.title:
+        context_parts.append(f"Title: {draft.title}")
+    if draft.problem:
+        context_parts.append(f"Problem: {draft.problem}")
+    if draft.proposed_solution:
+        context_parts.append(f"Proposed solution: {draft.proposed_solution}")
+
+    conversation_context = state.get("conversation_context", {})
+    if conversation_context.get("summary"):
+        context_parts.append(f"Conversation: {conversation_context['summary']}")
+
+    context = "\n".join(context_parts) if context_parts else "No additional context"
+
+    prompt = GENERATION_PROMPT.format(
+        draft_json=draft_json,
+        context=context,
+        fields_to_generate="\n".join(f"- {f}" for f in fields),
+    )
+
+    try:
+        response_text = await llm.chat(prompt)
+        response_text = response_text.strip()
+
+        # Parse JSON response
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+        generated = json.loads(response_text) if response_text else {}
+
+        if generated:
+            logger.info(f"Generated content for fields: {list(generated.keys())}")
+            # Patch draft with generated content
+            for field, value in generated.items():
+                if hasattr(draft, field):
+                    if isinstance(value, list) and field in ["acceptance_criteria", "dependencies", "risks"]:
+                        # Append to lists
+                        existing = getattr(draft, field, [])
+                        setattr(draft, field, existing + value)
+                    else:
+                        setattr(draft, field, value)
+
+    except Exception as e:
+        logger.warning(f"Failed to generate content: {e}")
+
+
 async def extraction_node(state: AgentState) -> dict[str, Any]:
     """Extract requirements from latest message and patch draft.
 
@@ -113,6 +190,24 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
                     "all_answered": answer_match_result.all_answered,
                 }
             )
+
+            # Handle [GENERATE] signals - user wants us to propose content
+            generate_fields = []
+            for match in answer_match_result.matches:
+                if match.answer == "[GENERATE]":
+                    generate_fields.append(match.question)
+                    logger.info(f"User requested generation for: {match.question}")
+
+            if generate_fields:
+                # Generate content for requested fields
+                await _generate_content_for_fields(draft, generate_fields, state)
+                # Mark these as answered so we don't re-ask
+                answer_match_result.unanswered_questions = [
+                    q for q in answer_match_result.unanswered_questions
+                    if q not in generate_fields
+                ]
+                answer_match_result.all_answered = len(answer_match_result.unanswered_questions) == 0
+
         except Exception as e:
             logger.warning(f"Answer matching failed, falling back to extraction: {e}")
 
