@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 16 of 16 (Ticket Operations)
-Plan: 1 of 1 in current phase
+Phase: 17 of 17 (Review Flow Fixes)
+Plan: 2 of 2 in current phase
 Status: Phase complete
-Last activity: 2026-01-15 — Completed 16-01-PLAN.md
+Last activity: 2026-01-15 — Completed 17-02-PLAN.md
 
-Progress: ████████████████████ 100% (Phase 16)
+Progress: ████████████████████ 100% (Phase 17)
 
 ## v1.0 Summary
 
@@ -97,6 +97,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 16-01 | LLM-based content extraction | Extract structured content from conversation context |
 | 16-01 | Separate prompts for update vs comment | Different formatting needs for descriptions vs comments |
 | 16-01 | Message extraction from state.messages | Get latest HumanMessage for accurate user input |
+| 17-02 | ReviewState enum with 4 lifecycle states | Track review_context: ACTIVE → CONTINUATION → APPROVED → POSTED |
+| 17-02 | Block new review when active review exists | Prevents overwriting review_context (Bug #3) |
+| 17-02 | Reference pattern detection | Detect "the architecture", "this review", "from above" for thread context |
+| 17-02 | Thread context extraction for references | Include bot messages and long user messages when reference detected |
 
 ### Roadmap Evolution
 
@@ -122,9 +126,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed Phase 16 plan 01 (Ticket Operations)
+Stopped at: Completed Phase 17 plan 02 (Review Flow Fixes)
 Resume file: None
-Next action: All v1.1 phases complete
+Next action: Phase 17 complete - Review flow and lifecycle fixes ready
 
 ## Phase 11 Summary (Complete)
 
@@ -285,3 +289,20 @@ Wave 3:
 - Error handling with user-friendly Slack messages
 
 **Core Principle:** Enable full ticket lifecycle management beyond creation. Use LLM to extract structured, actionable content from conversations instead of raw message dumps.
+
+## Phase 17 Summary (Complete)
+
+**2 plans — COMPLETE:**
+
+- 17-01: Handler Integration Fixes [DONE]
+- 17-02: Review Flow Lifecycle and Thread Context [DONE]
+
+**Phase 17 accomplishments:**
+- ReviewState enum with 4 lifecycle states (ACTIVE, CONTINUATION, APPROVED, POSTED)
+- review_node checks for existing active review before overwriting (prevents Bug #3)
+- Reference detection: "the architecture", "this review", "from above" patterns
+- Thread context extraction when references detected (fixes Bug #2)
+- decision_approval_node marks state=POSTED before clearing (helps debug Bug #4)
+- 22 comprehensive tests covering reference detection and lifecycle management
+
+**Core Principle:** Preserve review context through the full lifecycle until decision is posted to channel. Detect when users reference prior content and include that context in extraction.
