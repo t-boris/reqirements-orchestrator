@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 18 of 18 (Clean Code)
-Plan: 0 of 4 in current phase
-Status: Planned
-Last activity: 2026-01-15 — Created Phase 18 plans (Clean Code + Audit)
+Plan: 2 of 4 in current phase (Plan 1 in parallel)
+Status: In progress
+Last activity: 2026-01-15 — Completed 18-02-PLAN.md (blocks/jira split)
 
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 18)
+Progress: ██████████░░░░░░░░░░ 50% (Phase 18)
 
 ## v1.0 Summary
 
@@ -103,6 +103,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 17-02 | Thread context extraction for references | Include bot messages and long user messages when reference detected |
 | 17-03 | Enhanced logging for channel join debugging | Log event receipt, user check, post status, pin status at each step |
 | 17-03 | Slack app setup documentation | Document event subscriptions and scopes with troubleshooting guide |
+| 18-02 | Split blocks.py by purpose | Clear responsibility boundaries (draft/duplicates/decisions/ui) |
+| 18-02 | Re-export from __init__.py | Zero changes needed in importing files |
+| 18-02 | Keep jira/client.py single file | Under 800 lines, sections sufficient |
 
 ### Roadmap Evolution
 
@@ -128,9 +131,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Created Phase 18 plans (Clean Code)
+Stopped at: Completed 18-02-PLAN.md (blocks/jira split)
 Resume file: None
-Next action: Execute Phase 18 plans (start with Wave 1: 18-01 and 18-02 in parallel)
+Next action: Execute remaining Phase 18 plans (18-01 handlers split, 18-03 audit, 18-04 audit)
 
 ## Phase 11 Summary (Complete)
 
