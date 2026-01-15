@@ -116,7 +116,7 @@ Plans:
 - [x] 13-01: IntentRouter Node (Wave 1) — classify intent, extend state, wire into graph — completed 2026-01-15
 - [x] 13-02: ReviewFlow Implementation (Wave 2) — persona-based analysis, no Jira — completed 2026-01-15
 - [x] 13-03: DiscussionFlow + Guardrails (Wave 2) — light responses, graph docs — completed 2026-01-15
-- [ ] 13-04: Review → Ticket Transition + Tests (Wave 3) — scope gate, regression tests
+- [x] 13-04: Review → Ticket Transition + Tests (Wave 3) — scope gate, regression tests — completed 2026-01-15
 
 **Problem solved:**
 Bot treats ALL messages as ticket creation requests. "Propose architecture" triggers ticket draft + duplicate detection instead of persona-based analysis.
@@ -127,22 +127,22 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 ```
 
 **Features:**
-- [ ] IntentRouter node before extraction (LangGraph branch)
-- [ ] Structured intent result: `{intent, confidence, persona_hint, topic, reasons}`
-- [ ] TicketFlow: Extract → Validate → Dedupe → Preview (existing)
-- [ ] ReviewFlow: Context → Persona analysis → Output (no Jira ops)
-- [ ] DiscussionFlow: Light response, no cycles
-- [ ] Guardrails: Review/Discussion don't access Jira
-- [ ] Explicit overrides: `/maro ticket`, `/maro review`, "create a ticket", "don't create ticket"
-- [ ] "Turn into ticket" button after review with scope gate
-- [ ] Regression tests: 20+ phrases covering all intents
+- [x] IntentRouter node before extraction (LangGraph branch)
+- [x] Structured intent result: `{intent, confidence, persona_hint, topic, reasons}`
+- [x] TicketFlow: Extract → Validate → Dedupe → Preview (existing)
+- [x] ReviewFlow: Context → Persona analysis → Output (no Jira ops)
+- [x] DiscussionFlow: Light response, no cycles
+- [x] Guardrails: Review/Discussion don't access Jira
+- [x] Explicit overrides: `/maro ticket`, `/maro review`, "create a ticket", "don't create ticket"
+- [x] "Turn into ticket" button after review with scope gate
+- [x] Regression tests: 53 test cases covering all intents
 
 **DoD:**
-- Router node chooses branch: Ticket/Review/Discussion
-- Review branch doesn't call Jira tools, doesn't build draft
-- Discussion branch responds once and stops
-- Logs: intent, confidence, reasons
-- [Turn into Jira ticket] button after review
+- [x] Router node chooses branch: Ticket/Review/Discussion
+- [x] Review branch doesn't call Jira tools, doesn't build draft
+- [x] Discussion branch responds once and stops
+- [x] Logs: intent, confidence, reasons
+- [x] [Turn into Jira ticket] button after review
 
 ## Progress
 
@@ -162,4 +162,4 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
-| 13. Intent Router | v1.1 | 3/4 | In progress | - |
+| 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |

@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 13 of 13 (Intent Router)
-Plan: 3 of 4 in current phase (13-01, 13-02, 13-03 complete)
-Status: In progress
-Last activity: 2026-01-15 — Completed 13-02-PLAN.md (Review Flow)
+Plan: 4 of 4 in current phase (ALL COMPLETE)
+Status: Phase complete
+Last activity: 2026-01-15 — Completed 13-04-PLAN.md (Scope Gate + Tests)
 
-Progress: ███████████████░░░░░ 75% (Phase 13)
+Progress: ████████████████████ 100% (Phase 13 COMPLETE)
 
 ## v1.0 Summary
 
@@ -80,6 +80,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 13-02 | Review response format | *{Persona} Review:* prefix for clarity |
 | 13-03 | Discussion responds inline | No new thread creation for casual interactions |
 | 13-03 | 1-2 sentence response limit | DISCUSSION_PROMPT enforces brevity |
+| 13-04 | Scope gate with 3 options | Decision only / Full review / Custom - user controls ticket content |
+| 13-04 | Modal-to-flow via context message | Scope submission posts message that triggers normal intent flow |
+| 13-04 | Tests use direct module loading | importlib avoids circular imports in test suite |
 
 ### Roadmap Evolution
 
@@ -103,9 +106,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 13-02-PLAN.md (ReviewFlow)
+Stopped at: Completed 13-04-PLAN.md (Scope Gate + Tests)
 Resume file: None
-Next action: Execute 13-04-PLAN.md (Scope Gate + Tests)
+Next action: Phase 13 complete - milestone done
 
 ## Phase 11 Summary (Complete)
 
@@ -180,3 +183,26 @@ Wave 2:
 - Ephemeral example messages don't spam channel
 
 **Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing.
+
+## Phase 13 Summary (Complete)
+
+**4 plans in 3 waves — ALL COMPLETE:**
+
+Wave 1:
+- 13-01: Intent Router Core — IntentType enum, pattern matching, LLM fallback [DONE]
+
+Wave 2 (parallel):
+- 13-02: Review Flow — review_node, persona-based analysis, *{Persona} Review:* format [DONE]
+- 13-03: Discussion Flow — discussion_node, 1-2 sentence responses, inline replies [DONE]
+
+Wave 3:
+- 13-04: Scope Gate + Tests — Review-to-ticket button, scope modal, 53 regression tests [DONE]
+
+**Phase 13 accomplishments:**
+- Three-way intent classification: TICKET, REVIEW, DISCUSSION
+- Pattern-matching-first with LLM fallback for ambiguous cases
+- Negation patterns checked first ("don't create ticket" -> REVIEW)
+- Review flow with persona-based analysis (security, architect, pm)
+- Discussion flow for casual interactions (brief responses, no threads)
+- Review-to-ticket transition with scope selection modal
+- 53 regression tests for intent classification patterns
