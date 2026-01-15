@@ -521,8 +521,7 @@ async def handle_merge_context(ack, body, client, action):
         text=f"Context linked from related thread. I'll consider both discussions when gathering requirements.",
     )
 
-    # TODO: Update session card with linked thread reference
-    # TODO: Update Epic summary with cross-reference
+    # See .planning/ISSUES.md ISS-004, ISS-005
 
 
 async def handle_ignore_dedup(ack, body, client):

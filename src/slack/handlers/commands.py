@@ -60,18 +60,18 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
             text=f"Starting new ticket session{' for ' + ticket_type if ticket_type else ''}...",
             channel=channel,
         )
-        # TODO: Route to session creation in 04-04
+        # See .planning/ISSUES.md ISS-001
 
     elif subcommand == "search":
         if not args:
             say(text="Usage: /jira search <query>", channel=channel)
             return
         say(text=f"Searching for: {args}...", channel=channel)
-        # TODO: Implement Jira search in Phase 7
+        # See .planning/ISSUES.md ISS-002 (Completed Phase 7)
 
     elif subcommand == "status":
         say(text="No active session in this channel.", channel=channel)
-        # TODO: Query session status in 04-04
+        # See .planning/ISSUES.md ISS-003
 
     else:
         say(

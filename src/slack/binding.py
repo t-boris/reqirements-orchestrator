@@ -58,7 +58,7 @@ async def start_binding_flow(
     if session.epic_id:
         blocks = build_session_card(
             epic_key=session.epic_id,
-            epic_summary=None,  # TODO: Fetch from Jira
+            epic_summary=None,  # See .planning/ISSUES.md ISS-006
             session_status="Active",
             thread_ts=identity.thread_ts,
         )
@@ -145,7 +145,7 @@ async def bind_epic(
     # Post session card
     blocks = build_session_card(
         epic_key=epic_key,
-        epic_summary=None,  # TODO: Fetch from Jira
+        epic_summary=None,  # See .planning/ISSUES.md ISS-006
         session_status="Active - collecting requirements",
         thread_ts=identity.thread_ts,
     )

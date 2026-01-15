@@ -309,8 +309,7 @@ async def handle_contradiction_conflict(ack, body, client, action):
         extra={"subject": subject, "proposed": proposed_value}
     )
 
-    # TODO: Update constraint status to 'conflicted' in KG
-    # TODO: Add to Epic summary as unresolved conflict
+    # See .planning/ISSUES.md ISS-007, ISS-008
 
     client.chat_postMessage(
         channel=channel,
@@ -335,8 +334,7 @@ async def handle_contradiction_override(ack, body, client, action):
         extra={"subject": subject, "new_value": proposed_value}
     )
 
-    # TODO: Mark old constraint as 'deprecated'
-    # TODO: Mark new constraint as 'accepted'
+    # See .planning/ISSUES.md ISS-009, ISS-010
 
     client.chat_postMessage(
         channel=channel,
@@ -361,7 +359,7 @@ async def handle_contradiction_both(ack, body, client, action):
         extra={"subject": subject, "proposed": proposed_value}
     )
 
-    # TODO: Mark both as 'accepted' with note about intentional dual values
+    # See .planning/ISSUES.md ISS-011
 
     client.chat_postMessage(
         channel=channel,
