@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 12 of 12 (Onboarding UX)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-15 — Completed 12-03-PLAN.md
+Phase: 13 of 13 (Intent Router)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-15 — Completed 13-01-PLAN.md
 
-Progress: ████████████████████ 100% (Phase 12)
+Progress: █████░░░░░░░░░░░░░░░ 25% (Phase 13)
 
 ## v1.0 Summary
 
@@ -74,6 +74,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 12-02 | hint_select_* action pattern | Flexible routing for future hint button types |
 | 12-03 | Ephemeral messages for examples | Don't spam channel with help content |
 | 12-03 | Default /maro to help | Unknown subcommands show interactive help |
+| 13-01 | Negation patterns highest priority | "don't create ticket" must override "create ticket" pattern |
+| 13-01 | Pattern-matching-first | Check explicit patterns before LLM call for performance |
 
 ### Roadmap Evolution
 
@@ -97,9 +99,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 12-03-PLAN.md
+Stopped at: Completed 13-01-PLAN.md (IntentRouter Core)
 Resume file: None
-Next action: Milestone complete (all v1.1 phases done)
+Next action: Execute 13-02-PLAN.md (Review Flow)
 
 ## Phase 11 Summary (Complete)
 

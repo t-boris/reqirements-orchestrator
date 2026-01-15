@@ -109,8 +109,14 @@ Plans:
 ### Phase 13: Intent Router
 **Goal**: Route messages to correct flow (Ticket/Review/Discussion) before extraction
 **Depends on**: Phase 12
-**Research**: None needed
-**Plans**: TBD
+**Research**: Complete (13-CONTEXT.md)
+**Plans**: 4 plans in 3 waves
+
+Plans:
+- [x] 13-01: IntentRouter Node (Wave 1) — classify intent, extend state, wire into graph — completed 2026-01-15
+- [ ] 13-02: ReviewFlow Implementation (Wave 2) — persona-based analysis, no Jira
+- [ ] 13-03: DiscussionFlow + Guardrails (Wave 2) — light responses, graph docs
+- [ ] 13-04: Review → Ticket Transition + Tests (Wave 3) — scope gate, regression tests
 
 **Problem solved:**
 Bot treats ALL messages as ticket creation requests. "Propose architecture" triggers ticket draft + duplicate detection instead of persona-based analysis.
@@ -120,16 +126,16 @@ Bot treats ALL messages as ticket creation requests. "Propose architecture" trig
 User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 ```
 
-**Planned features:**
+**Features:**
 - [ ] IntentRouter node before extraction (LangGraph branch)
 - [ ] Structured intent result: `{intent, confidence, persona_hint, topic, reasons}`
 - [ ] TicketFlow: Extract → Validate → Dedupe → Preview (existing)
 - [ ] ReviewFlow: Context → Persona analysis → Output (no Jira ops)
 - [ ] DiscussionFlow: Light response, no cycles
-- [ ] REVIEW subtypes: REVIEW_TOPIC vs REVIEW_ARTIFACT
-- [ ] Guardrails: jira_search blocked if intent != TICKET
+- [ ] Guardrails: Review/Discussion don't access Jira
 - [ ] Explicit overrides: `/maro ticket`, `/maro review`, "create a ticket", "don't create ticket"
-- [ ] Regression tests: 10-20 phrases per flow
+- [ ] "Turn into ticket" button after review with scope gate
+- [ ] Regression tests: 20+ phrases covering all intents
 
 **DoD:**
 - Router node chooses branch: Ticket/Review/Discussion
@@ -156,4 +162,4 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
-| 13. Intent Router | v1.1 | 0/? | Not started | - |
+| 13. Intent Router | v1.1 | 1/4 | In progress | - |
