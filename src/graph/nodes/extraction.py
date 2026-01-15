@@ -214,12 +214,17 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     is_first_message = state.get("is_first_message", True)
     if draft.is_empty():
         if is_first_message:
-            # First message intro
+            # First message intro with commands help
             state_update["decision_result"] = {
                 "action": "intro",
                 "message": (
-                    "Hi! I'm MARO. I help turn ideas, bugs, and features into Jira tickets.\n"
-                    "Tell me what you want to build or fix, and I'll help structure it."
+                    "Hi! I'm MARO. I help turn ideas, bugs, and features into Jira tickets.\n\n"
+                    "Tell me what you want to build or fix, and I'll help structure it.\n\n"
+                    "*Commands:*\n"
+                    "• `/jira create` - Start a new ticket\n"
+                    "• `/jira search <query>` - Search tickets\n"
+                    "• `/persona status` - Show current persona\n"
+                    "• `/help` - Show all commands"
                 ),
             }
         else:

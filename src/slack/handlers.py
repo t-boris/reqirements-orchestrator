@@ -310,6 +310,38 @@ async def _process_thread_message(
         logger.error(f"Error processing thread message: {e}", exc_info=True)
 
 
+def handle_help_command(ack: Ack, command: dict, say, client: WebClient):
+    """Handle /help slash command - show all available commands."""
+    ack()
+
+    channel = command.get("channel_id")
+
+    help_text = """*MARO - Requirements Assistant*
+
+I help turn ideas, bugs, and features into Jira tickets.
+
+*How to use:*
+• @mention me with your idea, and I'll help structure it into a ticket
+• Answer my questions to fill in the details
+• Review and approve the draft before I create it in Jira
+
+*Commands:*
+• `/help` - Show this help message
+• `/jira create [type]` - Start a new ticket
+• `/jira search <query>` - Search existing tickets
+• `/jira status` - Show current session status
+• `/persona pm|security|architect` - Switch persona
+• `/persona lock` - Lock persona for this thread
+• `/persona status` - Show current persona
+
+*Tips:*
+• Be specific about the problem you're solving
+• Include acceptance criteria when you can
+• I'll ask clarifying questions if needed"""
+
+    say(text=help_text, channel=channel)
+
+
 def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
     """Handle /jira slash command with subcommands.
 
