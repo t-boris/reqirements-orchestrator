@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 15 of 16 (Review Conversation Flow)
+Phase: 16 of 16 (Ticket Operations)
 Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-01-15 — Completed 15-01-PLAN.md
+Last activity: 2026-01-15 — Completed 16-01-PLAN.md
 
-Progress: ████████████████████ 100% (Phase 15)
+Progress: ████████████████████ 100% (Phase 16)
 
 ## v1.0 Summary
 
@@ -93,6 +93,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 15-01 | NOT_CONTINUATION patterns checked first | "create new ticket" overrides continuation detection |
 | 15-01 | LLM fallback uses context-aware prompt | Biases toward REVIEW_CONTINUATION with review context |
 | 15-01 | review_context kept after continuation | Enables DECISION_APPROVAL after user answers questions |
+| 16-01 | ADF conversion in service layer | JiraService handles text-to-ADF, not handlers |
+| 16-01 | LLM-based content extraction | Extract structured content from conversation context |
+| 16-01 | Separate prompts for update vs comment | Different formatting needs for descriptions vs comments |
+| 16-01 | Message extraction from state.messages | Get latest HumanMessage for accurate user input |
 
 ### Roadmap Evolution
 
@@ -118,9 +122,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed Phase 15 plan 01 (Review Conversation Flow)
+Stopped at: Completed Phase 16 plan 01 (Ticket Operations)
 Resume file: None
-Next action: Plan Phase 16 (Ticket Operations)
+Next action: All v1.1 phases complete
 
 ## Phase 11 Summary (Complete)
 
@@ -264,3 +268,20 @@ Wave 3:
 - 24 tests verify pattern matching for common answer formats
 
 **Core Principle:** When user replies with answers after a review, continue the conversation instead of misclassifying as ticket creation.
+
+## Phase 16 Summary (Complete)
+
+**1 plan — COMPLETE:**
+
+- 16-01: Ticket Operations [DONE]
+
+**Phase 16 accomplishments:**
+- Three new JiraService methods: update_issue(), add_comment(), create_subtask()
+- All methods support ADF conversion, dry-run mode, progress callbacks
+- Content extraction prompts (UPDATE_EXTRACTION_PROMPT, COMMENT_EXTRACTION_PROMPT)
+- Helper functions: _extract_update_content(), _extract_comment_content()
+- Replaced stubs for update and add_comment actions with real API calls
+- ticket_action_node passes user_message and review_context for extraction
+- Error handling with user-friendly Slack messages
+
+**Core Principle:** Enable full ticket lifecycle management beyond creation. Use LLM to extract structured, actionable content from conversations instead of raw message dumps.
