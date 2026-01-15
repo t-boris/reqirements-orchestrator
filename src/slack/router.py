@@ -26,6 +26,8 @@ from src.slack.handlers import (
     handle_show_more_duplicates,
     handle_modal_link_duplicate,
     handle_modal_create_anyway,
+    # Hint button handling (Phase 12 Onboarding)
+    handle_hint_selection,
     # Channel join handling (Phase 12)
     handle_member_joined_channel,
 )
@@ -81,4 +83,7 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^modal_link_duplicate_.*"))(handle_modal_link_duplicate)
     app.action("modal_create_anyway")(handle_modal_create_anyway)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions")
+    # Hint button actions (Phase 12 onboarding)
+    app.action(re.compile(r"^hint_select_.*"))(handle_hint_selection)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select")

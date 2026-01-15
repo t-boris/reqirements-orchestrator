@@ -1927,6 +1927,80 @@ async def _handle_maro_status(
         )
 
 
+# --- Hint Button Action Handlers (Phase 12 Onboarding) ---
+
+def handle_hint_selection(ack, body, client: WebClient, action):
+    """Handle hint button selection (e.g., persona selection from hint).
+
+    Wraps async handler for sync context.
+    """
+    ack()
+    _run_async(_handle_hint_selection_async(body, client, action))
+
+
+async def _handle_hint_selection_async(body, client: WebClient, action):
+    """Async handler for hint button selection.
+
+    Routes to appropriate action based on button value.
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    user_id = body["user"]["id"]
+
+    # Get selected value (e.g., "pm", "architect", "security")
+    selected = action.get("value", "")
+
+    logger.info(
+        "Hint button selected",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "selected": selected,
+            "user_id": user_id,
+        }
+    )
+
+    # Handle persona selection
+    if selected in ["pm", "architect", "security"]:
+        # Switch persona
+        team_id = body["team"]["id"]
+        identity = SessionIdentity(
+            team_id=team_id,
+            channel_id=channel,
+            thread_ts=thread_ts,
+        )
+
+        try:
+            from src.personas.commands import handle_persona_command
+
+            state = {"persona": "pm", "persona_lock": False}
+            result = handle_persona_command(selected, state)
+
+            # Update message to confirm selection
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=result.message,
+            )
+
+            # Update runner state if session exists
+            from src.graph.runner import _runners
+            if identity.session_id in _runners:
+                runner = get_runner(identity)
+                current_state = await runner._get_current_state()
+                if result.state_update:
+                    new_state = {**current_state, **result.state_update}
+                    await runner._update_state(new_state)
+
+        except Exception as e:
+            logger.warning(f"Failed to handle hint persona selection: {e}")
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"Switched to {selected} perspective.",
+            )
+
+
 # --- Duplicate Action Handlers ---
 
 def handle_link_duplicate(ack, body, client: WebClient, action):
