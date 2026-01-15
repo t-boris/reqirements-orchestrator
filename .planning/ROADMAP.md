@@ -56,12 +56,12 @@ Plans:
 - [x] 11.1-01: MVP Duplicate Actions — completed 2026-01-15
 
 **Features (from 11.1-CONTEXT.md):**
-- [ ] Smart matching with WHY explanation (LLM-generated)
-- [ ] Link to existing ticket action
-- [ ] Create new anyway action
-- [ ] Add as info stub (full implementation in 11.3)
-- [ ] Show more matches modal
-- [ ] Confirmation after linking
+- [x] Smart matching with WHY explanation (LLM-generated)
+- [x] Link to existing ticket action
+- [x] Create new anyway action
+- [x] Add as info stub (full implementation in 11.3)
+- [x] Show more matches modal
+- [x] Confirmation after linking
 
 **Deferred to future phases:**
 - Bidirectional sync (Phase 11.4)
