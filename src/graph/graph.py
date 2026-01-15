@@ -39,6 +39,7 @@ from src.graph.nodes.validation import validation_node
 from src.graph.nodes.decision import decision_node, get_decision_action
 from src.graph.nodes.discussion import discussion_node
 from src.graph.nodes.review import review_node
+from src.graph.nodes.ticket_action import ticket_action_node
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow"]:
     """Route based on classified intent.
 
     Used as conditional edge from intent_router node.
@@ -100,6 +101,9 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     elif intent == "DISCUSSION":
         logger.info("Intent router: routing to discussion_flow")
         return "discussion_flow"
+    elif intent == "TICKET_ACTION":
+        logger.info("Intent router: routing to ticket_action_flow")
+        return "ticket_action_flow"
     else:
         logger.info("Intent router: routing to ticket_flow")
         return "ticket_flow"
@@ -137,6 +141,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("decision", decision_node)
     workflow.add_node("discussion", discussion_node)
     workflow.add_node("review", review_node)
+    workflow.add_node("ticket_action", ticket_action_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -149,6 +154,7 @@ def create_graph() -> StateGraph:
             "ticket_flow": "extraction",  # Existing ticket creation flow
             "review_flow": "review",      # Review generates persona-based analysis
             "discussion_flow": "discussion",  # Discussion generates brief response
+            "ticket_action_flow": "ticket_action",  # Work with existing ticket
         }
     )
 
@@ -157,6 +163,9 @@ def create_graph() -> StateGraph:
 
     # Review goes directly to END after generating analysis
     workflow.add_edge("review", END)
+
+    # Ticket action goes directly to END after setting up action
+    workflow.add_edge("ticket_action", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction

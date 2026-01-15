@@ -445,6 +445,73 @@ async def _dispatch_result(
                 text=chunks[0] if chunks else review_msg,  # Fallback text
             )
 
+    elif action == "ticket_action":
+        # Handle operations on existing tickets (Phase 13.1)
+        ticket_key = result.get("ticket_key")
+        action_type = result.get("action_type")
+        already_bound_to_same = result.get("already_bound_to_same", False)
+
+        if action_type == "create_subtask":
+            # Check if already bound to same ticket - do action, don't re-link
+            if already_bound_to_same:
+                # Proceed with subtask creation context
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Working on subtasks for *{ticket_key}*. What subtasks should I create?",
+                )
+            else:
+                # Bind thread to ticket, then provide subtask context
+                from src.slack.thread_bindings import get_binding_store
+
+                binding_store = get_binding_store()
+                await binding_store.bind(
+                    channel_id=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    issue_key=ticket_key,
+                    bound_by="system",  # Auto-bound by ticket action
+                )
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Linked to *{ticket_key}*. What subtasks should I create?",
+                )
+
+        elif action_type == "link":
+            # Normal link flow
+            from src.slack.thread_bindings import get_binding_store
+
+            binding_store = get_binding_store()
+            await binding_store.bind(
+                channel_id=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                issue_key=ticket_key,
+                bound_by="system",
+            )
+
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=f"Linked this thread to *{ticket_key}*.",
+            )
+
+        elif action_type in ("update", "add_comment"):
+            # Stub response for future implementation
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=f"I can help with {action_type.replace('_', ' ')} for *{ticket_key}*. (Full implementation coming soon)",
+            )
+
+        else:
+            # Unknown action type
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=f"I'm not sure how to help with *{ticket_key}*. Try 'create subtasks for {ticket_key}' or 'link to {ticket_key}'.",
+            )
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,

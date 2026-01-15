@@ -144,7 +144,7 @@ class GraphRunner:
             decision_result = current_state.get("decision_result", {})
             action = decision_result.get("action")
 
-            if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint"]:
+            if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint", "ticket_action"]:
                 # Interrupt - return current state
                 logger.info(f"Graph interrupted at {action}")
                 return self._merge_state(state, current_state)
@@ -213,6 +213,13 @@ class GraphRunner:
                 "message": decision_result.get("message", ""),
                 "show_buttons": decision_result.get("show_buttons", False),
                 "buttons": decision_result.get("buttons", []),
+            }
+        elif action == "ticket_action":
+            return {
+                "action": "ticket_action",
+                "ticket_key": decision_result.get("ticket_key"),
+                "action_type": decision_result.get("action_type"),
+                "already_bound_to_same": decision_result.get("already_bound_to_same", False),
             }
         else:
             return {"action": "continue"}
