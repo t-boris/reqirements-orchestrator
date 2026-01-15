@@ -46,14 +46,14 @@ Features:
 - [x] `/maro enable|disable|status` commands for opt-in listening
 - [x] Rolling summary for enabled channels (two-layer context)
 
-### Phase 11.1: Jira Duplicate Handling (INSERTED)
+### Phase 11.1: Jira Duplicate Handling (INSERTED) — COMPLETE
 **Goal**: When duplicates found, allow user to link to existing ticket instead of creating new
 **Depends on**: Phase 11
 **Research**: None needed
 **Plans**: 1 plan
 
 Plans:
-- [ ] 11.1-01: MVP Duplicate Actions — Link/Create/Add/Show more buttons, match explanation, thread binding
+- [x] 11.1-01: MVP Duplicate Actions — completed 2026-01-15
 
 **Features (from 11.1-CONTEXT.md):**
 - [ ] Smart matching with WHY explanation (LLM-generated)
@@ -72,23 +72,20 @@ Plans:
 **Goal**: Show visual progress feedback during bot processing
 **Depends on**: Phase 11
 **Research**: None needed
-**Plans**: 0 plans
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 11.2 to break down)
+- [ ] 11.2-01: ProgressTracker Core (Wave 1) — timing thresholds, basic status
+- [ ] 11.2-02: Skill-Specific Status (Wave 2) — operation names, long operation handling
+- [ ] 11.2-03: Draft State Badges (Wave 2) — lifecycle indicators in preview
+- [ ] 11.2-04: Error Handling Protocol (Wave 3) — retry visibility, action buttons
 
-**Proposed Features:**
-- [ ] Processing status bar in Slack messages
-- [ ] Phase icons (thinking, extracting, validating, etc.)
-- [ ] Typing indicator while bot is working
-- [ ] Progress updates for long operations
-- [ ] Visual state indicators (draft, pending approval, approved, created)
-
-**Ideas to explore:**
-- Emoji-based status: 🔄 Processing → ✅ Done
-- Live message updates showing current step
-- Estimated time remaining for complex operations
-- Collapse/expand for detailed progress
+**Features (from 11.2-CONTEXT.md):**
+- [ ] Timing-based status (only show if >4s)
+- [ ] Skill-specific status messages
+- [ ] Long operation handling (>15s bottleneck info)
+- [ ] Draft state badges (Draft/Approved/Created)
+- [ ] Error retry visibility with action buttons
 
 ### Phase 12: Onboarding UX
 **Goal**: Improve first-time user experience and command discoverability
@@ -115,6 +112,6 @@ Planned features:
 | 9. Personas | v1.0 | 4/4 | Complete | 2026-01-14 |
 | 10. Deployment | v1.0 | 3/3 | Complete | 2026-01-14 |
 | 11. Conversation History | v1.1 | 3/3 | Complete | 2026-01-14 |
-| 11.1 Jira Duplicate Handling | v1.1 | 0/1 | Planned | - |
-| 11.2 Progress & Status Indicators | v1.1 | 0/? | Not started | - |
+| 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
+| 11.2 Progress & Status Indicators | v1.1 | 0/4 | Planned | - |
 | 12. Onboarding UX | v1.1 | 0/? | Not started | - |
