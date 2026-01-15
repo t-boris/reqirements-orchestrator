@@ -380,13 +380,33 @@ async def _dispatch_result(
             full_text = prefix + review_msg
             chunk_size = 2900  # Leave margin for safety
 
-            # Split into chunks
+            # Split into chunks at natural boundaries (paragraphs/lines)
             chunks = []
-            for i in range(0, len(full_text), chunk_size):
-                chunk = full_text[i:i + chunk_size]
-                if i + chunk_size < len(full_text):
-                    chunk += "..."  # Indicate continuation
-                chunks.append(chunk)
+            remaining = full_text
+            while remaining:
+                if len(remaining) <= chunk_size:
+                    chunks.append(remaining)
+                    break
+
+                # Find a good split point (prefer double newline, then single newline, then space)
+                split_at = chunk_size
+                # Try to find paragraph break
+                para_break = remaining.rfind("\n\n", 0, chunk_size)
+                if para_break > chunk_size // 2:  # Only use if reasonably far into the chunk
+                    split_at = para_break + 2
+                else:
+                    # Try single newline
+                    line_break = remaining.rfind("\n", 0, chunk_size)
+                    if line_break > chunk_size // 2:
+                        split_at = line_break + 1
+                    else:
+                        # Fall back to space
+                        space = remaining.rfind(" ", 0, chunk_size)
+                        if space > chunk_size // 2:
+                            split_at = space + 1
+
+                chunks.append(remaining[:split_at].rstrip())
+                remaining = remaining[split_at:].lstrip()
 
             # Build blocks - one section per chunk
             blocks = []
