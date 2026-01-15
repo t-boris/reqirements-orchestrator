@@ -8,7 +8,7 @@ Duplicate detection: searches for similar tickets before preview.
 EXECUTE is deferred to Phase 7 - only sets state to READY_TO_CREATE.
 """
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 from src.schemas.state import AgentState, AgentPhase
@@ -28,6 +28,7 @@ class DecisionResult(BaseModel):
     is_reask: bool = False  # True if re-asking unanswered questions
     reask_count: int = 0  # How many times we've re-asked
     potential_duplicates: list[dict] = Field(default_factory=list)  # Similar tickets found
+    bound_ticket: Optional[str] = None  # Existing ticket this thread is bound to
 
 
 def prioritize_issues(
@@ -196,6 +197,7 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
     """Decide next action: ASK, PREVIEW, or READY_TO_CREATE.
 
     Logic:
+    0. If thread already bound to a ticket -> PREVIEW (skip duplicate detection)
     1. If validation passed (is_valid=True) -> PREVIEW
     2. If conflicts exist -> ASK (prioritize conflicts)
     3. If missing fields -> ASK (batch questions)
@@ -211,6 +213,38 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
     phase = state.get("phase", AgentPhase.COLLECTING)
     pending_questions = state.get("pending_questions")
     answer_match_result = state.get("answer_match_result", {})
+
+    # Check thread binding FIRST - if thread is already bound to a ticket,
+    # skip duplicate detection entirely (Phase 13.1 fix)
+    thread_ts = state.get("thread_ts")
+    channel_id = state.get("channel_id")
+
+    if thread_ts and channel_id:
+        from src.slack.thread_bindings import get_binding_store
+
+        binding_store = get_binding_store()
+        binding = await binding_store.get_binding(channel_id, thread_ts)
+
+        if binding:
+            logger.info(
+                "Thread already bound to ticket, skipping duplicate detection",
+                extra={
+                    "channel_id": channel_id,
+                    "thread_ts": thread_ts,
+                    "bound_ticket": binding.issue_key,
+                }
+            )
+            # Skip duplicate detection - go straight to preview with bound ticket info
+            return {
+                "step_count": step_count + 1,
+                "phase": AgentPhase.AWAITING_USER,
+                "pending_questions": None,
+                "decision_result": DecisionResult(
+                    action="preview",
+                    reason=f"Thread bound to {binding.issue_key}",
+                    bound_ticket=binding.issue_key,
+                ).model_dump(),
+            }
 
     # Check if already approved (would be set by approval handler)
     if phase == AgentPhase.READY_TO_CREATE:
