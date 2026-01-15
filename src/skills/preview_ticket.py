@@ -55,6 +55,7 @@ async def preview_ticket(
     session_id: str,
     evidence_permalinks: Optional[list[dict]] = None,
     potential_duplicates: Optional[list[dict]] = None,
+    draft_state: str = "draft",
 ) -> PreviewResult:
     """Post draft preview with approval buttons.
 
@@ -66,6 +67,7 @@ async def preview_ticket(
         session_id: Session ID for button values
         evidence_permalinks: Optional list of {permalink, user, preview} for evidence
         potential_duplicates: Optional list of {key, summary, url} for duplicate display
+        draft_state: Lifecycle state of draft (draft, approved, created, linked)
 
     Returns:
         PreviewResult with message_ts, preview_id, draft_hash, status
@@ -87,6 +89,7 @@ async def preview_ticket(
         draft_hash=draft_hash,
         evidence_permalinks=evidence_permalinks,
         potential_duplicates=potential_duplicates,
+        draft_state=draft_state,
     )
 
     # Post preview (WebClient is sync, not async)
