@@ -168,7 +168,14 @@ async def _process_mention(
     channel: str,
 ):
     """Async processing for @mention - runs graph and dispatches to skills."""
+    from src.slack.progress import ProgressTracker
+
+    # Create progress tracker for timing-based status feedback
+    tracker = ProgressTracker(client, channel, thread_ts)
+
     try:
+        await tracker.start("Processing...")
+
         runner = get_runner(identity)
 
         # Build conversation context BEFORE running graph (Phase 11)
@@ -185,6 +192,13 @@ async def _process_mention(
 
         result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
+        # Update status before dispatching
+        action = result.get("action", "continue")
+        if action == "preview":
+            await tracker.update("Preparing preview...")
+        elif action == "ask":
+            await tracker.update("Formulating questions...")
+
         # Use dispatcher for skill execution
         await _dispatch_result(result, identity, client, runner)
 
@@ -195,6 +209,8 @@ async def _process_mention(
             thread_ts=thread_ts,
             text="Sorry, something went wrong. Please try again.",
         )
+    finally:
+        await tracker.complete()
 
 
 async def _check_persona_switch(
@@ -464,7 +480,14 @@ async def _process_thread_message(
     channel: str,
 ):
     """Async processing for thread message - continues graph and dispatches to skills."""
+    from src.slack.progress import ProgressTracker
+
+    # Create progress tracker for timing-based status feedback
+    tracker = ProgressTracker(client, channel, thread_ts)
+
     try:
+        await tracker.start("Processing...")
+
         runner = get_runner(identity)
 
         # Build conversation context BEFORE running graph (Phase 11)
@@ -481,11 +504,20 @@ async def _process_thread_message(
 
         result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
+        # Update status before dispatching
+        action = result.get("action", "continue")
+        if action == "preview":
+            await tracker.update("Preparing preview...")
+        elif action == "ask":
+            await tracker.update("Formulating questions...")
+
         # Use dispatcher for skill execution (same as _process_mention)
         await _dispatch_result(result, identity, client, runner)
 
     except Exception as e:
         logger.error(f"Error processing thread message: {e}", exc_info=True)
+    finally:
+        await tracker.complete()
 
 
 def handle_help_command(ack: Ack, command: dict, say, client: WebClient):

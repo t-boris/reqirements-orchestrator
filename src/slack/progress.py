@@ -9,8 +9,9 @@ Provides visual feedback during bot processing with timing thresholds:
 import asyncio
 import logging
 import time
-from typing import Optional
+from typing import Optional, Union
 
+from slack_sdk.web import WebClient
 from slack_sdk.web.async_client import AsyncWebClient
 
 logger = logging.getLogger(__name__)
@@ -36,14 +37,14 @@ class ProgressTracker:
 
     def __init__(
         self,
-        client: AsyncWebClient,
+        client: Union[WebClient, AsyncWebClient],
         channel: str,
         thread_ts: str,
     ):
         """Initialize progress tracker.
 
         Args:
-            client: Async Slack WebClient for posting messages
+            client: Slack WebClient (sync or async) for posting messages
             channel: Channel ID to post in
             thread_ts: Thread timestamp to reply in
         """
@@ -143,11 +144,21 @@ class ProgressTracker:
             message += f" ({elapsed}s)"
 
         try:
-            response = await self.client.chat_postMessage(
-                channel=self.channel,
-                thread_ts=self.thread_ts,
-                text=message,
-            )
+            # Handle both sync and async clients
+            if isinstance(self.client, AsyncWebClient):
+                response = await self.client.chat_postMessage(
+                    channel=self.channel,
+                    thread_ts=self.thread_ts,
+                    text=message,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                response = await asyncio.to_thread(
+                    self.client.chat_postMessage,
+                    channel=self.channel,
+                    thread_ts=self.thread_ts,
+                    text=message,
+                )
             self._status_ts = response.get("ts")
             logger.debug(
                 "Posted status message",
@@ -170,11 +181,21 @@ class ProgressTracker:
         message = f":hourglass_flowing_sand: {self._current_status} ({elapsed}s)"
 
         try:
-            await self.client.chat_update(
-                channel=self.channel,
-                ts=self._status_ts,
-                text=message,
-            )
+            # Handle both sync and async clients
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=message,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=message,
+                )
             logger.debug(
                 "Updated status message",
                 extra={
@@ -193,11 +214,21 @@ class ProgressTracker:
 
         # Update to "Done"
         try:
-            await self.client.chat_update(
-                channel=self.channel,
-                ts=self._status_ts,
-                text=":white_check_mark: Done.",
-            )
+            # Handle both sync and async clients
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=":white_check_mark: Done.",
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=":white_check_mark: Done.",
+                )
         except Exception as e:
             logger.warning(f"Failed to update status to done: {e}")
 
@@ -211,10 +242,19 @@ class ProgressTracker:
             return
 
         try:
-            await self.client.chat_delete(
-                channel=self.channel,
-                ts=self._status_ts,
-            )
+            # Handle both sync and async clients
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_delete(
+                    channel=self.channel,
+                    ts=self._status_ts,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_delete,
+                    channel=self.channel,
+                    ts=self._status_ts,
+                )
             logger.debug(
                 "Deleted status message",
                 extra={"status_ts": self._status_ts}
