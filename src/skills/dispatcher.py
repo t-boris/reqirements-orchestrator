@@ -71,7 +71,7 @@ class SkillDispatcher:
         if decision.action == "ask":
             return await self._dispatch_ask(decision)
         elif decision.action == "preview":
-            return await self._dispatch_preview(draft)
+            return await self._dispatch_preview(draft, decision.potential_duplicates)
         elif decision.action == "ready_to_create":
             return self._dispatch_ready(draft)
         else:
@@ -124,7 +124,11 @@ class SkillDispatcher:
                 "error": str(e),
             }
 
-    async def _dispatch_preview(self, draft: TicketDraft) -> dict[str, Any]:
+    async def _dispatch_preview(
+        self,
+        draft: TicketDraft,
+        potential_duplicates: list[dict] = None,
+    ) -> dict[str, Any]:
         """Dispatch to preview_ticket skill.
 
         Posts draft preview with approval buttons.
@@ -138,6 +142,7 @@ class SkillDispatcher:
                 thread_ts=self.identity.thread_ts,
                 draft=draft,
                 session_id=self.identity.session_id,
+                potential_duplicates=potential_duplicates,
             )
 
             return {
