@@ -9,6 +9,7 @@ from src.db.checkpointer import setup_checkpointer
 from src.db.connection import init_db, get_connection
 from src.db.session_store import SessionStore
 from src.db.channel_context_store import ChannelContextStore
+from src.db.listening_store import ListeningStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -33,6 +34,9 @@ async def init_database() -> None:
 
         context_store = ChannelContextStore(conn)
         await context_store.create_tables()
+
+        listening_store = ListeningStore(conn)
+        await listening_store.create_tables()
 
     logger.info("Database initialized")
 
