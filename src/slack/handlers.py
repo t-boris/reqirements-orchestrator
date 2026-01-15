@@ -1797,3 +1797,99 @@ async def _handle_maro_status(
             text="Sorry, I couldn't retrieve the listening status. Please try again.",
             channel=channel_id,
         )
+
+
+# --- Duplicate Action Handlers ---
+
+def handle_link_duplicate(ack, body, client: WebClient, action):
+    """Synchronous wrapper for link duplicate action.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_link_duplicate_async(body, client, action))
+
+
+async def _handle_link_duplicate_async(body, client: WebClient, action):
+    """Handle 'Link to this' button click on duplicate display.
+
+    Binds the thread to the selected existing ticket.
+
+    Flow:
+    1. Parse button value: session_id:draft_hash:issue_key
+    2. Store thread binding
+    3. Update preview message to confirmation state
+    4. Post confirmation message
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]  # Preview message to update
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash:issue_key
+    button_value = action.get("value", "")
+    parts = button_value.split(":")
+
+    if len(parts) < 3:
+        logger.error(f"Invalid link_duplicate button value: {button_value}")
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not process link action. Please try again.",
+        )
+        return
+
+    # Last part is issue_key, everything before that is session_id:draft_hash
+    issue_key = parts[-1]
+    # session_id might contain colons (team:channel:thread)
+    draft_hash = parts[-2] if len(parts) > 3 else ""
+
+    logger.info(
+        "Linking thread to existing ticket",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "issue_key": issue_key,
+            "user_id": user_id,
+        }
+    )
+
+    # Store thread binding
+    from src.slack.thread_bindings import get_binding_store
+
+    binding_store = get_binding_store()
+    await binding_store.bind(
+        channel_id=channel,
+        thread_ts=thread_ts,
+        issue_key=issue_key,
+        bound_by=user_id,
+    )
+
+    # Get issue URL from Jira
+    from src.config.settings import get_settings
+    from src.jira.client import JiraService
+
+    settings = get_settings()
+    issue_url = f"{settings.jira_url.rstrip('/')}/browse/{issue_key}"
+
+    # Update preview message to linked confirmation state
+    from src.slack.blocks import build_linked_confirmation_blocks
+
+    confirmation_blocks = build_linked_confirmation_blocks(issue_key, issue_url)
+
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            text=f"Linked to {issue_key}",
+            blocks=confirmation_blocks,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update preview message: {e}")
+
+    # Post confirmation message in thread
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Linked to <{issue_url}|{issue_key}>. I'll keep you posted on updates.",
+    )
