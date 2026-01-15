@@ -184,6 +184,35 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 - [x] Post formatted decision to channel (not thread)
 - [x] Link back to discussion thread
 
+### Phase 15: Review Conversation Flow
+**Goal**: Context-aware intent classification for review continuations
+**Depends on**: Phase 14
+**Research**: Complete (15-CONTEXT.md)
+**Plans**: TBD
+
+**Problem solved:**
+When user replies to a REVIEW with answers to open questions, bot misclassifies as TICKET. Should recognize as REVIEW_CONTINUATION and continue the discussion.
+
+**Features:**
+- [ ] REVIEW_CONTINUATION intent type
+- [ ] Context-aware intent classification (check review_context)
+- [ ] Review continuation node (synthesize answers, ask for approval)
+- [ ] Smooth handoff to decision approval (Phase 14)
+
+### Phase 16: Ticket Operations (Planned)
+**Goal**: Implement deferred ticket actions from Phase 13.1
+**Depends on**: Phase 13.1
+**Research**: None needed
+**Plans**: TBD
+
+**Problem solved:**
+Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
+
+**Features:**
+- [ ] Update ticket via Jira API (add fields, change status)
+- [ ] Add comment to ticket via Jira API
+- [ ] Create subtasks for existing ticket
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -205,3 +234,5 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
+| 15. Review Conversation Flow | v1.1 | 0/? | Not started | - |
+| 16. Ticket Operations | v1.1 | 0/? | Not started | - |
