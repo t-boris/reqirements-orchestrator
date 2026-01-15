@@ -348,6 +348,19 @@ async def _dispatch_result(
             text="Ticket approved and ready to create in Jira!",
         )
 
+    elif action == "discussion":
+        # Discussion response - single reply, no thread creation
+        # Key: Discussion should respond WHERE the user mentioned us
+        # No state updates, no progress tracker, just respond and stop
+        discussion_msg = result.get("message", "")
+        if discussion_msg:
+            # Post directly to channel/thread where mentioned (no new thread)
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                text=discussion_msg,
+            )
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
