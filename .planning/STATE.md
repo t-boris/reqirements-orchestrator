@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 11.2 of 12 (Progress & Status Indicators)
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-01-15 — Completed 11.2-04-PLAN.md
+Phase: 12 of 12 (Onboarding UX)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-15 — Completed 12-01-PLAN.md
 
-Progress: ████████████████████ 100% (Phase 11.2)
+Progress: █████░░░░░░░░░░░░░░░ 33% (Phase 12)
 
 ## v1.0 Summary
 
@@ -66,6 +66,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 11.2-04 | Factual error tone | No apologies, state what failed |
 | 11.2-04 | Failure persists visible | Don't auto-delete so user sees error |
 | 11.2-04 | Three action buttons | Retry/Skip/Cancel covers user choices |
+| 12-01 | Post to channel not thread | Channels are workspaces, threads are conversations |
+| 12-01 | Pin immediately | Quick-reference as persistent installation instructions |
+| 12-01 | Non-blocking pin failure | Log warning but don't fail if no pin permission |
 
 ### Roadmap Evolution
 
@@ -74,7 +77,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 ### Deferred Issues
 
-- Onboarding: Better intro when bot joins channel
+None (onboarding addressed in Phase 12).
 
 ### Blockers/Concerns
 
@@ -83,9 +86,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 11.2-04-PLAN.md (Error Handling Protocol)
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
-Next action: Phase 11.2 complete - proceed to next phase or milestone
+Next action: Execute 12-02 (Wave 1 parallel) or 12-03 (Wave 2)
 
 ## Phase 11 Summary (Complete)
 
@@ -138,3 +141,29 @@ Wave 3:
 - Error state methods with retry visibility (1/3, 2/3, 3/3)
 - Progress callback pattern for service retry notifications
 - Error action buttons (Retry, Skip Jira, Cancel) after failures
+
+## Phase 12 Overview (In Progress)
+
+**3 plans in 2 waves:**
+
+Wave 1 (parallel):
+- 12-01: Channel Join Handler with Pinned Quick-Reference [DONE]
+- 12-02: Hesitation Detection with LLM Classification [In Progress]
+
+Wave 2:
+- 12-03: Interactive /maro help Command
+
+**12-01 accomplishments:**
+- member_joined_channel event handler (bot-only)
+- build_welcome_blocks() with usage examples and commands
+- Post to channel and pin immediately
+- Non-blocking on pin failure
+
+**Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing.
+
+**Key Integration Points:**
+- `router.py`: Add `member_joined_channel` event, hint button actions, help example actions
+- `handlers.py`: Channel join handler, hint classification, help command updates
+- `blocks.py`: Welcome blocks, hint buttons, example conversation blocks
+- `src/slack/onboarding.py`: New module for hesitation detection and help examples
+- `extraction.py`: Replace static intro/nudge with contextual hints
