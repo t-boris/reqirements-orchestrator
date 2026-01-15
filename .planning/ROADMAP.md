@@ -148,7 +148,10 @@ User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
 **Goal**: Handle explicit ticket references (SCRUM-XXX) and thread bindings
 **Depends on**: Phase 13
 **Research**: Complete (13.1-CONTEXT.md)
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [x] 13.1-01: TICKET_ACTION Intent + Thread Binding Check (Wave 1) — completed 2026-01-15
 
 **Problem solved:**
 When user says "create subtasks for SCRUM-1111", bot should work with that ticket directly instead of creating a new one and asking about duplicates.
@@ -197,5 +200,5 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
-| 13.1 Ticket Reference Handling | v1.1 | 0/? | Not started | - |
+| 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 14. Architecture Decisions | v1.1 | 0/? | Not started | - |
