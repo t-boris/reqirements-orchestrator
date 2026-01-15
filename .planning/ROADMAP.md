@@ -219,6 +219,28 @@ Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
 - [ ] Add comment to ticket via Jira API
 - [ ] Create subtasks for existing ticket
 
+### Phase 18: Clean Code (Planned)
+**Goal**: Apply clean code principles across the codebase
+**Depends on**: Phase 17
+**Research**: Complete (18-CONTEXT.md)
+**Plans**: 3 plans in 2 waves
+
+Plans:
+- [ ] 18-01: Split handlers.py (3193 lines → 8 modules) (Wave 1)
+- [ ] 18-02: Split blocks.py and jira/client.py (Wave 1)
+- [ ] 18-03: ISSUES.md + Docstrings (Wave 2)
+
+**Problem solved:**
+Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-line limit. TODOs scattered in code are invisible.
+
+**Features:**
+- [ ] Split handlers.py into 8 logical modules (core, dispatch, draft, duplicates, commands, onboarding, review, misc)
+- [ ] Split blocks.py into 4 modules (draft, duplicates, decisions, ui)
+- [ ] Organize jira/client.py with section comments or mixin
+- [ ] Capture all TODOs in .planning/ISSUES.md
+- [ ] Add module-level docstrings
+- [ ] Add function docstrings for public APIs
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -242,3 +264,4 @@ Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
 | 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 15. Review Conversation Flow | v1.1 | 0/1 | Planned | - |
 | 16. Ticket Operations | v1.1 | 0/1 | Planned | - |
+| 18. Clean Code | v1.1 | 0/3 | Planned | - |
