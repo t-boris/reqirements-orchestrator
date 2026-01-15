@@ -25,14 +25,22 @@ Analyze this request thoughtfully, as if thinking out loud:
 User request: {message}
 
 Provide analysis covering:
-1. **Understanding** - What you understand about the request
-2. **Components & Flows** - Key technical elements involved
-3. **Risks & Concerns** - What could go wrong
-4. **Alternatives** - Other approaches to consider
-5. **Open Questions** - What needs clarification
+1. *Understanding* - What you understand about the request
+2. *Components & Flows* - Key technical elements involved
+3. *Risks & Concerns* - What could go wrong
+4. *Alternatives* - Other approaches to consider
+5. *Open Questions* - What needs clarification
 
 Be conversational and thorough. This is a discussion, not a ticket.
 Think out loud like a senior engineer would.
+
+IMPORTANT: Format for Slack (not Markdown):
+- Bold: *text* (single asterisks)
+- Italic: _text_ (underscores)
+- Code: `code`
+- Lists: Use bullet character • or dash -
+- NO ### headers (use *Bold Title* instead)
+- NO **double asterisks**
 '''
 
 
