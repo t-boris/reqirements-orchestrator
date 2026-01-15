@@ -23,6 +23,7 @@ class IntentType(str, Enum):
     TICKET = "TICKET"       # Create a Jira ticket
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
+    TICKET_ACTION = "TICKET_ACTION"  # Work with existing ticket (subtask, update, etc.)
 
 
 class IntentResult(BaseModel):
@@ -32,6 +33,9 @@ class IntentResult(BaseModel):
     persona_hint: Optional[Literal["pm", "architect", "security"]] = None
     topic: Optional[str] = None
     reasons: list[str] = Field(default_factory=list)
+    # For TICKET_ACTION intent
+    ticket_key: Optional[str] = None  # Referenced ticket (e.g., "SCRUM-1111")
+    action_type: Optional[str] = None  # Action: "create_subtask", "add_comment", "update", "link"
 
 
 # Explicit override patterns (checked BEFORE LLM)
@@ -44,6 +48,21 @@ NEGATION_PATTERNS = [
     (r"\bno\s+ticket\b", "pattern: no ticket"),
     (r"\bwithout\s+(?:a\s+)?(?:jira\s+)?ticket\b", "pattern: without ticket"),
     (r"\bjust\s+(?:review|analyze|discuss)\b", "pattern: just review"),
+]
+
+# TICKET_ACTION PATTERNS - checked after NEGATION but before TICKET
+# These trigger work with an existing ticket reference (SCRUM-XXX format)
+# Format: (pattern, reason, action_type)
+TICKET_ACTION_PATTERNS = [
+    # Subtask creation
+    (r"create\s+subtasks?\s+(?:for\s+)?([A-Z]+-\d+)", "pattern: create subtasks for ticket", "create_subtask"),
+    (r"add\s+subtasks?\s+(?:to\s+)?([A-Z]+-\d+)", "pattern: add subtasks to ticket", "create_subtask"),
+    # Update ticket
+    (r"update\s+([A-Z]+-\d+)", "pattern: update ticket", "update"),
+    # Add comment
+    (r"add\s+(?:a\s+)?comment\s+(?:to\s+)?([A-Z]+-\d+)", "pattern: add comment to ticket", "add_comment"),
+    # Link to ticket
+    (r"link\s+(?:this\s+)?to\s+([A-Z]+-\d+)", "pattern: link to ticket", "link"),
 ]
 
 TICKET_PATTERNS = [
@@ -104,9 +123,10 @@ def classify_intent_patterns(message: str) -> Optional[IntentResult]:
 
     Pattern priority:
     1. NEGATION patterns (e.g., "don't create ticket") -> REVIEW
-    2. TICKET patterns (e.g., "create ticket") -> TICKET
-    3. REVIEW patterns (e.g., "review as security") -> REVIEW
-    4. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
+    2. TICKET_ACTION patterns (e.g., "create subtasks for SCRUM-1111") -> TICKET_ACTION
+    3. TICKET patterns (e.g., "create ticket") -> TICKET
+    4. REVIEW patterns (e.g., "review as security") -> REVIEW
+    5. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
     """
     message_lower = message.lower().strip()
 
@@ -120,6 +140,25 @@ def classify_intent_patterns(message: str) -> Optional[IntentResult]:
                 intent=IntentType.REVIEW,
                 confidence=1.0,
                 reasons=[reason],
+            )
+
+    # Check TICKET_ACTION patterns (before TICKET patterns)
+    # These detect explicit ticket references like "create subtasks for SCRUM-1111"
+    # Need to use original message (not lowercased) to capture ticket key correctly
+    for pattern_tuple in TICKET_ACTION_PATTERNS:
+        pattern = pattern_tuple[0]
+        reason = pattern_tuple[1]
+        action_type = pattern_tuple[2]
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            # Extract ticket key from capture group (group 1)
+            ticket_key = match.group(1).upper()  # Normalize to uppercase
+            return IntentResult(
+                intent=IntentType.TICKET_ACTION,
+                confidence=1.0,
+                reasons=[reason],
+                ticket_key=ticket_key,
+                action_type=action_type,
             )
 
     # Check TICKET patterns
@@ -174,14 +213,17 @@ async def _llm_classify(message: str) -> IntentResult:
 User message: "{message}"
 
 Classify into ONE category:
-- TICKET: User wants to create a Jira ticket, story, bug, or task (e.g., "we need feature X", "create story for Y", "file a bug for Z")
+- TICKET: User wants to create a NEW Jira ticket, story, bug, or task (e.g., "we need feature X", "create story for Y", "file a bug for Z")
+- TICKET_ACTION: User wants to work with an EXISTING ticket by reference (e.g., "create subtasks for SCRUM-123", "update PROJ-456", "add comment to ABC-789")
 - REVIEW: User wants analysis, feedback, or discussion without creating a Jira ticket (e.g., "what do you think about X", "review this design", "analyze the risks")
 - DISCUSSION: Casual greeting, simple question about the bot, or conversation that requires no action (e.g., "hi", "thanks", "what can you do")
 
 Respond in this exact format:
-INTENT: <TICKET|REVIEW|DISCUSSION>
+INTENT: <TICKET|TICKET_ACTION|REVIEW|DISCUSSION>
 CONFIDENCE: <0.0-1.0>
 REASON: <brief explanation>
+TICKET_KEY: <ticket key if TICKET_ACTION, e.g., "SCRUM-123", otherwise empty>
+ACTION_TYPE: <action if TICKET_ACTION: "create_subtask", "update", "add_comment", "link", otherwise empty>
 
 If the user seems to want to work on something but it's unclear if they want a ticket, lean toward TICKET.
 If they're asking for feedback or analysis, choose REVIEW.
@@ -195,12 +237,14 @@ If it's just conversation, choose DISCUSSION."""
         intent_str = "TICKET"
         confidence = 0.7
         reason = "llm classification"
+        ticket_key = None
+        action_type = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                if intent_value in ["TICKET", "REVIEW", "DISCUSSION"]:
+                if intent_value in ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION"]:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
                 try:
@@ -210,11 +254,21 @@ If it's just conversation, choose DISCUSSION."""
                     pass
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
+            elif line.upper().startswith("TICKET_KEY:"):
+                key_value = line.split(":", 1)[1].strip().upper()
+                if key_value and key_value != "EMPTY" and re.match(r"[A-Z]+-\d+", key_value):
+                    ticket_key = key_value
+            elif line.upper().startswith("ACTION_TYPE:"):
+                action_value = line.split(":", 1)[1].strip().lower()
+                if action_value in ["create_subtask", "update", "add_comment", "link"]:
+                    action_type = action_value
 
         return IntentResult(
             intent=IntentType(intent_str),
             confidence=confidence,
             reasons=[reason],
+            ticket_key=ticket_key,
+            action_type=action_type,
         )
 
     except Exception as e:
