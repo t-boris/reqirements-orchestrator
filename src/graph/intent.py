@@ -143,13 +143,24 @@ REVIEW_CONTINUATION_PATTERNS = [
     (r"\bfor\s+\w+.*(?:choose|select|go with|use)\b", "pattern: for X choose Y"),
     # Multiple comma-separated items (answers to multiple questions)
     (r"^[\w\s]+,\s*[\w\s]+,\s*[\w\s]+", "pattern: comma-separated answers"),
+
+    # User deferring to bot - "you propose", "you decide", "suggest default"
+    (r"\b(?:you\s+)?(?:propose|suggest|recommend|decide|pick|choose)\b.*(?:default|for\s+me|how\s+you\s+see)", "pattern: user deferring decision to bot"),
+
+    # User asking bot for perspective
+    (r"\bhow\s+(?:do\s+)?you\s+see\s+it\b", "pattern: asking for bot's perspective"),
+
+    # Positive responses to review
+    (r"\bI\s+like\s+(?:the\s+)?(?:architecture|approach|design|solution)\b", "pattern: positive response to review"),
 ]
 
 # NOT continuation patterns - these override continuation detection
 NOT_CONTINUATION_PATTERNS = [
+    # Explicit new topic requests (highest priority - check first)
+    (r"\bpropose\s+(?:new|another|different)\s+(?:architecture|approach|design)", "pattern: requesting new/different approach"),
+
     (r"\bcreate\s+(?:a\s+)?(?:new\s+)?ticket\b", "pattern: create new ticket"),
     (r"\bnew\s+(?:ticket|task|story|feature|bug)\b", "pattern: new ticket/task"),
-    (r"\bpropose\s+(?:new|another|different)\b", "pattern: propose new/different"),
     (r"\blet'?s?\s+start\s+(?:over|fresh|new)\b", "pattern: start over"),
     (r"\bactually\s*,?\s*(?:I\s+)?(?:want|need)\s+(?:a\s+)?(?:new|different)\b", "pattern: actually want new/different"),
 ]
