@@ -325,18 +325,86 @@ async def _dispatch_result(
         )
 
 
-def handle_message(event: dict, say, client: WebClient, context: BoltContext):
-    """Handle message events in threads where bot is already participating.
+async def _update_listening_context(
+    team_id: str,
+    channel_id: str,
+    message: dict,
+) -> None:
+    """Update rolling summary for listening-enabled channel.
 
-    Only processes:
-    - Messages in threads (has thread_ts)
-    - Non-bot messages
-    - Non-edited messages
+    Maintains the two-layer context pattern:
+    - Adds new message to raw buffer
+    - When buffer exceeds 30, compresses older messages into summary
+
+    This runs for EVERY message in enabled channels, so kept lightweight.
+    Summary updates only happen when buffer threshold is exceeded.
+
+    Args:
+        team_id: Slack team/workspace ID
+        channel_id: Channel ID
+        message: Slack message dict to add to buffer
     """
-    # Skip non-thread messages (channel root)
-    if "thread_ts" not in event:
-        return
+    from src.db import get_connection, ListeningStore
+    from src.slack.summarizer import update_rolling_summary, should_update_summary
+    from src.llm import get_llm
 
+    try:
+        async with get_connection() as conn:
+            store = ListeningStore(conn)
+
+            # Quick check if listening enabled (lightweight)
+            if not await store.is_enabled(team_id, channel_id):
+                return  # Not listening, skip
+
+            # Get current state
+            summary, raw_buffer = await store.get_summary(team_id, channel_id)
+
+            # Add new message to buffer
+            raw_buffer = raw_buffer or []
+            raw_buffer.append({
+                "user": message.get("user", "unknown"),
+                "text": message.get("text", ""),
+                "ts": message.get("ts", ""),
+            })
+
+            # Check if summary update needed (buffer > 30)
+            if should_update_summary(len(raw_buffer), threshold=30):
+                # Take messages to summarize (keep last 20 raw)
+                to_summarize = raw_buffer[:-20]
+                raw_buffer = raw_buffer[-20:]
+
+                # Update summary with older messages
+                llm = get_llm()
+                summary = await update_rolling_summary(llm, summary, to_summarize)
+
+                logger.debug(
+                    "Updated rolling summary",
+                    extra={
+                        "channel_id": channel_id,
+                        "messages_summarized": len(to_summarize),
+                        "buffer_size": len(raw_buffer),
+                    }
+                )
+
+            # Store updated state
+            await store.update_summary(team_id, channel_id, summary, raw_buffer)
+
+    except Exception as e:
+        # Non-blocking - log and continue
+        logger.warning(f"Failed to update listening context: {e}")
+
+
+def handle_message(event: dict, say, client: WebClient, context: BoltContext):
+    """Handle message events for listening and thread participation.
+
+    Two responsibilities:
+    1. Update rolling context for listening-enabled channels (all messages)
+    2. Process thread messages where bot is already participating
+
+    Skips:
+    - Bot messages
+    - Message edits/deletes
+    """
     # Skip bot messages
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
@@ -347,6 +415,17 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
         return
 
     channel = event.get("channel")
+    team_id = context.get("team_id", "")
+
+    # Update listening context for ALL messages in enabled channels (Phase 11)
+    # This runs async in background to not block message processing
+    _run_async(_update_listening_context(team_id, channel, event))
+
+    # Thread message processing (existing behavior)
+    # Only processes messages in threads where bot has an active session
+    if "thread_ts" not in event:
+        return  # Not a thread message, nothing more to do
+
     thread_ts = event["thread_ts"]
     user = event.get("user")
     text = event.get("text", "")
