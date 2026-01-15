@@ -35,7 +35,8 @@ class TestChannelJoinHandler:
         # Mock successful post
         client.chat_postMessage.return_value = {"ts": "1234567890.123456"}
 
-        with patch('src.slack.handlers._run_async') as mock_run_async:
+        # Patch _run_async in the module where it's used (onboarding imports from core)
+        with patch('src.slack.handlers.onboarding._run_async') as mock_run_async:
             handle_member_joined_channel(event, client, context)
 
             # Should call _run_async with the async handler
@@ -48,7 +49,7 @@ class TestChannelJoinHandler:
 
         # Read handler code
         import inspect
-        from src.slack.handlers import _handle_channel_join_async
+        from src.slack.handlers.onboarding import _handle_channel_join_async
 
         source = inspect.getsource(_handle_channel_join_async)
 
