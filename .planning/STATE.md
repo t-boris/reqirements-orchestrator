@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 12 of 12 (Onboarding UX)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-15 — Completed 12-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-15 — Completed 12-03-PLAN.md
 
-Progress: ██████████░░░░░░░░░░ 66% (Phase 12)
+Progress: ████████████████████ 100% (Phase 12)
 
 ## v1.0 Summary
 
@@ -72,6 +72,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 12-02 | Pattern match obvious cases | Greetings/perspective questions faster without LLM |
 | 12-02 | LLM for nuanced classification | VAGUE_IDEA and CONFUSED need intent understanding |
 | 12-02 | hint_select_* action pattern | Flexible routing for future hint button types |
+| 12-03 | Ephemeral messages for examples | Don't spam channel with help content |
+| 12-03 | Default /maro to help | Unknown subcommands show interactive help |
 
 ### Roadmap Evolution
 
@@ -89,9 +91,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 12-02-PLAN.md
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None
-Next action: Execute 12-03 (Wave 2 - Interactive /maro help Command)
+Next action: Milestone complete (all v1.1 phases done)
 
 ## Phase 11 Summary (Complete)
 
@@ -145,34 +147,24 @@ Wave 3:
 - Progress callback pattern for service retry notifications
 - Error action buttons (Retry, Skip Jira, Cancel) after failures
 
-## Phase 12 Overview (In Progress)
+## Phase 12 Summary (Complete)
 
-**3 plans in 2 waves:**
+**3 plans in 2 waves — ALL COMPLETE:**
 
 Wave 1 (parallel):
 - 12-01: Channel Join Handler with Pinned Quick-Reference [DONE]
 - 12-02: Hesitation Detection with LLM Classification [DONE]
 
 Wave 2:
-- 12-03: Interactive /maro help Command
+- 12-03: Interactive /maro help Command [DONE]
 
-**12-01 accomplishments:**
-- member_joined_channel event handler (bot-only)
-- build_welcome_blocks() with usage examples and commands
-- Post to channel and pin immediately
-- Non-blocking on pin failure
-
-**12-02 accomplishments:**
+**Phase 12 accomplishments:**
+- member_joined_channel event posts pinned quick-reference
 - classify_hesitation() with LLM-based intent detection
-- HintType enum: GREETING, VAGUE_IDEA, PERSPECTIVE_NEEDED, CONFUSED, NONE
-- Contextual hints with optional persona selection buttons
-- hint_select_* action handlers for button clicks
+- Contextual hints (GREETING, VAGUE_IDEA, PERSPECTIVE_NEEDED, CONFUSED)
+- hint_select_* action handlers for persona buttons
+- Interactive /maro help with example conversations
+- /help redirects to interactive help
+- Ephemeral example messages don't spam channel
 
 **Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing.
-
-**Key Integration Points:**
-- `router.py`: Add `member_joined_channel` event, hint button actions, help example actions
-- `handlers.py`: Channel join handler, hint classification, help command updates
-- `blocks.py`: Welcome blocks, hint buttons, example conversation blocks
-- `src/slack/onboarding.py`: New module for hesitation detection and help examples
-- `extraction.py`: Replace static intro/nudge with contextual hints

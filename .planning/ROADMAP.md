@@ -87,15 +87,24 @@ Plans:
 - [x] Draft state badges (Draft/Approved/Created)
 - [x] Error retry visibility with action buttons
 
-### Phase 12: Onboarding UX
+### Phase 12: Onboarding UX — COMPLETE
 **Goal**: Improve first-time user experience and command discoverability
-**Depends on**: Phase 11.1
-**Research**: Unlikely
+**Depends on**: Phase 11.2
+**Research**: Complete (12-CONTEXT.md)
+**Plans**: 3 plans in 2 waves
 
-Planned features:
-- [ ] Enhanced intro message with interactive elements
-- [ ] `/help` command improvements
-- [ ] Welcome message when bot joins channel
+Plans:
+- [x] 12-01: Channel Join Handler with Pinned Quick-Reference (Wave 1) — completed 2026-01-15
+- [x] 12-02: Hesitation Detection with LLM Classification (Wave 1) — completed 2026-01-15
+- [x] 12-03: Interactive /maro help Command (Wave 2) — completed 2026-01-15
+
+**Features (from 12-CONTEXT.md):**
+- [x] Pinned quick-reference when bot joins channel (not a greeting, information)
+- [x] Contextual hints using LLM classification (hesitation detection)
+- [x] Interactive /maro help with example conversations
+- [x] Persona selection buttons from hints
+
+**Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing. No mandatory walkthroughs.
 
 ## Progress
 
@@ -114,4 +123,4 @@ Planned features:
 | 11. Conversation History | v1.1 | 3/3 | Complete | 2026-01-14 |
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
-| 12. Onboarding UX | v1.1 | 0/? | Not started | - |
+| 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
