@@ -188,7 +188,10 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 **Goal**: Context-aware intent classification for review continuations
 **Depends on**: Phase 14
 **Research**: Complete (15-CONTEXT.md)
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 15-01: REVIEW_CONTINUATION Intent + Node (Wave 1)
 
 **Problem solved:**
 When user replies to a REVIEW with answers to open questions, bot misclassifies as TICKET. Should recognize as REVIEW_CONTINUATION and continue the discussion.
@@ -203,7 +206,10 @@ When user replies to a REVIEW with answers to open questions, bot misclassifies 
 **Goal**: Implement deferred ticket actions from Phase 13.1
 **Depends on**: Phase 13.1
 **Research**: None needed
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 16-01: JiraService Operations + Handler Dispatch (Wave 1)
 
 **Problem solved:**
 Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
@@ -234,5 +240,5 @@ Phase 13.1 left "update" and "add_comment" as stubs. User expects these to work.
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 15. Review Conversation Flow | v1.1 | 0/? | Not started | - |
-| 16. Ticket Operations | v1.1 | 0/? | Not started | - |
+| 15. Review Conversation Flow | v1.1 | 0/1 | Planned | - |
+| 16. Ticket Operations | v1.1 | 0/1 | Planned | - |
