@@ -152,6 +152,31 @@ async def review_node(state: AgentState) -> dict[str, Any]:
     """
     from langchain_core.messages import HumanMessage
     from src.llm import get_llm
+    from src.schemas.state import ReviewState
+
+    # BEFORE generating new review, check if one already exists
+    existing_review = state.get("review_context")
+    if existing_review and existing_review.get("state") in [ReviewState.ACTIVE, ReviewState.CONTINUATION]:
+        logger.warning(
+            "Active review already exists, not overwriting",
+            extra={
+                "existing_topic": existing_review.get("topic"),
+                "existing_state": existing_review.get("state"),
+            }
+        )
+        # Don't overwrite - return decision without updating review_context
+        # This prevents Bug #3 (second review overwriting first review's context)
+        topic = existing_review.get("topic", "")
+        persona = existing_review.get("persona", "Unknown")
+        return {
+            "decision_result": {
+                "action": "review",
+                "message": "I notice we already have an active review in progress. Should we continue with that discussion, or would you like to start a new review topic?",
+                "persona": persona,
+                "topic": topic,
+            },
+            # Keep existing review_context unchanged
+        }
 
     # Get intent result for persona hint and topic
     intent_result = state.get("intent_result", {})
@@ -202,6 +227,7 @@ async def review_node(state: AgentState) -> dict[str, Any]:
             extra={
                 "persona": persona_name,
                 "topic": topic,
+                "state": ReviewState.ACTIVE,
                 "message_length": len(latest_human_message),
                 "analysis_length": len(analysis),
             },
@@ -210,14 +236,17 @@ async def review_node(state: AgentState) -> dict[str, Any]:
         # Build review_context for architecture decision tracking (Phase 14)
         # This enables DECISION_APPROVAL detection on subsequent messages
         from datetime import datetime, timezone
+        import time
 
         review_context = {
+            "state": ReviewState.ACTIVE,  # SET STATE - review just posted, awaiting user response
             "topic": topic or latest_human_message[:100],  # Use message start if no topic
             "review_summary": analysis,
             "persona": persona_name,
             "review_timestamp": datetime.now(timezone.utc).isoformat(),
             "thread_ts": state.get("thread_ts", ""),
             "channel_id": state.get("channel_id", ""),
+            "created_at": time.time(),
         }
 
         return {
