@@ -118,3 +118,131 @@ def get_intro_message() -> str:
     Used when user's first message results in empty draft.
     """
     return HINT_RESPONSES[HintType.GREETING].hint_message
+
+
+# Example conversations for interactive help
+HELP_EXAMPLES = {
+    "create_ticket": {
+        "title": "Create Ticket",
+        "short_desc": "Draft Jira tickets from discussion",
+        "conversation": [
+            {"role": "user", "text": "@MARO We need a way for users to export their data to CSV format"},
+            {"role": "bot", "text": "Got it. A few questions to shape this into a ticket:\n\n1. What data should be exportable?\n2. Should there be any format options besides CSV?\n3. Who should have access to this feature?"},
+            {"role": "user", "text": "All their account data - profile, settings, activity history. Just CSV for now. All users."},
+            {"role": "bot", "text": "*Preview: Export User Data to CSV*\n\n*Problem:* Users need to export their account data...\n\n[Approve] [Edit]"},
+        ],
+    },
+    "review": {
+        "title": "Review",
+        "short_desc": "Get architecture or security review",
+        "conversation": [
+            {"role": "user", "text": "@MARO Review this as security"},
+            {"role": "bot", "text": "Switched to Security perspective.\n\nI'll review for: authentication, authorization, data validation, injection risks, secrets handling.\n\nWhat would you like me to review?"},
+            {"role": "user", "text": "We're adding a file upload feature for user avatars"},
+            {"role": "bot", "text": "*Security Review: Avatar Upload*\n\n:warning: *Risks identified:*\n• File type validation (accept only images)\n• File size limits (prevent DoS)\n• Filename sanitization\n• Storage location (not in webroot)\n\n*Recommendations:*\n• Validate MIME type server-side\n• Resize images to max dimensions\n• Generate random filenames"},
+        ],
+    },
+    "settings": {
+        "title": "Settings",
+        "short_desc": "Channel listening and preferences",
+        "conversation": [
+            {"role": "user", "text": "/maro status"},
+            {"role": "bot", "text": "*MARO Listening Status:* Disabled\n\nUse `/maro enable` to start listening in this channel."},
+            {"role": "user", "text": "/maro enable"},
+            {"role": "bot", "text": "MARO is now listening in this channel to maintain context. It won't reply unless mentioned or commanded."},
+        ],
+    },
+}
+
+
+def get_help_blocks() -> list[dict]:
+    """Build interactive help message with action buttons.
+
+    Short, structured, action-oriented.
+    Clicking a button shows example conversation.
+    """
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*What MARO can do:*\n• Draft Jira tickets from discussion\n• Propose architecture + risks\n• Detect duplicates\n• Sync with Jira\n• Track channel context"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Create Ticket", "emoji": True},
+                    "action_id": "help_example_create_ticket",
+                    "value": "create_ticket",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Review", "emoji": True},
+                    "action_id": "help_example_review",
+                    "value": "review",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Settings", "emoji": True},
+                    "action_id": "help_example_settings",
+                    "value": "settings",
+                },
+            ]
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Click a button to see an example conversation"
+                }
+            ]
+        }
+    ]
+    return blocks
+
+
+def get_example_blocks(example_key: str) -> list[dict]:
+    """Build blocks showing an example conversation.
+
+    Args:
+        example_key: Key from HELP_EXAMPLES dict
+
+    Returns:
+        Slack blocks with example conversation
+    """
+    example = HELP_EXAMPLES.get(example_key)
+    if not example:
+        return [{"type": "section", "text": {"type": "mrkdwn", "text": "Example not found."}}]
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"Example: {example['title']}", "emoji": True}
+        }
+    ]
+
+    # Build conversation blocks
+    for turn in example["conversation"]:
+        if turn["role"] == "user":
+            prefix = ":bust_in_silhouette: *You:*"
+        else:
+            prefix = ":robot_face: *MARO:*"
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{prefix}\n{turn['text']}"
+            }
+        })
+        blocks.append({"type": "divider"})
+
+    # Remove last divider
+    if blocks and blocks[-1].get("type") == "divider":
+        blocks.pop()
+
+    return blocks
