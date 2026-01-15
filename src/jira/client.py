@@ -116,7 +116,11 @@ class JiraService:
                     method, url, json=json_data, params=params
                 ) as response:
                     duration_ms = (time.monotonic() - start_time) * 1000
-                    response_body = await response.json() if response.content_length else {}
+                    # Always try to parse JSON - content_length can be None with chunked encoding
+                    try:
+                        response_body = await response.json()
+                    except Exception:
+                        response_body = {}
 
                     logger.info(
                         "Jira API response",
