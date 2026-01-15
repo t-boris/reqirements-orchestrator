@@ -126,9 +126,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed Phase 17 plan 02 (Review Flow Fixes)
+Stopped at: Completed Phase 17 plan 01 (Intent Classification Bug Fixes)
 Resume file: None
-Next action: Phase 17 complete - Review flow and lifecycle fixes ready
+Next action: Phase 17 complete - Intent classification fixes ready
 
 ## Phase 11 Summary (Complete)
 
@@ -292,17 +292,17 @@ Wave 3:
 
 ## Phase 17 Summary (Complete)
 
-**2 plans — COMPLETE:**
+**1 plan — COMPLETE:**
 
-- 17-01: Handler Integration Fixes [DONE]
-- 17-02: Review Flow Lifecycle and Thread Context [DONE]
+- 17-01: Intent Classification Bug Fixes [DONE]
 
 **Phase 17 accomplishments:**
-- ReviewState enum with 4 lifecycle states (ACTIVE, CONTINUATION, APPROVED, POSTED)
-- review_node checks for existing active review before overwriting (prevents Bug #3)
-- Reference detection: "the architecture", "this review", "from above" patterns
-- Thread context extraction when references detected (fixes Bug #2)
-- decision_approval_node marks state=POSTED before clearing (helps debug Bug #4)
-- 22 comprehensive tests covering reference detection and lifecycle management
+- Added 3 new REVIEW_CONTINUATION patterns for user deferring to bot
+- Pattern: "propose default", "you decide for me", "how you see it"
+- Pattern: "I like architecture/approach/design/solution"
+- NOT_CONTINUATION pattern for "propose new/different architecture"
+- Fixed Bug #1: "I like architecture" now correctly classified as REVIEW_CONTINUATION
+- Fixed Bug #3: "propose default, how you see it" now correctly classified as REVIEW_CONTINUATION
+- 13 new tests added (35 total tests passing)
 
-**Core Principle:** Preserve review context through the full lifecycle until decision is posted to channel. Detect when users reference prior content and include that context in extraction.
+**Core Principle:** User responses during review conversations should be recognized as continuations, not misclassified as new requests. User deferring to bot ("propose default") indicates engagement, not a new topic.
