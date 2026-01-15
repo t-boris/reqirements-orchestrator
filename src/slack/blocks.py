@@ -284,45 +284,22 @@ def build_draft_preview_blocks_with_hash(
         if findings_blocks:
             blocks.extend(findings_blocks)
 
-    # Potential duplicates warning (if found)
-    if potential_duplicates:
-        blocks.append({"type": "divider"})
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*Potential duplicates found:*"
-            }
-        })
-        for dup in potential_duplicates[:3]:
-            # Truncate summary for display
-            summary = dup.get("summary", "")[:50]
-            if len(dup.get("summary", "")) > 50:
-                summary += "..."
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"• <{dup.get('url', '#')}|{dup.get('key', 'Unknown')}>: {summary}"
-                }
-            })
-        blocks.append({
-            "type": "context",
-            "elements": [{
-                "type": "mrkdwn",
-                "text": "_Review these before creating a new ticket_"
-            }]
-        })
-
-    # Divider
-    blocks.append({"type": "divider"})
-
     # Build button value with session_id:draft_hash for version checking
     button_value = f"{session_id}:{draft_hash}" if draft_hash else session_id
 
-    # Approval buttons - different based on blocking status
-    if has_blocking:
+    # When duplicates found, show duplicate blocks with action buttons (Phase 11.1)
+    # This replaces the standard approval buttons
+    if potential_duplicates:
+        blocks.append({"type": "divider"})
+        duplicate_blocks = build_duplicate_blocks(
+            potential_duplicates=potential_duplicates,
+            session_id=session_id,
+            draft_hash=draft_hash,
+        )
+        blocks.extend(duplicate_blocks)
+    elif has_blocking:
         # Blocking findings: "Resolve Issues" instead of "Approve"
+        blocks.append({"type": "divider"})
         blocks.append({
             "type": "actions",
             "elements": [
@@ -350,7 +327,8 @@ def build_draft_preview_blocks_with_hash(
             ]
         })
     else:
-        # No blocking: standard approval flow
+        # No blocking and no duplicates: standard approval flow
+        blocks.append({"type": "divider"})
         blocks.append({
             "type": "actions",
             "elements": [
