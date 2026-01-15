@@ -113,6 +113,17 @@ class AgentState(TypedDict):
     #     "reasons": ["pattern: ...", "keyword: ..."]
     # }
 
+    # Architecture decision tracking (Phase 14)
+    review_context: Optional[dict[str, Any]]  # Saved review for decision extraction
+    # Structure: {
+    #     "topic": str,                    # From intent_result.topic
+    #     "review_summary": str,           # The review analysis text
+    #     "persona": str,                  # Which persona gave the review
+    #     "review_timestamp": str,         # ISO timestamp
+    #     "thread_ts": str,                # Thread where review happened
+    #     "channel_id": str,               # Channel for posting decision
+    # }
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead

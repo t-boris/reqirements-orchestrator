@@ -207,13 +207,27 @@ async def review_node(state: AgentState) -> dict[str, Any]:
             },
         )
 
+        # Build review_context for architecture decision tracking (Phase 14)
+        # This enables DECISION_APPROVAL detection on subsequent messages
+        from datetime import datetime, timezone
+
+        review_context = {
+            "topic": topic or latest_human_message[:100],  # Use message start if no topic
+            "review_summary": analysis,
+            "persona": persona_name,
+            "review_timestamp": datetime.now(timezone.utc).isoformat(),
+            "thread_ts": state.get("thread_ts", ""),
+            "channel_id": state.get("channel_id", ""),
+        }
+
         return {
             "decision_result": {
                 "action": "review",
                 "message": analysis,
                 "persona": persona_name,
                 "topic": topic,
-            }
+            },
+            "review_context": review_context,
         }
 
     except Exception as e:

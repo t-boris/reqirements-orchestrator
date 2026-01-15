@@ -24,6 +24,7 @@ class IntentType(str, Enum):
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     TICKET_ACTION = "TICKET_ACTION"  # Work with existing ticket (subtask, update, etc.)
+    DECISION_APPROVAL = "DECISION_APPROVAL"  # User approving review/architecture discussion
 
 
 class IntentResult(BaseModel):
@@ -114,8 +115,25 @@ DISCUSSION_PATTERNS = [
     (r"^how\s+does\s+this\s+work\??$", "pattern: how does this work"),
 ]
 
+# Decision approval patterns - user approving a review/architecture discussion
+# These only make sense AFTER a review has happened (check review_context in state)
+DECISION_APPROVAL_PATTERNS = [
+    (r"\blet'?s?\s+go\s+with\s+(?:this|that|option|approach)\b", "pattern: let's go with this"),
+    (r"\bapproved\b", "pattern: approved"),
+    (r"\bagreed\b", "pattern: agreed"),
+    (r"\bship\s+it\b", "pattern: ship it"),
+    (r"\blooks?\s+good,?\s+let'?s?\s+(?:do|proceed)\b", "pattern: looks good let's proceed"),
+    (r"\bthis\s+is\s+(?:the|our)\s+approach\b", "pattern: this is the approach"),
+    (r"\bI\s+(?:like|prefer)\s+(?:this|option)\b", "pattern: I like/prefer this"),
+    (r"\bgo\s+(?:ahead|for\s+it)\b", "pattern: go ahead"),
+    (r"\bsounds?\s+good\b", "pattern: sounds good"),
+]
 
-def classify_intent_patterns(message: str) -> Optional[IntentResult]:
+
+def classify_intent_patterns(
+    message: str,
+    has_review_context: bool = False,
+) -> Optional[IntentResult]:
     """Classify intent using explicit patterns only.
 
     Returns IntentResult if explicit pattern found, None if LLM needed.
@@ -126,7 +144,12 @@ def classify_intent_patterns(message: str) -> Optional[IntentResult]:
     2. TICKET_ACTION patterns (e.g., "create subtasks for SCRUM-1111") -> TICKET_ACTION
     3. TICKET patterns (e.g., "create ticket") -> TICKET
     4. REVIEW patterns (e.g., "review as security") -> REVIEW
-    5. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
+    5. DECISION_APPROVAL patterns (only if has_review_context) -> DECISION_APPROVAL
+    6. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
+
+    Args:
+        message: User's message text
+        has_review_context: Whether there's a recent review to approve (Phase 14)
     """
     message_lower = message.lower().strip()
 
@@ -184,6 +207,19 @@ def classify_intent_patterns(message: str) -> Optional[IntentResult]:
                 persona_hint=persona_hint,
                 reasons=[reason],
             )
+
+    # Check DECISION_APPROVAL patterns (only if review context exists)
+    # These patterns only make sense after a review has been given
+    if has_review_context:
+        for pattern_tuple in DECISION_APPROVAL_PATTERNS:
+            pattern = pattern_tuple[0]
+            reason = pattern_tuple[1]
+            if re.search(pattern, message_lower, re.IGNORECASE):
+                return IntentResult(
+                    intent=IntentType.DECISION_APPROVAL,
+                    confidence=1.0,
+                    reasons=[reason],
+                )
 
     # Check DISCUSSION patterns
     for pattern_tuple in DISCUSSION_PATTERNS:
@@ -280,7 +316,10 @@ If it's just conversation, choose DISCUSSION."""
         )
 
 
-async def classify_intent(message: str) -> IntentResult:
+async def classify_intent(
+    message: str,
+    has_review_context: bool = False,
+) -> IntentResult:
     """Classify user message intent.
 
     First checks explicit override patterns (no LLM call).
@@ -288,12 +327,13 @@ async def classify_intent(message: str) -> IntentResult:
 
     Args:
         message: User's message text
+        has_review_context: Whether there's a recent review to approve (Phase 14)
 
     Returns:
         IntentResult with intent type, confidence, and reasons
     """
     # Pattern matching first (no LLM call)
-    pattern_result = classify_intent_patterns(message)
+    pattern_result = classify_intent_patterns(message, has_review_context=has_review_context)
     if pattern_result is not None:
         logger.info(
             f"Intent classified by pattern: {pattern_result.intent.value}, "
@@ -333,6 +373,10 @@ async def intent_router_node(state: dict) -> dict:
             latest_human_message = msg.content
             break
 
+    # Check if there's a recent review context (Phase 14 - Architecture Decisions)
+    review_context = state.get("review_context")
+    has_review_context = review_context is not None
+
     if not latest_human_message:
         logger.warning("No human message found for intent classification")
         # Default to TICKET if no message
@@ -342,7 +386,7 @@ async def intent_router_node(state: dict) -> dict:
             reasons=["no message found, default to TICKET"],
         )
     else:
-        result = await classify_intent(latest_human_message)
+        result = await classify_intent(latest_human_message, has_review_context=has_review_context)
 
     logger.info(
         f"IntentRouter: intent={result.intent.value}, "
