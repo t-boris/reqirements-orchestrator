@@ -79,6 +79,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 
 - Phase 11.1 inserted after Phase 11: Jira Duplicate Handling (URGENT) — Allow users to link to existing tickets when duplicates found
 - Phase 11.2 inserted after Phase 11: Progress & Status Indicators — Visual feedback during bot processing
+- Phase 13 added: Intent Router — Route messages to Ticket/Review/Discussion flows before extraction
 
 ### Deferred Issues
 
@@ -86,9 +87,8 @@ None (onboarding addressed in Phase 12).
 
 ### Pending Todos
 
-1. **Add intent detection to distinguish review requests from ticket creation** (graph)
-   - Bot treats "propose architecture" as ticket creation instead of review request
-   - File: `.planning/todos/pending/2026-01-15-intent-detection-review-vs-ticket.md`
+1. ~~**Add intent detection to distinguish review requests from ticket creation** (graph)~~ → Promoted to Phase 13
+   - File: `.planning/todos/pending/2026-01-15-intent-detection-review-vs-ticket.md` (archived)
 
 ### Blockers/Concerns
 

@@ -106,6 +106,38 @@ Plans:
 
 **Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing. No mandatory walkthroughs.
 
+### Phase 13: Intent Router
+**Goal**: Route messages to correct flow (Ticket/Review/Discussion) before extraction
+**Depends on**: Phase 12
+**Research**: None needed
+**Plans**: TBD
+
+**Problem solved:**
+Bot treats ALL messages as ticket creation requests. "Propose architecture" triggers ticket draft + duplicate detection instead of persona-based analysis.
+
+**Architecture:**
+```
+User message → IntentRouter → { TicketFlow | ReviewFlow | DiscussionFlow }
+```
+
+**Planned features:**
+- [ ] IntentRouter node before extraction (LangGraph branch)
+- [ ] Structured intent result: `{intent, confidence, persona_hint, topic, reasons}`
+- [ ] TicketFlow: Extract → Validate → Dedupe → Preview (existing)
+- [ ] ReviewFlow: Context → Persona analysis → Output (no Jira ops)
+- [ ] DiscussionFlow: Light response, no cycles
+- [ ] REVIEW subtypes: REVIEW_TOPIC vs REVIEW_ARTIFACT
+- [ ] Guardrails: jira_search blocked if intent != TICKET
+- [ ] Explicit overrides: `/maro ticket`, `/maro review`, "create a ticket", "don't create ticket"
+- [ ] Regression tests: 10-20 phrases per flow
+
+**DoD:**
+- Router node chooses branch: Ticket/Review/Discussion
+- Review branch doesn't call Jira tools, doesn't build draft
+- Discussion branch responds once and stops
+- Logs: intent, confidence, reasons
+- [Turn into Jira ticket] button after review
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -124,3 +156,4 @@ Plans:
 | 11.1 Jira Duplicate Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 11.2 Progress & Status Indicators | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
+| 13. Intent Router | v1.1 | 0/? | Not started | - |
