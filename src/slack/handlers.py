@@ -2039,3 +2039,246 @@ async def _handle_add_to_duplicate_async(body, client: WebClient, action):
         text=f"Adding info to existing tickets will be available soon. "
              f"For now, you can *Link to {issue_key}* or *Create a new ticket*.",
     )
+
+
+def handle_show_more_duplicates(ack, body, client: WebClient, action):
+    """Synchronous wrapper for show more duplicates action.
+
+    Opens a modal with all duplicate matches.
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    # Get trigger_id BEFORE ack (needed for modal)
+    trigger_id = body.get("trigger_id")
+    ack()
+    _run_async(_handle_show_more_duplicates_async(body, client, action, trigger_id))
+
+
+async def _handle_show_more_duplicates_async(body, client: WebClient, action, trigger_id):
+    """Handle 'Show more' button click on duplicate display.
+
+    Opens modal with all duplicate matches.
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash
+    button_value = action.get("value", "")
+
+    if ":" in button_value:
+        parts = button_value.rsplit(":", 1)
+        session_id = parts[0]
+        draft_hash = parts[1] if len(parts) > 1 else ""
+    else:
+        session_id = button_value
+        draft_hash = ""
+
+    logger.info(
+        "Opening show more duplicates modal",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get current state to retrieve duplicates
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    decision_result = state.get("decision_result", {})
+    potential_duplicates = decision_result.get("potential_duplicates", [])
+
+    if not potential_duplicates:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="No similar tickets found.",
+        )
+        return
+
+    # Build and open modal
+    from src.slack.modals import build_duplicate_modal
+
+    modal_view = build_duplicate_modal(
+        duplicates=potential_duplicates,
+        session_id=session_id,
+        draft_hash=draft_hash,
+    )
+
+    try:
+        client.views_open(
+            trigger_id=trigger_id,
+            view=modal_view,
+        )
+    except Exception as e:
+        logger.error(f"Failed to open duplicate modal: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Sorry, I couldn't open the similar tickets view. Please try again.",
+        )
+
+
+def handle_modal_link_duplicate(ack, body, client: WebClient, action):
+    """Handle link button click from within the duplicate modal.
+
+    Closes modal, links thread to ticket, updates original message.
+    """
+    ack(response_action="clear")  # Close modal
+    _run_async(_handle_modal_link_duplicate_async(body, client, action))
+
+
+async def _handle_modal_link_duplicate_async(body, client: WebClient, action):
+    """Async handler for modal link duplicate action."""
+    user_id = body["user"]["id"]
+    private_metadata_raw = body["view"].get("private_metadata", "{}")
+
+    # Parse private metadata
+    import json
+    try:
+        private_metadata = json.loads(private_metadata_raw)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
+        return
+
+    session_id = private_metadata.get("session_id", "")
+
+    # Parse button value: session_id:draft_hash:issue_key
+    button_value = action.get("value", "")
+    parts = button_value.split(":")
+    issue_key = parts[-1] if parts else ""
+
+    # Parse session_id to get channel and thread
+    # Format: team:channel:thread_ts
+    session_parts = session_id.split(":")
+    if len(session_parts) != 3:
+        logger.error(f"Invalid session_id format: {session_id}")
+        return
+
+    team_id, channel, thread_ts = session_parts
+
+    logger.info(
+        "Linking from modal",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "issue_key": issue_key,
+            "user_id": user_id,
+        }
+    )
+
+    # Store thread binding
+    from src.slack.thread_bindings import get_binding_store
+
+    binding_store = get_binding_store()
+    await binding_store.bind(
+        channel_id=channel,
+        thread_ts=thread_ts,
+        issue_key=issue_key,
+        bound_by=user_id,
+    )
+
+    # Get issue URL
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    issue_url = f"{settings.jira_url.rstrip('/')}/browse/{issue_key}"
+
+    # Post confirmation in thread
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Linked to <{issue_url}|{issue_key}>. I'll keep you posted on updates.",
+    )
+
+
+def handle_modal_create_anyway(ack, body, client: WebClient, action):
+    """Handle create anyway button click from within the duplicate modal.
+
+    Closes modal and proceeds with ticket creation.
+    """
+    ack(response_action="clear")  # Close modal
+    _run_async(_handle_modal_create_anyway_async(body, client, action))
+
+
+async def _handle_modal_create_anyway_async(body, client: WebClient, action):
+    """Async handler for modal create anyway action."""
+    user_id = body["user"]["id"]
+    private_metadata_raw = body["view"].get("private_metadata", "{}")
+
+    # Parse private metadata
+    import json
+    try:
+        private_metadata = json.loads(private_metadata_raw)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
+        return
+
+    session_id = private_metadata.get("session_id", "")
+    draft_hash = private_metadata.get("draft_hash", "")
+
+    # Parse session_id to get identity
+    session_parts = session_id.split(":")
+    if len(session_parts) != 3:
+        logger.error(f"Invalid session_id format: {session_id}")
+        return
+
+    team_id, channel, thread_ts = session_parts
+
+    logger.info(
+        "Creating new ticket from modal",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get current draft
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    draft = state.get("draft")
+
+    if not draft:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not find draft. Please start a new session.",
+        )
+        return
+
+    # Post standard approval preview
+    from src.skills.preview_ticket import compute_draft_hash
+    from src.slack.blocks import build_draft_preview_blocks_with_hash
+
+    current_hash = compute_draft_hash(draft)
+
+    preview_blocks = build_draft_preview_blocks_with_hash(
+        draft=draft,
+        session_id=session_id,
+        draft_hash=current_hash,
+        evidence_permalinks=None,
+        potential_duplicates=None,
+        validator_findings=state.get("validation_report"),
+    )
+
+    # Post new preview message (since we can't update from modal)
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Ticket preview for: {draft.title or 'Untitled'}",
+        blocks=preview_blocks,
+    )

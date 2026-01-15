@@ -254,3 +254,111 @@ def parse_modal_values(view_state: dict) -> dict:
         ]
 
     return values
+
+
+def build_duplicate_modal(
+    duplicates: list[dict],
+    session_id: str,
+    draft_hash: str,
+) -> dict:
+    """Build modal view for showing all duplicate matches.
+
+    Shows up to 5 duplicates with link actions. Displayed when user
+    clicks "Show more" on duplicate display.
+
+    Args:
+        duplicates: List of duplicate dicts with key, summary, url, status, updated
+        session_id: Session ID for button value encoding
+        draft_hash: Hash of draft content for version checking
+
+    Returns:
+        Slack modal view structure
+    """
+    # Build private_metadata
+    private_metadata = json.dumps({
+        "session_id": session_id,
+        "draft_hash": draft_hash,
+    })
+
+    blocks = []
+
+    # Header
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f":mag: *{len(duplicates)} similar tickets found*\n"
+                    "Select one to link this thread to, or create a new ticket."
+        }
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Each duplicate with link button
+    for dup in duplicates[:5]:  # Max 5
+        key = dup.get("key", "Unknown")
+        summary = dup.get("summary", "")[:50]
+        if len(dup.get("summary", "")) > 50:
+            summary += "..."
+        url = dup.get("url", "#")
+        status = dup.get("status", "Unknown")
+        updated = dup.get("updated", "")
+
+        # Status line
+        status_text = f"Status: {status}"
+        if updated:
+            status_text += f" | Updated: {updated}"
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*<{url}|{key}>* - {summary}\n_{status_text}_"
+            },
+            "accessory": {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Link to this",
+                    "emoji": True
+                },
+                "value": f"{session_id}:{draft_hash}:{key}",
+                "action_id": f"modal_link_duplicate_{key}",
+            }
+        })
+
+    blocks.append({"type": "divider"})
+
+    # Create new anyway button at bottom
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": "_None of these match?_"
+        },
+        "accessory": {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Create new ticket",
+                "emoji": True
+            },
+            "value": f"{session_id}:{draft_hash}",
+            "action_id": "modal_create_anyway",
+        }
+    })
+
+    return {
+        "type": "modal",
+        "callback_id": "duplicate_modal",
+        "title": {
+            "type": "plain_text",
+            "text": "Similar Tickets",
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+        },
+        "private_metadata": private_metadata,
+        "blocks": blocks,
+    }
