@@ -315,6 +315,111 @@ class ProgressTracker:
 
         self._status_ts = None
 
+    async def _schedule_long_operation_updates(self) -> None:
+        """Schedule updates for long-running operations.
+
+        Posts bottleneck info at 15s and 30s thresholds.
+        Only posts if status message is visible (already passed 4s threshold).
+        """
+        try:
+            # Wait for 15s threshold
+            await asyncio.sleep(LONG_OPERATION_THRESHOLD)
+
+            # Don't update if completed
+            if self._completed:
+                return
+
+            # Only update if status message was posted
+            if self._status_ts and self._current_status:
+                elapsed = self._get_elapsed()
+                bottleneck = self._identify_bottleneck()
+                await self._update_with_bottleneck(bottleneck, elapsed)
+
+            # Wait for additional 15s (30s total)
+            await asyncio.sleep(VERY_LONG_OPERATION_THRESHOLD - LONG_OPERATION_THRESHOLD)
+
+            # Don't update if completed
+            if self._completed:
+                return
+
+            # Update again at 30s
+            if self._status_ts and self._current_status:
+                elapsed = self._get_elapsed()
+                bottleneck = self._identify_bottleneck()
+                await self._update_with_bottleneck(bottleneck, elapsed, show_waiting=True)
+
+        except asyncio.CancelledError:
+            # Expected when operation completes before thresholds
+            pass
+
+    def _identify_bottleneck(self) -> str:
+        """Identify what's slow based on current operation.
+
+        Returns human-readable bottleneck name for status display.
+        """
+        status_lower = self._current_status.lower()
+
+        if "jira" in status_lower:
+            return "Jira API"
+        elif "context" in status_lower:
+            return "Context loading"
+        elif "extracting" in status_lower:
+            return "LLM processing"
+        elif "validating" in status_lower:
+            return "Validation"
+        elif "preview" in status_lower:
+            return "Preview generation"
+        else:
+            return "Processing"
+
+    async def _update_with_bottleneck(
+        self,
+        bottleneck: str,
+        elapsed: int,
+        show_waiting: bool = False,
+    ) -> None:
+        """Update status message with bottleneck identification.
+
+        Args:
+            bottleneck: Name of the slow component (e.g., "Jira API")
+            elapsed: Elapsed time in seconds
+            show_waiting: Whether to show "Still waiting..." suffix
+        """
+        if not self._status_ts or self._completed:
+            return
+
+        if show_waiting:
+            message = f":hourglass_flowing_sand: {bottleneck} is responding slowly ({elapsed}s). Still waiting..."
+        else:
+            message = f":hourglass_flowing_sand: {bottleneck} is responding slowly ({elapsed}s)"
+
+        try:
+            # Handle both sync and async clients
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=message,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel,
+                    ts=self._status_ts,
+                    text=message,
+                )
+            logger.debug(
+                "Updated status with bottleneck info",
+                extra={
+                    "status_ts": self._status_ts,
+                    "bottleneck": bottleneck,
+                    "elapsed": elapsed,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update status with bottleneck: {e}")
+
     def _get_elapsed(self) -> int:
         """Get elapsed time in seconds."""
         if self._start_time is None:
