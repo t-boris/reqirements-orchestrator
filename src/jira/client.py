@@ -262,10 +262,14 @@ class JiraService:
 
         # Make API call
         response = await self._request("POST", "/rest/api/3/issue", json_data=payload)
+        logger.info(f"Create issue response: {response}")
 
         # Fetch full issue to get all fields
         created_key = response.get("key", "")
-        return await self.get_issue(created_key)
+        logger.info(f"Fetching created issue: {created_key}")
+        issue = await self.get_issue(created_key)
+        logger.info(f"Returning issue from create_issue: {issue.key}")
+        return issue
 
     async def search_issues(self, jql: str, limit: int = 5) -> list[JiraIssue]:
         """Search for Jira issues using JQL.
@@ -354,15 +358,25 @@ class JiraService:
             params={"fields": "key,summary,status,assignee"},
         )
 
-        fields = response.get("fields", {})
-        assignee = fields.get("assignee")
-        assignee_name = assignee.get("displayName") if assignee else None
-        status = fields.get("status", {}).get("name", "Unknown")
+        try:
+            fields = response.get("fields", {})
+            assignee = fields.get("assignee")
+            # Handle various assignee formats
+            if assignee and isinstance(assignee, dict):
+                assignee_name = assignee.get("displayName")
+            else:
+                assignee_name = None
+            status = fields.get("status", {}).get("name", "Unknown")
 
-        return JiraIssue(
-            key=response.get("key", key),
-            summary=fields.get("summary", ""),
-            status=status,
-            assignee=assignee_name,
-            base_url=self.base_url,
-        )
+            issue = JiraIssue(
+                key=response.get("key", key),
+                summary=fields.get("summary", ""),
+                status=status,
+                assignee=assignee_name,
+                base_url=self.base_url,
+            )
+            logger.info(f"Built JiraIssue: key={issue.key}, url={issue.url}")
+            return issue
+        except Exception as e:
+            logger.error(f"Failed to parse Jira response: {e}, response={response}")
+            raise
