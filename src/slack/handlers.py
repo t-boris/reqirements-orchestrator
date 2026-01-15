@@ -2394,3 +2394,65 @@ async def _handle_modal_create_anyway_async(body, client: WebClient, action):
         text=f"Ticket preview for: {draft.title or 'Untitled'}",
         blocks=preview_blocks,
     )
+
+
+# --- Channel Join Handler (Phase 12) ---
+
+def handle_member_joined_channel(event: dict, client: WebClient, context: BoltContext):
+    """Handle member_joined_channel event - post pinned quick-reference.
+
+    Only triggers when the bot itself joins a channel.
+    Posts the welcome message and pins it immediately.
+
+    Pattern: Sync wrapper delegates to async.
+    """
+    # Only respond to bot's own join
+    user = event.get("user")
+    bot_user_id = context.get("bot_user_id")
+
+    if user != bot_user_id:
+        return  # Not our join, ignore
+
+    channel = event.get("channel")
+
+    logger.info(
+        "Bot joined channel, posting quick-reference",
+        extra={"channel": channel}
+    )
+
+    _run_async(_handle_channel_join_async(channel, client))
+
+
+async def _handle_channel_join_async(channel: str, client: WebClient):
+    """Async handler for channel join - posts and pins welcome message."""
+    from src.slack.blocks import build_welcome_blocks
+
+    blocks = build_welcome_blocks()
+
+    try:
+        # Post the quick-reference message
+        result = client.chat_postMessage(
+            channel=channel,
+            text="MARO is active in this channel",
+            blocks=blocks,
+        )
+
+        message_ts = result.get("ts")
+
+        # Pin the message
+        if message_ts:
+            try:
+                client.pins_add(
+                    channel=channel,
+                    timestamp=message_ts,
+                )
+                logger.info(
+                    "Pinned welcome message",
+                    extra={"channel": channel, "message_ts": message_ts}
+                )
+            except Exception as e:
+                # May fail if bot lacks pin permission - non-blocking
+                logger.warning(f"Could not pin welcome message: {e}")
+
+    except Exception as e:
+        logger.error(f"Failed to post welcome message: {e}", exc_info=True)
