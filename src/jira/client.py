@@ -299,13 +299,14 @@ class JiraService:
             },
         )
 
-        params = {
+        # Use new /search/jql endpoint (old /search was removed in 2024)
+        payload = {
             "jql": jql,
             "maxResults": limit,
-            "fields": "key,summary,status,assignee",
+            "fields": ["key", "summary", "status", "assignee"],
         }
 
-        response = await self._request("GET", "/rest/api/3/search", params=params)
+        response = await self._request("POST", "/rest/api/3/search/jql", json_data=payload)
 
         issues = []
         for item in response.get("issues", []):
