@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 18 of 18 (Clean Code)
-Plan: 3 of 4 in current phase (Plans 1-3 complete)
-Status: In progress
-Last activity: 2026-01-15 — Completed 18-03-PLAN.md (ISSUES.md + docstrings)
+Plan: 4 of 4 in current phase (Plans 1-4 complete)
+Status: Phase complete
+Last activity: 2026-01-15 — Completed 18-04-PLAN.md (Clean Code Audit)
 
-Progress: ███████████████████░ 75% (Phase 18)
+Progress: ████████████████████ 100% (Phase 18)
 
 ## v1.0 Summary
 
@@ -109,6 +109,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 18-01 | Split handlers.py into package | 3193 lines -> 10 modules (<600 each) |
 | 18-01 | Backward compat via __init__.py | Existing imports continue to work |
 | 18-01 | Module organization by responsibility | core/dispatch/draft/duplicates/commands/onboarding/review/misc |
+| 18-04 | Accept 21 functions >100 lines | Dispatchers, UI builders, state machines - splitting would harm readability |
+| 18-04 | Body extraction pattern inline | 4-5 lines inline clearer than helper function |
 
 ### Roadmap Evolution
 
@@ -134,9 +136,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 18-03-PLAN.md (ISSUES.md + docstrings)
+Stopped at: Completed 18-04-PLAN.md (Clean Code Audit)
 Resume file: None
-Next action: Execute 18-04-PLAN.md (Clean Code Audit)
+Next action: Complete milestone (all Phase 18 plans done)
 
 ## Phase 11 Summary (Complete)
 
