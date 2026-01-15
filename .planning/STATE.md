@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 12 of 12 (Onboarding UX)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-15 — Completed 12-01-PLAN.md
+Last activity: 2026-01-15 — Completed 12-02-PLAN.md
 
-Progress: █████░░░░░░░░░░░░░░░ 33% (Phase 12)
+Progress: ██████████░░░░░░░░░░ 66% (Phase 12)
 
 ## v1.0 Summary
 
@@ -69,6 +69,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 12-01 | Post to channel not thread | Channels are workspaces, threads are conversations |
 | 12-01 | Pin immediately | Quick-reference as persistent installation instructions |
 | 12-01 | Non-blocking pin failure | Log warning but don't fail if no pin permission |
+| 12-02 | Pattern match obvious cases | Greetings/perspective questions faster without LLM |
+| 12-02 | LLM for nuanced classification | VAGUE_IDEA and CONFUSED need intent understanding |
+| 12-02 | hint_select_* action pattern | Flexible routing for future hint button types |
 
 ### Roadmap Evolution
 
@@ -86,9 +89,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 12-01-PLAN.md
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
-Next action: Execute 12-02 (Wave 1 parallel) or 12-03 (Wave 2)
+Next action: Execute 12-03 (Wave 2 - Interactive /maro help Command)
 
 ## Phase 11 Summary (Complete)
 
@@ -148,7 +151,7 @@ Wave 3:
 
 Wave 1 (parallel):
 - 12-01: Channel Join Handler with Pinned Quick-Reference [DONE]
-- 12-02: Hesitation Detection with LLM Classification [In Progress]
+- 12-02: Hesitation Detection with LLM Classification [DONE]
 
 Wave 2:
 - 12-03: Interactive /maro help Command
@@ -158,6 +161,12 @@ Wave 2:
 - build_welcome_blocks() with usage examples and commands
 - Post to channel and pin immediately
 - Non-blocking on pin failure
+
+**12-02 accomplishments:**
+- classify_hesitation() with LLM-based intent detection
+- HintType enum: GREETING, VAGUE_IDEA, PERSPECTIVE_NEEDED, CONFUSED, NONE
+- Contextual hints with optional persona selection buttons
+- hint_select_* action handlers for button clicks
 
 **Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing.
 
