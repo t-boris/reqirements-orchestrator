@@ -13,6 +13,8 @@ Supports:
 import logging
 from typing import Any
 
+from langchain_core.messages import HumanMessage
+
 from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -63,11 +65,21 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
                 }
             )
 
+    # Get latest human message for content extraction
+    messages = state.get("messages", [])
+    latest_human_message = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            latest_human_message = msg.content
+            break
+
     return {
         "decision_result": {
             "action": "ticket_action",
             "ticket_key": ticket_key,
             "action_type": action_type,
             "already_bound_to_same": already_bound_to_same,
+            "user_message": latest_human_message,  # For content extraction
+            "review_context": state.get("review_context"),  # Include if available
         }
     }
