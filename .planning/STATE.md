@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 18 of 18 (Clean Code)
-Plan: 2 of 4 in current phase (Plan 1 in parallel)
+Plan: 3 of 4 in current phase (Plans 1-2 complete)
 Status: In progress
-Last activity: 2026-01-15 — Completed 18-02-PLAN.md (blocks/jira split)
+Last activity: 2026-01-15 — Completed 18-01-PLAN.md (handlers split)
 
-Progress: ██████████░░░░░░░░░░ 50% (Phase 18)
+Progress: ███████████████░░░░░ 75% (Phase 18)
 
 ## v1.0 Summary
 
@@ -106,6 +106,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 18-02 | Split blocks.py by purpose | Clear responsibility boundaries (draft/duplicates/decisions/ui) |
 | 18-02 | Re-export from __init__.py | Zero changes needed in importing files |
 | 18-02 | Keep jira/client.py single file | Under 800 lines, sections sufficient |
+| 18-01 | Split handlers.py into package | 3193 lines -> 10 modules (<600 each) |
+| 18-01 | Backward compat via __init__.py | Existing imports continue to work |
+| 18-01 | Module organization by responsibility | core/dispatch/draft/duplicates/commands/onboarding/review/misc |
 
 ### Roadmap Evolution
 
@@ -131,9 +134,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 18-02-PLAN.md (blocks/jira split)
+Stopped at: Completed 18-01-PLAN.md (handlers split)
 Resume file: None
-Next action: Execute remaining Phase 18 plans (18-01 handlers split, 18-03 audit, 18-04 audit)
+Next action: Execute remaining Phase 18 plans (18-03 audit, 18-04 audit)
 
 ## Phase 11 Summary (Complete)
 
