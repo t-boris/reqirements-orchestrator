@@ -166,7 +166,10 @@ When user says "create subtasks for SCRUM-1111", bot should work with that ticke
 **Goal**: Auto-detect architecture decisions and post to channel
 **Depends on**: Phase 13
 **Research**: Complete (14-CONTEXT.md)
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 14-01: Decision Detection + Channel Posting (Wave 1)
 
 **Problem solved:**
 After review discussion, when user approves ("let's go with this"), MARO should post the decision to channel as a permanent record.
@@ -201,4 +204,4 @@ After review discussion, when user approves ("let's go with this"), MARO should 
 | 12. Onboarding UX | v1.1 | 3/3 | Complete | 2026-01-15 |
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 14. Architecture Decisions | v1.1 | 0/? | Not started | - |
+| 14. Architecture Decisions | v1.1 | 0/1 | Planned | - |
