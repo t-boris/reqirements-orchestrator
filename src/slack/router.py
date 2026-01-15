@@ -32,6 +32,9 @@ from src.slack.handlers import (
     handle_help_example,
     # Channel join handling (Phase 12)
     handle_member_joined_channel,
+    # Review to ticket handling (Phase 13)
+    handle_review_to_ticket,
+    handle_scope_gate_submit,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,4 +94,10 @@ def register_handlers(app: App) -> None:
     # Help example buttons (Phase 12 onboarding)
     app.action(re.compile(r"^help_example_.*"))(handle_help_example)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example")
+    # Review to ticket action (Phase 13)
+    app.action("review_to_ticket")(handle_review_to_ticket)
+
+    # Scope gate modal submission (Phase 13)
+    app.view("review_scope_gate")(handle_scope_gate_submit)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, scope_gate")
