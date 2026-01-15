@@ -490,3 +490,237 @@ class JiraService:
         except Exception as e:
             logger.error(f"Failed to parse Jira response: {e}, response={response}")
             raise
+
+    async def update_issue(
+        self,
+        issue_key: str,
+        updates: dict[str, Any],
+        progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    ) -> JiraIssue:
+        """Update a Jira issue with field changes.
+
+        Uses PUT /rest/api/3/issue/{issueIdOrKey} endpoint.
+
+        Args:
+            issue_key: Issue key (e.g., "SCRUM-111")
+            updates: Fields to update. Supports:
+                - "description": Text (will be converted to ADF)
+                - "summary": Plain text
+                - "priority": {"name": "High"}
+                - "labels": ["label1", "label2"]
+            progress_callback: Optional retry visibility callback
+
+        Returns:
+            Updated JiraIssue with refreshed fields
+
+        Raises:
+            JiraAPIError: On API errors
+        """
+        logger.info(
+            "Updating Jira issue",
+            extra={
+                "issue_key": issue_key,
+                "update_fields": list(updates.keys()),
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        # Convert description to ADF if present
+        if "description" in updates and isinstance(updates["description"], str):
+            updates["description"] = {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": updates["description"]}],
+                    }
+                ],
+            }
+
+        payload = {"fields": updates}
+
+        # Dry-run mode
+        if self.settings.jira_dry_run:
+            logger.info(
+                "Dry-run mode: would update issue",
+                extra={"issue_key": issue_key, "payload": payload},
+            )
+            return await self.get_issue(issue_key)
+
+        await self._request(
+            "PUT",
+            f"/rest/api/3/issue/{issue_key}",
+            json_data=payload,
+            progress_callback=progress_callback,
+        )
+
+        logger.info(
+            "Jira issue updated successfully",
+            extra={"issue_key": issue_key},
+        )
+
+        # Return refreshed issue
+        return await self.get_issue(issue_key)
+
+    async def add_comment(
+        self,
+        issue_key: str,
+        comment: str,
+        progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    ) -> dict[str, Any]:
+        """Add comment to a Jira issue.
+
+        Uses POST /rest/api/3/issue/{issueIdOrKey}/comment endpoint.
+
+        Args:
+            issue_key: Issue key (e.g., "SCRUM-111")
+            comment: Comment text (plain text, will be converted to ADF)
+            progress_callback: Optional retry visibility callback
+
+        Returns:
+            Created comment response with id, author, body, created timestamp
+
+        Raises:
+            JiraAPIError: On API errors
+        """
+        logger.info(
+            "Adding comment to Jira issue",
+            extra={
+                "issue_key": issue_key,
+                "comment_length": len(comment),
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        # Convert plain text to ADF
+        payload = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": comment}],
+                    }
+                ],
+            }
+        }
+
+        # Dry-run mode
+        if self.settings.jira_dry_run:
+            logger.info(
+                "Dry-run mode: would add comment",
+                extra={"issue_key": issue_key, "comment_preview": comment[:100]},
+            )
+            return {"id": "dry-run", "body": payload["body"]}
+
+        response = await self._request(
+            "POST",
+            f"/rest/api/3/issue/{issue_key}/comment",
+            json_data=payload,
+            progress_callback=progress_callback,
+        )
+
+        logger.info(
+            "Comment added successfully",
+            extra={
+                "issue_key": issue_key,
+                "comment_id": response.get("id"),
+            },
+        )
+
+        return response
+
+    async def create_subtask(
+        self,
+        parent_key: str,
+        summary: str,
+        description: str = "",
+        progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    ) -> JiraIssue:
+        """Create a subtask under parent issue.
+
+        Uses POST /rest/api/3/issue endpoint with parent link and "Sub-task" issue type.
+
+        Args:
+            parent_key: Parent issue key (e.g., "SCRUM-111")
+            summary: Subtask summary/title
+            description: Subtask description (optional)
+            progress_callback: Optional retry visibility callback
+
+        Returns:
+            Created subtask JiraIssue
+
+        Raises:
+            JiraAPIError: On API errors (including if parent not found or subtasks not allowed)
+        """
+        # Extract project key from parent key
+        project_key = parent_key.split("-")[0]
+
+        logger.info(
+            "Creating subtask",
+            extra={
+                "parent_key": parent_key,
+                "project_key": project_key,
+                "summary": summary,
+                "jira_env": self.settings.jira_env,
+            },
+        )
+
+        # Build payload
+        payload: dict[str, Any] = {
+            "fields": {
+                "project": {"key": project_key},
+                "parent": {"key": parent_key},
+                "summary": summary,
+                "issuetype": {"name": "Sub-task"},
+            }
+        }
+
+        # Add description if provided
+        if description:
+            payload["fields"]["description"] = {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": description}],
+                    }
+                ],
+            }
+
+        # Dry-run mode
+        if self.settings.jira_dry_run:
+            self._mock_issue_counter += 1
+            mock_key = f"{project_key}-DRY{self._mock_issue_counter}"
+            logger.info(
+                "Dry-run mode: would create subtask",
+                extra={"mock_key": mock_key, "parent_key": parent_key, "summary": summary},
+            )
+            return JiraIssue(
+                key=mock_key,
+                summary=summary,
+                status="Open",
+                assignee=None,
+                base_url=self.base_url,
+            )
+
+        response = await self._request(
+            "POST",
+            "/rest/api/3/issue",
+            json_data=payload,
+            progress_callback=progress_callback,
+        )
+
+        created_key = response.get("key", "")
+        logger.info(
+            "Subtask created successfully",
+            extra={
+                "subtask_key": created_key,
+                "parent_key": parent_key,
+            },
+        )
+
+        return await self.get_issue(created_key)
