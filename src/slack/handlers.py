@@ -361,6 +361,28 @@ async def _dispatch_result(
                 text=discussion_msg,
             )
 
+    elif action == "review":
+        # Review response - persona-based analysis without Jira operations
+        # Like discussion, responds where mentioned. Longer, thoughtful analysis.
+        review_msg = result.get("message", "")
+        persona = result.get("persona", "")
+
+        # Format as review (persona indicator + analysis)
+        if persona:
+            prefix = f"*{persona} Review:*\n\n"
+        else:
+            prefix = ""
+
+        if review_msg:
+            # Post review analysis to channel/thread where mentioned
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                text=prefix + review_msg,
+            )
+
+        # Note: "Turn into ticket" button will be added in Plan 04
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
