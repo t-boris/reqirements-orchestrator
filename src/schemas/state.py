@@ -103,6 +103,16 @@ class AgentState(TypedDict):
     #     "last_updated_at": "..."  # ISO datetime string
     # }
 
+    # Intent routing (Phase 13)
+    intent_result: Optional[dict[str, Any]]  # IntentResult.model_dump()
+    # Structure: {
+    #     "intent": "TICKET" | "REVIEW" | "DISCUSSION",
+    #     "confidence": 0.0-1.0,
+    #     "persona_hint": "pm"|"architect"|"security"|None,
+    #     "topic": str|None,
+    #     "reasons": ["pattern: ...", "keyword: ..."]
+    # }
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
