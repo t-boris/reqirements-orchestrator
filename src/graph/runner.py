@@ -187,6 +187,7 @@ class GraphRunner:
                 "action": "preview",
                 "draft": state.get("draft"),
                 "reason": decision_result.get("reason", ""),
+                "potential_duplicates": decision_result.get("potential_duplicates", []),
             }
         elif action == "ready_to_create":
             return {

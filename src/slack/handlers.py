@@ -296,6 +296,7 @@ async def _dispatch_result(
             decision = DecisionResult(
                 action="preview",
                 reason=result.get("reason", ""),
+                potential_duplicates=result.get("potential_duplicates", []),
             )
 
             dispatcher = SkillDispatcher(client, identity)
