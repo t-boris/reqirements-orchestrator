@@ -107,6 +107,15 @@ async def _generate_content_for_fields(draft, fields: list[str], state: dict) ->
             logger.info(f"Generated content for fields: {list(generated.keys())}")
             # Patch draft with generated content
             for field, value in generated.items():
+                # Skip constraints - they require special DraftConstraint format
+                # that the LLM won't generate correctly
+                if field == "constraints":
+                    logger.debug("Skipping generated constraints - requires structured format")
+                    continue
+                # Skip open_questions - not a draft field
+                if field == "open_questions":
+                    logger.debug("Skipping open_questions - not a draft field")
+                    continue
                 if hasattr(draft, field):
                     if isinstance(value, list) and field in ["acceptance_criteria", "dependencies", "risks"]:
                         # Append to lists
