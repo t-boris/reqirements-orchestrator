@@ -19,6 +19,19 @@ logger = logging.getLogger(__name__)
 # Timing thresholds (seconds)
 STATUS_THRESHOLD = 4  # Post status message after this
 UPDATE_INTERVAL = 5  # Update status every N seconds
+LONG_OPERATION_THRESHOLD = 15  # Show bottleneck info after this
+VERY_LONG_OPERATION_THRESHOLD = 30  # Additional update at this threshold
+
+# Predefined status messages for operations
+STATUS_MESSAGES = {
+    "processing": "Processing...",
+    "context": "Loading context...",
+    "extracting": "Extracting requirements...",
+    "validating": "Validating draft...",
+    "searching_jira": "Searching Jira...",
+    "preparing_preview": "Preparing preview...",
+    "creating_ticket": "Creating ticket...",
+}
 
 
 class ProgressTracker:
@@ -56,6 +69,7 @@ class ProgressTracker:
         self._start_time: Optional[float] = None
         self._current_status: str = ""
         self._delayed_post_task: Optional[asyncio.Task] = None
+        self._long_operation_task: Optional[asyncio.Task] = None
         self._completed: bool = False
 
     async def start(self, initial_status: str = "Processing...") -> None:
@@ -75,6 +89,23 @@ class ProgressTracker:
         self._delayed_post_task = asyncio.create_task(
             self._delayed_post(STATUS_THRESHOLD)
         )
+
+        # Schedule long operation updates (15s and 30s)
+        self._long_operation_task = asyncio.create_task(
+            self._schedule_long_operation_updates()
+        )
+
+    async def set_operation(self, operation: str) -> None:
+        """Set current operation from predefined list.
+
+        Maps operation key to user-friendly status message.
+        Falls back to operation name if not in STATUS_MESSAGES.
+
+        Args:
+            operation: Operation key (e.g., "searching_jira", "preparing_preview")
+        """
+        status = STATUS_MESSAGES.get(operation, operation)
+        await self.update(status)
 
     async def update(self, status: str) -> None:
         """Update status text. Only posts if message already visible.
@@ -110,6 +141,15 @@ class ProgressTracker:
             except asyncio.CancelledError:
                 pass
             self._delayed_post_task = None
+
+        # Cancel long operation updates if not yet fired
+        if self._long_operation_task:
+            self._long_operation_task.cancel()
+            try:
+                await self._long_operation_task
+            except asyncio.CancelledError:
+                pass
+            self._long_operation_task = None
 
         # If status message was posted, clean it up
         if self._status_ts:
@@ -173,12 +213,22 @@ class ProgressTracker:
             logger.warning(f"Failed to post status message: {e}")
 
     async def _update_status(self) -> None:
-        """Update existing status message with elapsed time."""
+        """Update existing status message with elapsed time.
+
+        Shows elapsed time in 5-second increments after 10s.
+        Format: "Searching Jira... (5s)" or "Searching Jira... (15s)"
+        """
         if not self._status_ts or self._completed:
             return
 
         elapsed = self._get_elapsed()
-        message = f":hourglass_flowing_sand: {self._current_status} ({elapsed}s)"
+        # Show elapsed in 5-second increments after 10s
+        if elapsed >= 10:
+            # Round to nearest 5 seconds
+            rounded_elapsed = (elapsed // 5) * 5
+            message = f":hourglass_flowing_sand: {self._current_status} ({rounded_elapsed}s)"
+        else:
+            message = f":hourglass_flowing_sand: {self._current_status}"
 
         try:
             # Handle both sync and async clients
@@ -272,4 +322,4 @@ class ProgressTracker:
         return int(time.monotonic() - self._start_time)
 
 
-__all__ = ["ProgressTracker"]
+__all__ = ["ProgressTracker", "STATUS_MESSAGES"]
