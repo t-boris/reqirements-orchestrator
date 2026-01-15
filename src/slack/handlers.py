@@ -906,7 +906,16 @@ async def handle_contradiction_both(ack, body, client, action):
 
 # --- Draft Approval Handlers ---
 
-async def handle_approve_draft(ack, body, client: WebClient, action):
+def handle_approve_draft(ack, body, client: WebClient, action):
+    """Synchronous wrapper for draft approval.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_approve_draft_async(body, client, action))
+
+
+async def _handle_approve_draft_async(body, client: WebClient, action):
     """Handle 'Approve & Create' button click on draft preview.
 
     Implements version-checked approval:
@@ -917,8 +926,6 @@ async def handle_approve_draft(ack, body, client: WebClient, action):
     5. Record approval if valid
     6. Update preview message to show approved state
     """
-    ack()
-
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
     message_ts = body["message"]["ts"]  # Preview message to update
@@ -1327,7 +1334,18 @@ def _build_approved_preview_blocks(draft: "TicketDraft", approved_by: str) -> li
     return blocks
 
 
-async def handle_reject_draft(ack, body, client: WebClient, action):
+def handle_reject_draft(ack, body, client: WebClient, action):
+    """Synchronous wrapper for draft rejection.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    # Get trigger_id BEFORE ack (needed for modal)
+    trigger_id = body.get("trigger_id")
+    ack()
+    _run_async(_handle_reject_draft_async(body, client, action, trigger_id))
+
+
+async def _handle_reject_draft_async(body, client: WebClient, action, trigger_id):
     """Handle 'Needs Changes' button click on draft preview.
 
     Opens the edit modal for direct draft editing.
@@ -1335,11 +1353,6 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
     1. Check in-memory dedup (handles Slack retries)
     2. Open edit modal with current draft values
     """
-    # Get trigger_id BEFORE ack (needed for modal)
-    trigger_id = body.get("trigger_id")
-
-    ack()
-
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
     message_ts = body["message"]["ts"]  # Preview message to update later
@@ -1417,7 +1430,16 @@ async def handle_reject_draft(ack, body, client: WebClient, action):
         )
 
 
-async def handle_edit_draft_submit(ack, body, client: WebClient, view):
+def handle_edit_draft_submit(ack, body, client: WebClient, view):
+    """Synchronous wrapper for edit modal submission.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_edit_draft_submit_async(body, client, view))
+
+
+async def _handle_edit_draft_submit_async(body, client: WebClient, view):
     """Handle edit modal submission.
 
     Process modal submission flow:
@@ -1428,8 +1450,6 @@ async def handle_edit_draft_submit(ack, body, client: WebClient, view):
     5. Update original preview message with new draft
     6. Post confirmation message
     """
-    ack()
-
     user_id = body["user"]["id"]
     view_state = view.get("state", {}).get("values", {})
     private_metadata_raw = view.get("private_metadata", "{}")
