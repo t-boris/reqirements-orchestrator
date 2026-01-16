@@ -683,7 +683,12 @@ async def _handle_create_stories(
                 "text": {"type": "mrkdwn", "text": story_text}
             })
 
-        # Add action buttons
+        # Store stories in pending store (button value has 2000 char limit)
+        from src.slack.pending_stories import get_pending_stories_store
+        store = get_pending_stories_store()
+        pending_id = store.store(epic.key, stories)
+
+        # Add action buttons with short pending_id instead of full data
         preview_blocks.append({"type": "divider"})
         preview_blocks.append({
             "type": "actions",
@@ -692,17 +697,14 @@ async def _handle_create_stories(
                     "type": "button",
                     "text": {"type": "plain_text", "text": f"Create {len(stories)} Stories"},
                     "action_id": "create_stories_confirm",
-                    "value": json.dumps({
-                        "epic_key": epic.key,
-                        "stories": stories,
-                    }),
+                    "value": pending_id,
                     "style": "primary",
                 },
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Cancel"},
                     "action_id": "create_stories_cancel",
-                    "value": epic.key,
+                    "value": pending_id,
                 },
             ]
         })

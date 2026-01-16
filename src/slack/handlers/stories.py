@@ -1,6 +1,5 @@
 """Handlers for user story creation under epics."""
 
-import json
 import logging
 
 from slack_sdk.web import WebClient
@@ -21,31 +20,30 @@ async def _handle_create_stories_confirm_async(body, client: WebClient, action):
     from src.jira.client import JiraService
     from src.jira.types import JiraCreateRequest, JiraIssueType, JiraPriority
     from src.config.settings import get_settings
+    from src.slack.pending_stories import get_pending_stories_store
 
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
     user_id = body["user"]["id"]
 
-    # Parse button value
-    try:
-        value_data = json.loads(action.get("value", "{}"))
-        epic_key = value_data.get("epic_key")
-        stories = value_data.get("stories", [])
-    except json.JSONDecodeError:
+    # Get pending stories from store
+    pending_id = action.get("value", "")
+    store = get_pending_stories_store()
+    pending = store.get(pending_id)
+
+    if not pending:
         client.chat_postMessage(
             channel=channel,
             thread_ts=thread_ts,
-            text="Error: Invalid story data. Please try again.",
+            text="Error: Story data expired or not found. Please try generating stories again.",
         )
         return
 
-    if not epic_key or not stories:
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text="Error: Missing epic or stories data. Please try again.",
-        )
-        return
+    epic_key = pending.epic_key
+    stories = pending.stories
+
+    # Remove from store after retrieval
+    store.remove(pending_id)
 
     # Create stories in Jira
     client.chat_postMessage(
@@ -128,9 +126,17 @@ async def _handle_create_stories_confirm_async(body, client: WebClient, action):
 def handle_create_stories_cancel(ack, body, client: WebClient, action):
     """Handle cancellation of story creation."""
     ack()
+    from src.slack.pending_stories import get_pending_stories_store
+
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
-    epic_key = action.get("value", "the epic")
+
+    # Get epic key and clean up store
+    pending_id = action.get("value", "")
+    store = get_pending_stories_store()
+    pending = store.get(pending_id)
+    epic_key = pending.epic_key if pending else "the epic"
+    store.remove(pending_id)
 
     client.chat_postMessage(
         channel=channel,
