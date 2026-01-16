@@ -200,6 +200,14 @@ class AgentState(TypedDict):
     last_event_id: Optional[str]  # Last processed event ID
     last_event_type: Optional[WorkflowEventType]  # Type of last event
 
+    # Thread-level preferences (Phase 20)
+    thread_default_intent: Optional[UserIntent]  # "Remember for this thread" choice
+    thread_default_expires_at: Optional[str]  # ISO timestamp, expires after 2h inactivity
+    # Reset conditions from 20-CONTEXT.md v4:
+    # - Expires after 2h inactivity
+    # - OR when workflow_step leaves {REVIEW_ACTIVE, REVIEW_FROZEN}
+    # - OR explicit `/maro forget` command
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
