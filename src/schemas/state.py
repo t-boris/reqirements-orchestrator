@@ -34,6 +34,20 @@ class ReviewState(str, Enum):
     POSTED = "posted"             # Decision posted to channel, can clear context
 
 
+class ReviewArtifact(TypedDict):
+    """Frozen review context for handoff.
+
+    Explicit structure instead of raw review_context dict.
+    Used for Review→Ticket handoff after freeze.
+    """
+    summary: str  # Compressed review content
+    kind: Literal["architecture", "security", "pm"]  # Which persona gave review
+    version: int  # For patch mode tracking
+    topic: str  # What was reviewed
+    frozen_at: str  # ISO timestamp when frozen
+    thread_ts: str  # Source thread for reference
+
+
 class UserIntent(str, Enum):
     """Pure user intent - what the user wants, not workflow state.
 
@@ -188,6 +202,9 @@ class AgentState(TypedDict):
     #     "channel_id": str,               # Channel for posting decision
     #     "created_at": float,             # Unix timestamp when review was created
     # }
+
+    # Review artifact (Phase 20 - frozen handoff)
+    review_artifact: Optional[ReviewArtifact]  # Frozen review for handoff (not continuation!)
 
     # Workflow state (Phase 20 - Brain Refactor)
     # Replaces overloaded intent with explicit workflow state
