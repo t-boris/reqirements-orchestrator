@@ -48,6 +48,21 @@ class UserIntent(str, Enum):
     AMBIGUOUS = "ambiguous"     # Unclear intent, triggers scope gate
 
 
+class PendingAction(str, Enum):
+    """What the workflow is waiting for (resumable state).
+
+    This replaces overloaded IntentType values like DECISION_APPROVAL.
+    Each value represents a specific workflow state where the system
+    is waiting for user input to continue.
+    """
+    WAITING_APPROVAL = "waiting_approval"           # Draft preview shown, waiting approve/reject
+    WAITING_SCOPE_CHOICE = "waiting_scope_choice"   # Scope gate shown, waiting user choice
+    WAITING_STORY_EDIT = "waiting_story_edit"       # Multi-ticket preview, waiting story edit
+    WAITING_DECISION_EDIT = "waiting_decision_edit" # Decision preview, waiting edit
+    WAITING_QUANTITY_CONFIRM = "waiting_quantity_confirm"  # Multi-ticket >3 items, confirm
+    WAITING_SIZE_CONFIRM = "waiting_size_confirm"   # Multi-ticket large batch, confirm split
+
+
 class AgentState(TypedDict):
     """State for the Analyst Agent in LangGraph.
 
