@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 21 of 21 (Jira Sync & Management)
-Plan: 3 of 5 in current phase
-Status: In progress
-Last activity: 2026-01-16 — Completed 21-03-PLAN.md (Natural Language Commands)
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-01-16 — Completed 21-05-PLAN.md (Decision-to-Jira Linking)
 
-Progress: ███░░░░░░░░░░░░░░░░░ 60% (Phase 21)
+Progress: ████████████████████ 100% (Phase 21)
 
 ## v1.0 Summary
 
@@ -158,6 +158,11 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-03 | JIRA_COMMAND vs TICKET_ACTION | Modify fields vs create items - clear separation |
 | 21-03 | Contextual resolution priority | Thread binding > single tracked > most recent in conversation |
 | 21-03 | Delete requires danger confirmation | Red button + warning for destructive operations |
+| 21-05 | add_comment as default mode | Safest approach for Jira updates - doesn't modify description |
+| 21-05 | Non-blocking decision linking | Failures don't affect decision posting to channel |
+| 21-05 | Single vs multiple match logic | Single match auto-updates, multiple prompts user |
+| 21-05 | Button on decision posts | Allows retroactive linking of already-posted decisions |
+| 21-05 | channel_decisions tracking | Integrates with sync engine for bidirectional sync |
 
 ### Roadmap Evolution
 
@@ -186,9 +191,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 21-03-PLAN.md (Natural Language Commands)
+Stopped at: Completed 21-05-PLAN.md (Decision-to-Jira Linking)
 Resume file: None
-Next action: Execute 21-04-PLAN.md (Smart Sync Engine)
+Next action: Run /gsd:verify-work 21 for Phase 21 UAT
 
 ## Phase 11 Summary (Complete)
 
