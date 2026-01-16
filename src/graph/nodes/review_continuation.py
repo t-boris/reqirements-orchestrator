@@ -87,6 +87,10 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     Uses PATCH mode by default for efficiency - outputs only changes.
     Full synthesis available via "Show full architecture" button.
 
+    Respects freeze semantics (Phase 20):
+    - If review_context is None (frozen), don't continue
+    - If review_context.state is POSTED or APPROVED, don't continue
+
     Args:
         state: Current AgentState dict
 
@@ -95,18 +99,30 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     """
     from langchain_core.messages import HumanMessage
     from src.llm import get_llm
+    from src.schemas.state import ReviewState
 
+    # Don't continue if review is frozen or already posted
     review_context = state.get("review_context")
-    review_artifact = state.get("review_artifact", {})
-
     if not review_context:
-        logger.warning("review_continuation_node called without review_context")
+        logger.info("No review context - cannot continue (may be frozen)")
         return {
             "decision_result": {
-                "action": "review_continuation",
-                "message": "I don't have context from a previous review. What would you like me to analyze?",
+                "action": "error",
+                "message": "No active review to continue",
             }
         }
+
+    review_state = review_context.get("state")
+    if review_state in (ReviewState.POSTED, ReviewState.APPROVED, "POSTED", "APPROVED"):
+        logger.info(f"Review already {review_state} - not continuing")
+        return {
+            "decision_result": {
+                "action": "error",
+                "message": "Review already completed",
+            }
+        }
+
+    review_artifact = state.get("review_artifact", {})
 
     # Get latest human message as user's answers
     messages = state.get("messages", [])
