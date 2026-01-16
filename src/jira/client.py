@@ -112,6 +112,7 @@ class JiraService:
         self.auth = aiohttp.BasicAuth(settings.jira_user, settings.jira_api_token)
         self._session: Optional[aiohttp.ClientSession] = None
         self._mock_issue_counter = 0
+        self._epic_link_field: Optional[str] = None  # Cached Epic Link field ID
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -129,6 +130,43 @@ class JiraService:
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
+
+    async def _get_epic_link_field(self) -> Optional[str]:
+        """Get the Epic Link custom field ID.
+
+        Jira Cloud uses a custom field for linking issues to epics.
+        The field ID varies by instance (commonly customfield_10014).
+        This method discovers it dynamically by querying the field metadata.
+
+        Returns:
+            Custom field ID (e.g., "customfield_10014") or None if not found
+        """
+        if self._epic_link_field is not None:
+            return self._epic_link_field
+
+        try:
+            fields = await self._request("GET", "/rest/api/3/field")
+            for field in fields:
+                # Look for Epic Link field by name or schema
+                name = field.get("name", "").lower()
+                schema = field.get("schema", {})
+                custom_id = schema.get("customId")
+
+                if "epic link" in name or (
+                    schema.get("type") == "any" and "epic" in name
+                ):
+                    self._epic_link_field = field.get("id")
+                    logger.info(f"Discovered Epic Link field: {self._epic_link_field}")
+                    return self._epic_link_field
+
+            # Fallback: try common field IDs
+            logger.warning("Could not discover Epic Link field, will skip epic linking")
+            self._epic_link_field = ""  # Empty string = not found
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to discover Epic Link field: {e}")
+            self._epic_link_field = ""
+            return None
 
     def _adf_to_text(self, adf: dict) -> str:
         """Convert Atlassian Document Format (ADF) to plain text.
@@ -241,7 +279,11 @@ class JiraService:
 
                     # 4xx: Client error - don't retry
                     if 400 <= response.status < 500:
-                        error_msg = response_body.get("errorMessages", [response.reason])
+                        # Jira returns errors in both errorMessages (list) and errors (dict)
+                        error_messages = response_body.get("errorMessages", [])
+                        errors_dict = response_body.get("errors", {})
+                        combined = error_messages + [f"{k}: {v}" for k, v in errors_dict.items()]
+                        error_msg = combined if combined else [response.reason]
                         raise JiraAPIError(
                             status_code=response.status,
                             message=str(error_msg),
@@ -389,8 +431,13 @@ class JiraService:
             payload["fields"]["labels"] = request.labels
 
         if request.epic_key:
-            # Epic link field (may vary by Jira configuration)
-            payload["fields"]["parent"] = {"key": request.epic_key}
+            # Get Epic Link custom field (varies by Jira instance)
+            epic_link_field = await self._get_epic_link_field()
+            if epic_link_field:
+                payload["fields"][epic_link_field] = request.epic_key
+                logger.info(f"Using Epic Link field {epic_link_field} = {request.epic_key}")
+            else:
+                logger.warning(f"Epic Link field not found, story will not be linked to epic {request.epic_key}")
 
         logger.info(
             "Creating Jira issue",
