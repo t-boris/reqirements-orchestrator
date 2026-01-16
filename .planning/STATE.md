@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 11 of 12 in current phase
-Status: In progress
-Last activity: 2026-01-16 — Completed 20-11-PLAN.md (Salient Facts)
+Plan: 12 of 12 in current phase
+Status: Complete
+Last activity: 2026-01-16 — Completed 20-12-PLAN.md (Intent Router Simplification)
 
-Progress: ██████████░░░░░░░░░░ 92% (Phase 20)
+Progress: ████████████████████ 100% (Phase 20)
 
 ## v1.0 Summary
 
@@ -144,6 +144,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-11 | Canonical ID via SHA256 hash | hash(text.lower().strip() + scope + type) for fact dedup |
 | 20-11 | UPSERT with GREATEST(confidence) | Keep highest confidence on merge for dedup |
 | 20-11 | Eviction by confidence ASC | Remove lowest value facts first when over limit |
+| 20-12 | AMBIGUOUS default instead of TICKET | Reduces aggressive ticket creation, lets user decide via scope gate |
+| 20-12 | IntentType simplified to 5 values | TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS (PendingAction handles rest) |
+| 20-12 | event_router before intent classification | Priority: WorkflowEvent -> PendingAction -> thread_default -> intent |
 
 ### Roadmap Evolution
 
@@ -169,9 +172,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-11-PLAN.md (Salient Facts)
+Stopped at: Completed 20-12-PLAN.md (Intent Router Simplification)
 Resume file: None
-Next action: Execute 20-12-PLAN.md
+Next action: Phase 20 complete - start new milestone or review
 
 ## Phase 11 Summary (Complete)
 
