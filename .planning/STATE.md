@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 21 of 21 (Jira Sync & Management)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-16 — Completed 21-04-PLAN.md (Smart Sync Engine)
+Phase: 22 (Multi-Ticket from Review)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-16 — Completed 22-01-PLAN.md (Multi-Item Extraction)
 
-Progress: ████████████████████ 100% (Phase 21)
+Progress: █░░░ 25% (Phase 22)
 
 ## v1.0 Summary
 
@@ -167,6 +167,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-04 | Decisions as comments not description updates | Safest approach, doesn't modify existing content |
 | 21-04 | SYNC_REQUEST as separate intent | Bulk sync distinct from single-ticket JIRA_COMMAND |
 | 21-04 | Record unlinked decisions | Enables later linking via /maro sync |
+| 22-01 | parent_index to parent_id UUID conversion | Avoids asking LLM to generate UUIDs; simpler prompt |
+| 22-01 | Single-item falls back to single-ticket flow | Richer draft editing experience for single items |
 
 ### Roadmap Evolution
 
@@ -195,9 +197,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 21-04-PLAN.md (Smart Sync Engine)
+Stopped at: Completed 22-01-PLAN.md (Multi-Item Extraction)
 Resume file: None
-Next action: Continue Phase 21 execution or run /gsd:verify-work 21
+Next action: Continue Phase 22 execution with 22-02-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
