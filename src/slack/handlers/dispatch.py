@@ -278,6 +278,9 @@ async def _dispatch_result(
                 message_chunks.append(remaining[:split_at].rstrip())
                 remaining = remaining[split_at:].lstrip()
 
+            # Log chunking info
+            logger.info(f"Sending review: {len(full_text)} chars in {len(message_chunks)} message(s)")
+
             # Send each chunk as a separate Slack message
             for i, chunk in enumerate(message_chunks):
                 is_last_message = (i == len(message_chunks) - 1)

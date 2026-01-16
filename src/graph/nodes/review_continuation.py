@@ -199,12 +199,12 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         version=current_version - 1,
     )
 
-    llm = get_llm()
+    llm = get_llm(max_tokens=8192)  # Increased for longer responses
     try:
         response_content = await llm.chat(prompt)
 
         logger.info(
-            "Review continuation generated",
+            f"Review continuation generated: {len(response_content)} chars",
             extra={
                 "topic": topic,
                 "persona": persona,

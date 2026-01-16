@@ -217,13 +217,13 @@ async def review_node(state: AgentState) -> dict[str, Any]:
         message=latest_human_message,
     )
 
-    # Call LLM
-    llm = get_llm()
+    # Call LLM with higher max_tokens for comprehensive reviews
+    llm = get_llm(max_tokens=8192)
     try:
         analysis = await llm.chat(prompt)
 
         logger.info(
-            "Review node generated analysis",
+            f"Review node generated analysis: {len(analysis)} chars",
             extra={
                 "persona": persona_name,
                 "topic": topic,
