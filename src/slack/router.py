@@ -37,6 +37,9 @@ from src.slack.handlers import (
     handle_scope_gate_submit,
     # Architecture approval (Phase 20)
     handle_approve_architecture,
+    # Decision linking (Phase 21-05)
+    handle_link_decision,
+    handle_skip_decision_link,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -134,4 +137,9 @@ def register_handlers(app: App) -> None:
     # Pattern matches: jira_command_select_PROJ-123
     app.action(re.compile(r"^jira_command_select_.*"))(handle_jira_command_select)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands")
+    # Decision linking actions (Phase 21-05)
+    # Pattern matches: link_decision_PROJ-123
+    app.action(re.compile(r"^link_decision_.*"))(handle_link_decision)
+    app.action("skip_decision_link")(handle_skip_decision_link)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link")

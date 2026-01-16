@@ -91,6 +91,12 @@ from src.slack.handlers.jira_commands import (
     handle_jira_command_ambiguous,
 )
 
+# Decision linking handlers (Phase 21-05)
+from src.slack.handlers.decision_link import (
+    handle_link_decision,
+    handle_skip_decision_link,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -140,4 +146,7 @@ __all__ = [
     "handle_jira_command_select",
     "handle_jira_command_confirm",
     "handle_jira_command_ambiguous",
+    # Decision linking (Phase 21-05)
+    "handle_link_decision",
+    "handle_skip_decision_link",
 ]
