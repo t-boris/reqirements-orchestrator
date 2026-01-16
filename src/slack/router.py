@@ -41,6 +41,12 @@ from src.slack.handlers import (
     handle_link_decision,
     handle_skip_decision_link,
     handle_decision_link_prompt,
+    # Multi-ticket handlers (Phase 22)
+    handle_multi_ticket_confirm_quantity,
+    handle_multi_ticket_split,
+    handle_multi_ticket_edit_story,
+    handle_multi_ticket_approve,
+    handle_multi_ticket_cancel,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -164,4 +170,11 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^sync_use_jira.*"))(handle_sync_use_jira)
     app.action(re.compile(r"^sync_skip.*"))(handle_sync_skip)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync")
+    # Multi-ticket actions (Phase 22)
+    app.action("multi_ticket_confirm_quantity")(handle_multi_ticket_confirm_quantity)
+    app.action("multi_ticket_split")(handle_multi_ticket_split)
+    app.action(re.compile(r"^multi_ticket_edit_story:.*"))(handle_multi_ticket_edit_story)
+    app.action("multi_ticket_approve")(handle_multi_ticket_approve)
+    app.action("multi_ticket_cancel")(handle_multi_ticket_cancel)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket")
