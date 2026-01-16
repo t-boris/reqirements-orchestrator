@@ -244,6 +244,12 @@ class GraphRunner:
                 "approval_message": decision_result.get("approval_message", ""),
                 "user_id": decision_result.get("user_id", ""),
             }
+        elif action == "scope_gate":
+            return {
+                "action": "scope_gate",
+                "message_preview": decision_result.get("message_preview", ""),
+                "intent_reason": decision_result.get("intent_reason", ""),
+            }
         else:
             return {"action": "continue"}
 
