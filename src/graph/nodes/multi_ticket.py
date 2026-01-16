@@ -1,210 +1,222 @@
-"""Multi-ticket extraction and workflow nodes.
+"""Multi-ticket batch creation node with Epic linking.
 
-Handles "Create epic with N stories" requests.
-Includes safety latches for quantity (>3) and size (>10k chars).
+Flow:
+1. Dry-run validate all items
+2. Create Epic first
+3. Create stories linked to Epic (parent_link, not subtask)
+4. Return created keys
+
+From 20-CONTEXT.md v4: Stories are linked to Epic, not subtasks (configurable).
 """
-import json
 import logging
-import re
-import uuid
+from typing import Any
 
-from src.schemas.state import (
-    AgentState,
-    MultiTicketState,
-    MultiTicketItem,
-    PendingAction,
-    WorkflowStep,
-    MULTI_TICKET_QUANTITY_THRESHOLD,
-    MULTI_TICKET_SIZE_THRESHOLD,
-)
+from src.config.settings import get_settings
+from src.jira.client import JiraService
+from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
-MULTI_TICKET_EXTRACTION_PROMPT = '''Extract an epic and its stories from this request.
+async def create_multi_ticket_batch(state: AgentState) -> dict[str, Any]:
+    """Create all items in Jira with Epic linking.
 
-User request: {message}
-
-Context (if available):
-{context}
-
-Return JSON:
-{{
-    "epic": {{
-        "title": "Epic title",
-        "description": "Epic description"
-    }},
-    "stories": [
-        {{"title": "Story 1 title", "description": "Story 1 description"}},
-        {{"title": "Story 2 title", "description": "Story 2 description"}}
-    ]
-}}
-
-Be concise. Each story should be a distinct, implementable unit.
-'''
-
-
-async def extract_multi_ticket(state: AgentState) -> dict:
-    """Extract epic + stories from user request.
-
-    Applies safety latches:
-    - >3 items: requires quantity confirmation
-    - >10k chars: requires size confirmation (split into batches?)
+    Flow:
+    1. Dry-run validate all items
+    2. Create Epic first
+    3. Create stories linked to Epic (parent_link, not subtask)
+    4. Return created keys
 
     Args:
-        state: Current AgentState dict
+        state: Agent state containing multi_ticket_state
 
     Returns:
-        Partial state update with multi_ticket_state and workflow routing
+        State update with created keys or validation error
     """
-    from langchain_core.messages import HumanMessage
-    from src.llm import get_llm
-
-    # Get user message
-    messages = state.get("messages", [])
-    user_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            user_message = msg.content
-            break
-
-    if not user_message:
-        logger.warning("No user message found for multi-ticket extraction")
+    multi_state = state.get("multi_ticket_state")
+    if not multi_state:
+        logger.error("No multi_ticket_state in state")
         return {
             "decision_result": {
                 "action": "error",
-                "message": "No message found to extract tickets from",
+                "message": "No multi-ticket state",
             }
         }
 
-    context = state.get("conversation_context", {})
-    context_str = context.get("summary", "") if context else ""
-
-    # Extract epic + stories via LLM
-    llm = get_llm()
-    prompt = MULTI_TICKET_EXTRACTION_PROMPT.format(
-        message=user_message,
-        context=context_str or "No additional context",
-    )
-
-    try:
-        response = await llm.chat(prompt)
-    except Exception as e:
-        logger.error(f"LLM call failed in multi-ticket extraction: {e}")
+    items = multi_state.get("items", [])
+    if not items:
+        logger.error("No items in multi_ticket_state")
         return {
             "decision_result": {
                 "action": "error",
-                "message": "Failed to extract tickets from request",
+                "message": "No items to create",
             }
         }
 
-    # Parse response
+    settings = get_settings()
+    jira = JiraService(settings)
+
+    # Get project key from settings
+    project_key = settings.jira_default_project
+    if not project_key:
+        logger.error("No jira_default_project configured")
+        return {
+            "decision_result": {
+                "action": "error",
+                "message": "No Jira project configured",
+            }
+        }
+
     try:
-        data = json.loads(response)
-    except json.JSONDecodeError:
-        # Try to extract JSON from response
-        match = re.search(r'\{.*\}', response, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group())
-            except json.JSONDecodeError:
-                logger.error(f"Failed to parse multi-ticket response: {response}")
+        # Step 1: Dry-run validate all items
+        logger.info(
+            "Validating multi-ticket batch",
+            extra={"item_count": len(items), "project_key": project_key},
+        )
+
+        for item in items:
+            issue_type = "Epic" if item["type"] == "epic" else "Story"
+            fields = {
+                "summary": item["title"],
+                "description": item["description"],
+            }
+
+            validation = await jira.validate_issue_dry_run(project_key, issue_type, fields)
+            if not validation.get("valid"):
+                errors = validation.get("errors", [])
+                logger.warning(
+                    "Multi-ticket validation failed",
+                    extra={
+                        "item_id": item["id"],
+                        "item_type": item["type"],
+                        "errors": errors,
+                    },
+                )
                 return {
                     "decision_result": {
-                        "action": "error",
-                        "message": "Failed to extract tickets - invalid response format",
+                        "action": "validation_error",
+                        "item_id": item["id"],
+                        "item_title": item["title"],
+                        "errors": errors,
+                    },
+                }
+
+        logger.info("All items validated successfully")
+
+        # Step 2: Create Epic first
+        created_keys: list[str] = []
+        epic_key: str | None = None
+
+        for item in items:
+            if item["type"] == "epic":
+                logger.info(
+                    "Creating Epic",
+                    extra={"title": item["title"]},
+                )
+                # Use raw API call for Epic creation with Epic Name field
+                payload = {
+                    "fields": {
+                        "project": {"key": project_key},
+                        "summary": item["title"],
+                        "description": {
+                            "type": "doc",
+                            "version": 1,
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": item["description"]}],
+                                }
+                            ],
+                        },
+                        "issuetype": {"name": "Epic"},
                     }
                 }
-        else:
-            logger.error(f"Failed to parse multi-ticket response: {response}")
-            return {
-                "decision_result": {
-                    "action": "error",
-                    "message": "Failed to extract tickets - no JSON found",
+
+                # Dry-run handling
+                if settings.jira_dry_run:
+                    jira._mock_issue_counter += 1
+                    epic_key = f"{project_key}-DRY{jira._mock_issue_counter}"
+                    logger.info(f"Dry-run: would create Epic {epic_key}")
+                else:
+                    response = await jira._request("POST", "/rest/api/3/issue", json_data=payload)
+                    epic_key = response.get("key")
+                    logger.info(f"Created Epic: {epic_key}")
+
+                created_keys.append(epic_key)
+                break
+
+        # Step 3: Create stories linked to Epic
+        for item in items:
+            if item["type"] == "story":
+                logger.info(
+                    "Creating Story linked to Epic",
+                    extra={"title": item["title"], "epic_key": epic_key},
+                )
+                # Build story payload with parent link to Epic
+                payload = {
+                    "fields": {
+                        "project": {"key": project_key},
+                        "summary": item["title"],
+                        "description": {
+                            "type": "doc",
+                            "version": 1,
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": item["description"]}],
+                                }
+                            ],
+                        },
+                        "issuetype": {"name": "Story"},
+                    }
                 }
-            }
 
-    # Build MultiTicketState
-    items: list[MultiTicketItem] = []
-    epic_id = None
-    total_chars = 0
+                # Add parent Epic link if epic was created
+                if epic_key:
+                    payload["fields"]["parent"] = {"key": epic_key}
 
-    # Add epic
-    if "epic" in data and data["epic"]:
-        epic_id = str(uuid.uuid4())[:8]
-        epic_item: MultiTicketItem = {
-            "id": epic_id,
-            "type": "epic",
-            "title": data["epic"].get("title", "Epic"),
-            "description": data["epic"].get("description", ""),
-            "parent_id": None,
+                # Dry-run handling
+                if settings.jira_dry_run:
+                    jira._mock_issue_counter += 1
+                    story_key = f"{project_key}-DRY{jira._mock_issue_counter}"
+                    logger.info(f"Dry-run: would create Story {story_key} linked to {epic_key}")
+                else:
+                    response = await jira._request("POST", "/rest/api/3/issue", json_data=payload)
+                    story_key = response.get("key")
+                    logger.info(f"Created Story: {story_key} linked to {epic_key}")
+
+                created_keys.append(story_key)
+
+        # Update state with created keys
+        updated_multi_state = {**multi_state, "created_keys": created_keys}
+
+        logger.info(
+            "Multi-ticket batch created successfully",
+            extra={
+                "epic_key": epic_key,
+                "story_count": len(created_keys) - 1 if epic_key else len(created_keys),
+                "total_created": len(created_keys),
+            },
+        )
+
+        return {
+            "multi_ticket_state": updated_multi_state,
+            "pending_action": None,
+            "workflow_step": None,
+            "decision_result": {
+                "action": "multi_ticket_created",
+                "keys": created_keys,
+                "epic_key": epic_key,
+            },
         }
-        items.append(epic_item)
-        total_chars += len(epic_item["title"]) + len(epic_item["description"])
 
-    # Add stories
-    for story in data.get("stories", []):
-        story_item: MultiTicketItem = {
-            "id": str(uuid.uuid4())[:8],
-            "type": "story",
-            "title": story.get("title", "Story"),
-            "description": story.get("description", ""),
-            "parent_id": epic_id,
-        }
-        items.append(story_item)
-        total_chars += len(story_item["title"]) + len(story_item["description"])
-
-    if not items:
-        logger.warning("No items extracted from multi-ticket request")
+    except Exception as e:
+        logger.exception("Failed to create multi-ticket batch")
         return {
             "decision_result": {
                 "action": "error",
-                "message": "Could not extract any tickets from request",
-            }
-        }
-
-    multi_state: MultiTicketState = {
-        "items": items,
-        "epic_id": epic_id,
-        "total_chars": total_chars,
-        "confirmed_quantity": False,
-        "confirmed_size": False,
-        "created_keys": [],
-    }
-
-    # Check safety latches
-    if len(items) > MULTI_TICKET_QUANTITY_THRESHOLD and not multi_state["confirmed_quantity"]:
-        logger.info(f"Quantity latch triggered: {len(items)} items > {MULTI_TICKET_QUANTITY_THRESHOLD}")
-        return {
-            "multi_ticket_state": multi_state,
-            "pending_action": PendingAction.WAITING_QUANTITY_CONFIRM,
-            "workflow_step": WorkflowStep.MULTI_TICKET_PREVIEW,
-            "decision_result": {
-                "action": "quantity_confirm",
-                "item_count": len(items),
+                "message": f"Failed to create tickets: {str(e)}",
             },
         }
-
-    if total_chars > MULTI_TICKET_SIZE_THRESHOLD and not multi_state["confirmed_size"]:
-        logger.info(f"Size latch triggered: {total_chars} chars > {MULTI_TICKET_SIZE_THRESHOLD}")
-        return {
-            "multi_ticket_state": multi_state,
-            "pending_action": PendingAction.WAITING_SIZE_CONFIRM,
-            "workflow_step": WorkflowStep.MULTI_TICKET_PREVIEW,
-            "decision_result": {
-                "action": "size_confirm",
-                "total_chars": total_chars,
-            },
-        }
-
-    # No latches triggered - show preview
-    logger.info(f"Multi-ticket preview ready: {len(items)} items, {total_chars} chars")
-    return {
-        "multi_ticket_state": multi_state,
-        "workflow_step": WorkflowStep.MULTI_TICKET_PREVIEW,
-        "pending_action": PendingAction.WAITING_APPROVAL,
-        "decision_result": {
-            "action": "multi_ticket_preview",
-            "items": items,
-        },
-    }
+    finally:
+        await jira.close()
