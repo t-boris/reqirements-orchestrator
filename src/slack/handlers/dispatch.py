@@ -246,9 +246,9 @@ async def _dispatch_result(
 
         if review_msg:
             # Split into multiple Slack messages to avoid collapse
-            # Slack collapses messages > ~4000 chars, so we split at ~3500 chars per message
+            # Slack block text limit is 3000 chars, so we split at 2900 to be safe
             full_text = prefix + review_msg
-            MAX_MESSAGE_LENGTH = 3500  # Keep under Slack's collapse threshold
+            MAX_MESSAGE_LENGTH = 2900  # Keep under Slack's 3000 char block text limit
 
             # Split into message-sized chunks at natural boundaries
             message_chunks = []
