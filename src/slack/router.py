@@ -47,6 +47,11 @@ from src.slack.handlers.stories import (
     handle_create_stories_confirm,
     handle_create_stories_cancel,
 )
+from src.slack.handlers.jira_commands import (
+    handle_jira_command_execute,
+    handle_jira_command_cancel,
+    handle_jira_command_select,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,4 +128,10 @@ def register_handlers(app: App) -> None:
     app.action("create_stories_confirm")(handle_create_stories_confirm)
     app.action("create_stories_cancel")(handle_create_stories_cancel)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories")
+    # Jira command actions (Phase 21)
+    app.action("jira_command_execute")(handle_jira_command_execute)
+    app.action("jira_command_cancel")(handle_jira_command_cancel)
+    # Pattern matches: jira_command_select_PROJ-123
+    app.action(re.compile(r"^jira_command_select_.*"))(handle_jira_command_select)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands")

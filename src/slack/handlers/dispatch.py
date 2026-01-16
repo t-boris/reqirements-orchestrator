@@ -389,6 +389,16 @@ async def _dispatch_result(
                     text=chunk[:200],  # Fallback text
                 )
 
+    elif action == "jira_command_confirm":
+        # Handle Jira command confirmation (Phase 21)
+        from src.slack.handlers.jira_commands import handle_jira_command_confirm
+        await handle_jira_command_confirm(result, identity, client)
+
+    elif action == "jira_command_ambiguous":
+        # Handle ambiguous Jira command target (Phase 21)
+        from src.slack.handlers.jira_commands import handle_jira_command_ambiguous
+        await handle_jira_command_ambiguous(result, identity, client)
+
     elif action == "ticket_action":
         # Handle operations on existing tickets (Phase 13.1)
         await _handle_ticket_action(result, identity, client)

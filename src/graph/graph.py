@@ -56,6 +56,7 @@ from src.graph.nodes.review_continuation import review_continuation_node
 from src.graph.nodes.ticket_action import ticket_action_node
 from src.graph.nodes.decision_approval import decision_approval_node
 from src.graph.nodes.scope_gate import scope_gate_node
+from src.graph.nodes.jira_command import jira_command_node
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
@@ -144,6 +145,10 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         # Show scope gate - let user decide
         logger.info("Intent router: routing AMBIGUOUS to scope_gate_flow")
         return "scope_gate_flow"
+    elif intent_upper == "JIRA_COMMAND":
+        # Natural language Jira management commands
+        logger.info("Intent router: routing to jira_command_flow")
+        return "jira_command_flow"
     elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
@@ -198,6 +203,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("ticket_action", ticket_action_node)
     workflow.add_node("decision_approval", decision_approval_node)
     workflow.add_node("scope_gate", scope_gate_node)
+    workflow.add_node("jira_command", jira_command_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -214,6 +220,7 @@ def create_graph() -> StateGraph:
             "decision_approval_flow": "decision_approval",  # User approved a review (Phase 14)
             "review_continuation_flow": "review_continuation",  # User answered review questions (Phase 15)
             "scope_gate_flow": "scope_gate",  # AMBIGUOUS intent - show scope gate
+            "jira_command_flow": "jira_command",  # Natural language Jira commands
         }
     )
 
@@ -234,6 +241,9 @@ def create_graph() -> StateGraph:
 
     # Scope gate goes directly to END (shows UI and waits for button click)
     workflow.add_edge("scope_gate", END)
+
+    # Jira command goes directly to END after setting up confirmation
+    workflow.add_edge("jira_command", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction

@@ -82,6 +82,15 @@ from src.slack.handlers.stories import (
     handle_create_stories_cancel,
 )
 
+# Jira command handlers (Phase 21)
+from src.slack.handlers.jira_commands import (
+    handle_jira_command_execute,
+    handle_jira_command_cancel,
+    handle_jira_command_select,
+    handle_jira_command_confirm,
+    handle_jira_command_ambiguous,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -125,4 +134,10 @@ __all__ = [
     # Story creation
     "handle_create_stories_confirm",
     "handle_create_stories_cancel",
+    # Jira commands (Phase 21)
+    "handle_jira_command_execute",
+    "handle_jira_command_cancel",
+    "handle_jira_command_select",
+    "handle_jira_command_confirm",
+    "handle_jira_command_ambiguous",
 ]
