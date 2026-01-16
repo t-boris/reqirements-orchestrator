@@ -2,7 +2,7 @@
 
 **Gathered:** 2026-01-15
 **Status:** Ready for planning
-**Updated:** 2026-01-15 (added guardrails from review feedback)
+**Updated:** 2026-01-15 (v3: production-ready guardrails)
 
 <vision>
 ## How This Should Work
@@ -14,7 +14,7 @@ After Phase 20, the system should work like this:
 1. **WorkflowEvent first** → Button clicks, slash commands go directly to handlers (no intent classification)
 2. **Check pending_action** → If workflow is waiting for something, route to continuation handler
 3. **Intent classification** → Only for new messages: TICKET | REVIEW | DISCUSSION | META | AMBIGUOUS
-4. **AMBIGUOUS triggers scope gate** → 3 buttons: "Review" / "Create ticket" / "Not now"
+4. **AMBIGUOUS triggers scope gate** → 3 buttons: "Review" / "Create ticket" / "Not now" + "Remember for this thread" option
 5. **Resumable graph** → Interrupts don't restart from scratch. State knows where to continue.
 6. **Multi-ticket flow** → "Create epic with 5 stories" shows preview, allows editing, resumes after approval
 
@@ -35,19 +35,21 @@ The key insight: **intent is what user wants, not what system is doing**.
    - WorkflowEvent: BUTTON_CLICK | SLASH_COMMAND | APPROVAL_RESPONSE
    - PendingAction: WAITING_APPROVAL | WAITING_SCOPE_CHOICE | WAITING_STORY_EDIT | etc.
 
-2. **Event-First Routing**
+2. **Event-First Routing with Idempotency**
    - If event = button_click/slash_command → handler directly (no intent classifier)
    - Else if pending_action != None → continuation handler
    - Else → intent classifier
+   - **Idempotency**: track processed event_ids, reject duplicates
 
 3. **Remove "lean toward TICKET" bias**
    - AMBIGUOUS intent with scope gate (3 buttons)
    - "Review" / "Create ticket" / "Not now (dismiss)"
    - "Not now" clears pending_action and stops cycle
+   - **"Remember for this thread"** option: stores thread_default_intent
    - User decides, bot doesn't guess
 
 4. **Resumable graph**
-   - pending_action in state tells where to continue
+   - pending_action + pending_payload in state tells where to continue AND with what context
    - No more "every interrupt goes to START"
    - Resumable must work BEFORE review lifecycle fixes (dependency)
 
@@ -57,6 +59,7 @@ The key insight: **intent is what user wants, not what system is doing**.
    - Full synthesis on "Show full architecture" button
    - TTL/cooldown for review_context
    - **Freeze semantics**: frozen review_context remains available for handoff but doesn't trigger continuation and doesn't affect next message's intent
+   - **Frozen artifact**: explicit review_artifact_summary, review_artifact_kind, review_artifact_version
 
 6. **Decision approval flow**
    - Preview in thread → Edit → Post to channel
@@ -64,23 +67,30 @@ The key insight: **intent is what user wants, not what system is doing**.
    - **Source reference**: channel post must link to source thread + issue keys
 
 7. **Multi-ticket support**
-   - Epic + stories in one request
+   - Epic + stories **linked to Epic** (not subtasks — configurable per project)
    - Preview all items
    - Edit individual stories
    - Resume after edits
-   - **Safety latch**: >3 items requires explicit quantity confirmation ("Confirm create 7 items?")
+   - **Quantity safety latch**: >3 items requires explicit confirmation
+   - **Size safety latch**: total draft > X chars → "Split into batches?"
 
 8. **Context persistence**
    - context_summary (not raw)
    - cursor/last_seen_ts
-   - **Structured salient_facts**:
+   - **Structured salient_facts** with confidence and dedup:
      ```python
      class Fact(TypedDict):
          type: Literal["decision", "constraint", "assumption"]
          scope: Literal["channel", "epic", "thread"]
          source_ts: str  # Slack ts
          text: str
+         confidence: float  # 0.0 - 1.0
+         canonical_id: str  # hash(text + scope + type) for dedup
      ```
+
+9. **Event validation per workflow step**
+   - Each WorkflowStep has allowed_events list
+   - Invalid events → "This action is no longer available" (stale UI)
 
 </essential>
 
@@ -112,11 +122,24 @@ class WorkflowStep(str, Enum):
     REVIEW_FROZEN = "review_frozen"
     # ... extensible
 
+class WorkflowEventType(str, Enum):
+    BUTTON_CLICK = "button_click"
+    SLASH_COMMAND = "slash_command"
+    MODAL_SUBMIT = "modal_submit"
+
 class Fact(TypedDict):
     type: Literal["decision", "constraint", "assumption"]
     scope: Literal["channel", "epic", "thread"]
     source_ts: str
     text: str
+    confidence: float  # NEW: for dedup/contradiction detection
+    canonical_id: str  # NEW: hash for dedup
+
+class ReviewArtifact(TypedDict):
+    """Frozen review context for handoff"""
+    summary: str  # Compressed review content
+    kind: Literal["architecture", "security", "pm"]
+    version: int  # For patch mode tracking
 
 class AgentState(TypedDict):
     # Existing fields...
@@ -127,65 +150,110 @@ class AgentState(TypedDict):
 
     # NEW: Workflow state (replaces overloaded intent)
     pending_action: Optional[PendingAction]
+    pending_payload: Optional[dict]  # NEW: context for pending action
     workflow_step: Optional[WorkflowStep]  # Typed, not str!
+
+    # NEW: Event tracking for idempotency
+    last_event_id: Optional[str]
+    last_event_type: Optional[WorkflowEventType]
+    # processed_event_ids: stored in DB/memory (LRU)
+
+    # NEW: Thread-level preferences
+    thread_default_intent: Optional[UserIntent]  # "Remember for this thread"
 
     # NEW: Multi-ticket state
     multi_ticket_state: Optional[MultiTicketState]
 
+    # NEW: Review artifact (for frozen handoff)
+    review_artifact: Optional[ReviewArtifact]
+
     # NEW: Persisted context
     context_summary: Optional[str]
-    salient_facts: list[Fact]  # Structured, not list[str]!
+    salient_facts: list[Fact]  # Structured with confidence + canonical_id
+```
+
+## Allowed Events per Workflow Step
+
+```python
+ALLOWED_EVENTS: dict[WorkflowStep, set[str]] = {
+    WorkflowStep.DRAFT_PREVIEW: {"approve", "reject", "edit"},
+    WorkflowStep.MULTI_TICKET_PREVIEW: {"approve", "edit_story", "cancel", "confirm_quantity"},
+    WorkflowStep.DECISION_PREVIEW: {"approve", "edit", "cancel"},
+    WorkflowStep.REVIEW_ACTIVE: {"show_full", "approve_decision"},
+    WorkflowStep.REVIEW_FROZEN: set(),  # No workflow actions on frozen review
+}
+
+def validate_event(step: WorkflowStep, event_action: str) -> bool:
+    """Returns False for stale/invalid events"""
+    if step not in ALLOWED_EVENTS:
+        return False
+    return event_action in ALLOWED_EVENTS[step]
 ```
 
 ## Key Architectural Changes
 
-1. **Event-First Routing (NEW)**
+1. **Event-First Routing with Idempotency**
    ```python
    def route_message(event, state):
+       # 0. Check idempotency (duplicate event)
+       if event.id in get_processed_events():
+           return already_processed_response()
+
        # 1. WorkflowEvent (button/slash) - bypass intent entirely
        if is_workflow_event(event):
+           # Validate event is allowed for current step
+           if not validate_event(state.workflow_step, event.action):
+               return stale_ui_response()
+           mark_event_processed(event.id)
            return handle_workflow_event(event)
 
        # 2. PendingAction - continue workflow
        if state.pending_action:
-           return continue_workflow(state.pending_action, event)
+           return continue_workflow(state.pending_action, state.pending_payload, event)
 
-       # 3. UserIntent - classify and route
+       # 3. Thread default intent (if "Remember" was selected)
+       if state.thread_default_intent:
+           return route_by_intent(state.thread_default_intent)
+
+       # 4. UserIntent - classify and route
        intent = classify_intent(event.text)
        return route_by_intent(intent)
    ```
 
 2. **Intent Router Simplification**
    - Remove: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION from IntentType
-   - Add: AMBIGUOUS with 3-button scope gate
+   - Add: AMBIGUOUS with 3-button scope gate + "Remember" checkbox
    - These become PendingAction values instead
 
-3. **Typed WorkflowStep (NOT strings)**
+3. **Typed WorkflowStep with Allowed Events**
    - All workflow positions are enum values
+   - Each step has explicit allowed_events
+   - Invalid events return "stale UI" message
    - Enables determinism and testability
-   - Migration: workflow_version field if needed
 
 4. **Review Flow Rewrite**
    - Patch mode: only output changes + updated questions
    - Full synthesis: on "Show full architecture" button
    - REVIEW_COMPLETE detection (thanks/ok/got it)
    - **Freeze semantics**:
-     - review_context remains accessible
-     - but doesn't trigger continuation automatically
-     - and doesn't bias next message's intent classification
+     - review_context → review_artifact (explicit structure)
+     - Remains accessible for Review→Ticket handoff
+     - But doesn't trigger continuation automatically
+     - And doesn't bias next message's intent classification
 
-5. **Multi-Ticket Flow with Safety Latch**
+5. **Multi-Ticket Flow with Safety Latches**
    - User: "Create epic with user stories for authentication"
    - Bot: Extract epic + N stories
-   - **If N > 3**: "Confirm create 7 items?" (safety latch)
+   - **If N > 3**: "Confirm create 7 items?" (quantity latch)
+   - **If total_chars > X**: "Split into batches?" (size latch)
    - Bot: Show preview with all items
-   - User: Edit story #3
+   - User: Edit story #3 → pending_payload: {"story_id": "3"}
    - Bot: Update story #3, show updated preview
    - User: Approve
-   - Bot: Create epic, create stories as subtasks
+   - Bot: Create epic, link stories to Epic (not subtasks by default)
 
 6. **Decision Posts with Source Reference**
-   - Preview in thread first
+   - Preview in thread first (DecisionPreview)
    - Edit option before posting
    - **Channel post includes**:
      - Thread link (where discussion happened)
@@ -201,6 +269,9 @@ class AgentState(TypedDict):
 6. "Create epic with 5 stories for auth" → quantity confirmation → multi-ticket flow
 7. User clicks "Approve" button → WorkflowEvent handler directly (no intent classification)
 8. User clicks "Not now" on scope gate → clears pending_action, stops
+9. **Duplicate Approve click** → second click returns "Already processed" (idempotent)
+10. **Stale button click** → click on old preview after edit returns "This preview is outdated"
+11. User selects "Remember: Review for this thread" → subsequent AMBIGUOUS messages auto-route to REVIEW
 
 </specifics>
 
@@ -216,24 +287,27 @@ From BRAIN-ANALYSIS.md:
 | TICKET bias | "If unclear, lean toward TICKET" | AMBIGUOUS + 3-button scope gate |
 | Sticky continuation | REVIEW_CONTINUATION triggers on any related message | Freeze semantics + explicit REVIEW_COMPLETE |
 | Expensive reviews | Full regeneration every answer | Patch mode default |
-| Interrupt = endpoint | Every interrupt restarts graph | Resumable via pending_action |
-| No multi-ticket | Single ticket per request | Epic + stories flow with safety latch |
+| Interrupt = endpoint | Every interrupt restarts graph | Resumable via pending_action + pending_payload |
+| No multi-ticket | Single ticket per request | Epic + stories flow with safety latches |
 | Decision without preview | Post to channel immediately | Preview → Edit → Post with source link |
 | Context lost | conversation_context not persisted | context_summary + structured salient_facts |
 | Stringly typed | workflow_step: str | WorkflowStep: Enum |
+| No idempotency | Double-click creates duplicates | Event ID tracking, first-wins |
+| Stale UI | Old buttons affect current state | Allowed events per step validation |
+| Repeated scope gate | 3x "what do you think" = 3x gate | "Remember for this thread" option |
 
 ## Revised Wave Order
 
 Based on feedback — resumable graph must come BEFORE review lifecycle:
 
-- **Wave 1**: State types + event routing skeleton (UserIntent, PendingAction, WorkflowStep enums)
-- **Wave 2**: pending_action/resume working end-to-end on 1 simple case (approve preview)
-- **Wave 3**: Scope gate + AMBIGUOUS (3-button)
-- **Wave 4**: Review lifecycle (patch mode, REVIEW_COMPLETE, freeze semantics)
-- **Wave 5**: Multi-ticket flow with safety latch
-- **Wave 6**: Context persistence (salient_facts structure)
+- **Wave 1**: State types + event routing skeleton (enums, event validation, idempotency)
+- **Wave 2**: pending_action/resume + pending_payload working end-to-end (approve preview)
+- **Wave 3**: Scope gate + AMBIGUOUS (3-button + "Remember for thread")
+- **Wave 4**: Review lifecycle (patch mode, REVIEW_COMPLETE, freeze semantics, ReviewArtifact)
+- **Wave 5**: Multi-ticket flow with safety latches (quantity + size)
+- **Wave 6**: Context persistence (structured salient_facts with confidence + canonical_id)
 
-This is a **large** phase: 10-14 plans across 6 waves.
+This is a **large** phase: 12-16 plans across 6 waves.
 
 </analysis>
 
@@ -249,22 +323,29 @@ This is a **large** phase: 10-14 plans across 6 waves.
 - Many existing tests will need updates
 - Breaking changes to flow logic
 
-## Guardrails (from review)
+## Guardrails (production-ready)
 
 1. **Event-first routing** — WorkflowEvent → PendingAction → UserIntent
-2. **Typed workflow_step** — Enum, not str
-3. **3-button scope gate** — Review / Ticket / Not now
-4. **Freeze semantics** — available but not triggering
-5. **Structured salient_facts** — type/scope/source_ts/text
-6. **Multi-ticket safety latch** — >3 items requires confirmation
-7. **Decision source reference** — thread link + issue keys in channel post
-8. **Resume before review** — Wave 2 before Wave 4
+2. **Event idempotency** — track event_id, reject duplicates
+3. **Typed workflow_step** — Enum, not str
+4. **Allowed events per step** — validate or return "stale UI"
+5. **3-button scope gate** — Review / Ticket / Not now
+6. **"Remember for thread"** — reduces repeated scope gates
+7. **pending_payload** — context for pending action (not stringly typed)
+8. **Freeze semantics** — ReviewArtifact with summary/kind/version
+9. **Structured salient_facts** — type/scope/source_ts/text/confidence/canonical_id
+10. **Multi-ticket quantity latch** — >3 items requires confirmation
+11. **Multi-ticket size latch** — >X chars → "Split into batches?"
+12. **Stories linked to Epic** — not subtasks (configurable)
+13. **Decision source reference** — thread link + issue keys in channel post
+14. **Resume before review** — Wave 2 before Wave 4
 
 ## Out of Scope
 
 - External integrations (Confluence, GitHub)
 - Voice/audio input
 - Mobile app
+- Jira schema configuration UI (use project defaults)
 
 ## Core Principle
 
@@ -280,4 +361,4 @@ Phase 20 is not just a refactor — it's a new stable platform for Phase 21+.
 
 *Phase: 20-brain-refactor*
 *Context gathered: 2026-01-15*
-*Updated: 2026-01-15 (guardrails from review)*
+*Updated: 2026-01-15 (v3: production-ready guardrails)*
