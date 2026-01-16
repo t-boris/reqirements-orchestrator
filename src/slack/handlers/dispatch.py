@@ -819,6 +819,17 @@ async def _handle_decision_approval(
                 text="Decision recorded in channel.",
             )
 
+            # NEW: Link to Jira (Phase 21-05)
+            await _link_decision_to_jira(
+                topic=topic,
+                decision_text=decision_text,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                user_id=user_id,
+                identity=identity,
+                client=client,
+            )
+
         except Exception as e:
             logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
             client.chat_postMessage(
@@ -826,3 +837,197 @@ async def _handle_decision_approval(
                 thread_ts=identity.thread_ts,
                 text="I understood that as approval, but couldn't extract the decision. The review is still available above.",
             )
+
+
+async def _link_decision_to_jira(
+    topic: str,
+    decision_text: str,
+    channel_id: str,
+    thread_ts: str,
+    user_id: str,
+    identity: SessionIdentity,
+    client: WebClient,
+):
+    """Link approved decision to related Jira issues.
+
+    Flow:
+    1. Find related issues using DecisionLinker
+    2. If single match with high confidence: auto-update
+    3. If multiple matches or low confidence: ask user
+    """
+    from datetime import datetime, timezone
+    from src.slack.decision_linker import DecisionLinker
+    from src.slack.thread_bindings import get_binding_store
+
+    try:
+        linker = DecisionLinker()
+
+        # Check for thread binding
+        binding_store = get_binding_store()
+        binding = await binding_store.get_binding(channel_id, thread_ts)
+        thread_binding = binding.issue_key if binding else None
+
+        # Find related issues
+        related_issues = await linker.find_related_issues(
+            decision_topic=topic,
+            decision_text=decision_text,
+            channel_id=channel_id,
+            thread_binding=thread_binding,
+        )
+
+        if not related_issues:
+            # No related issues found - decision just stays in channel
+            logger.debug("No related Jira issues found for decision")
+            await linker.close()
+            return
+
+        # Build Slack thread link
+        slack_link = f"https://slack.com/archives/{channel_id}/p{thread_ts.replace('.', '')}"
+
+        # Format decision for Jira
+        timestamp = datetime.now(timezone.utc).isoformat()
+        formatted_decision = linker.format_decision_for_jira(
+            topic=topic,
+            decision=decision_text,
+            approver=f"<@{user_id}>",
+            timestamp=timestamp,
+            slack_link=slack_link,
+        )
+
+        if len(related_issues) == 1:
+            # High confidence single match - auto-update
+            issue_key = related_issues[0]
+            success = await linker.apply_decision_to_issue(
+                issue_key,
+                formatted_decision,
+                mode="add_comment",
+                add_label=True,
+            )
+
+            if success:
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"Decision added to *{issue_key}*.",
+                )
+        else:
+            # Multiple matches - ask user
+            await _prompt_decision_link(
+                issues=related_issues,
+                topic=topic,
+                decision_text=decision_text,
+                user_id=user_id,
+                identity=identity,
+                client=client,
+            )
+
+        await linker.close()
+
+    except Exception as e:
+        logger.warning(f"Failed to link decision to Jira: {e}", exc_info=True)
+        # Non-blocking - decision was already posted to channel
+
+
+async def _prompt_decision_link(
+    issues: list[str],
+    topic: str,
+    decision_text: str,
+    user_id: str,
+    identity: SessionIdentity,
+    client: WebClient,
+):
+    """Prompt user to select which Jira issue to link decision to.
+
+    Shows up to 5 related issues with Link buttons.
+    """
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "Link this decision to a Jira ticket?"}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*{topic}*\n{decision_text[:200]}..."}
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*Related tickets:*"}
+        },
+    ]
+
+    # Fetch issue summaries for context
+    try:
+        settings = get_settings()
+        jira = JiraService(settings)
+
+        for key in issues[:5]:  # Max 5 options
+            try:
+                issue = await jira.get_issue(key)
+                summary = issue.summary[:60] + "..." if len(issue.summary) > 60 else issue.summary
+            except Exception:
+                summary = "(Could not fetch summary)"
+
+            # Store data needed for linking in button value
+            button_value = json.dumps({
+                "key": key,
+                "topic": topic[:100],
+                "decision": decision_text[:500],
+                "user_id": user_id,
+            })
+
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*{key}*: {summary}"},
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Link"},
+                    "action_id": f"link_decision_{key}",
+                    "value": button_value,
+                }
+            })
+
+        await jira.close()
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch issue summaries: {e}")
+        # Show keys without summaries
+        for key in issues[:5]:
+            button_value = json.dumps({
+                "key": key,
+                "topic": topic[:100],
+                "decision": decision_text[:500],
+                "user_id": user_id,
+            })
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*{key}*"},
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Link"},
+                    "action_id": f"link_decision_{key}",
+                    "value": button_value,
+                }
+            })
+
+    # Add skip button
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Skip"},
+                "action_id": "skip_decision_link"
+            }
+        ]
+    })
+
+    client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        blocks=blocks,
+        text="Link decision to Jira?",
+    )
