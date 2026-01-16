@@ -35,6 +35,11 @@ from src.slack.blocks.review import (
     build_patch_review_blocks,
     build_full_synthesis_blocks,
 )
+from src.slack.blocks.multi_ticket import (
+    build_quantity_confirm_blocks,
+    build_size_confirm_blocks,
+    build_multi_ticket_preview_blocks,
+)
 
 __all__ = [
     # Draft
@@ -60,4 +65,8 @@ __all__ = [
     # Review
     "build_patch_review_blocks",
     "build_full_synthesis_blocks",
+    # Multi-ticket
+    "build_quantity_confirm_blocks",
+    "build_size_confirm_blocks",
+    "build_multi_ticket_preview_blocks",
 ]
