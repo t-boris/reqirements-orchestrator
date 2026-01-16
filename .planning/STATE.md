@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 5 of 12 in current phase
+Plan: 6 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-05-PLAN.md (Event Router)
+Last activity: 2026-01-16 — Completed 20-06-PLAN.md (Scope Gate)
 
-Progress: ████░░░░░░░░░░░░░░░░ 42% (Phase 20)
+Progress: █████░░░░░░░░░░░░░░░ 50% (Phase 20)
 
 ## v1.0 Summary
 
@@ -125,6 +125,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-05 | RoutingDecision dataclass with Optional fields | Structured routing decisions for different outcomes |
 | 20-05 | UI version parsed from button value suffix | Format: value:version for stale preview detection |
 | 20-05 | Thread default expiry via ISO timestamp | Timezone-aware comparison for 2h expiry |
+| 20-06 | Remove "lean toward TICKET" bias | LLM chooses AMBIGUOUS when unsure instead of defaulting to TICKET |
+| 20-06 | 3-button scope gate for AMBIGUOUS | Review / Create Ticket / Not now gives user clear choices |
+| 20-06 | "Remember for this thread" checkbox | Reduces repeated scope gates in same thread |
+| 20-06 | 2h expiry for thread default | Aligns with 20-CONTEXT.md v4 requirements |
 
 ### Roadmap Evolution
 
@@ -150,9 +154,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-04-PLAN.md (Extend AgentState)
+Stopped at: Completed 20-06-PLAN.md (Scope Gate)
 Resume file: None
-Next action: Execute 20-05-PLAN.md
+Next action: Execute 20-07-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
