@@ -162,6 +162,14 @@ async def _generate_content_for_fields(draft, fields: list[str], state: dict) ->
 
         generated = json.loads(response_text) if response_text else {}
 
+        # Handle case where LLM returns a list (multi-ticket request)
+        if isinstance(generated, list):
+            if generated:
+                logger.info(f"LLM returned list of {len(generated)} items, using first item")
+                generated = generated[0] if isinstance(generated[0], dict) else {}
+            else:
+                generated = {}
+
         if generated:
             logger.info(f"Generated content for fields: {list(generated.keys())}")
             # Patch draft with generated content
@@ -401,6 +409,14 @@ Reviewed by: {artifact_persona}
             response_text = response_text.strip()
 
         extracted = json.loads(response_text) if response_text and response_text != "{}" else {}
+
+        # Handle case where LLM returns a list (multi-ticket request)
+        if isinstance(extracted, list):
+            if extracted:
+                logger.info(f"LLM returned list of {len(extracted)} items, using first item")
+                extracted = extracted[0] if isinstance(extracted[0], dict) else {}
+            else:
+                extracted = {}
 
         if extracted:
             logger.info(
