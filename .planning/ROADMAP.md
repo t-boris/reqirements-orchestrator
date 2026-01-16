@@ -266,6 +266,6 @@ Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-l
 | 13. Intent Router | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 13.1 Ticket Reference Handling | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 14. Architecture Decisions | v1.1 | 1/1 | Complete | 2026-01-15 |
-| 15. Review Conversation Flow | v1.1 | 0/1 | Planned | - |
-| 16. Ticket Operations | v1.1 | 0/1 | Planned | - |
+| 15. Review Conversation Flow | v1.1 | 1/1 | Complete | 2026-01-15 |
+| 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
