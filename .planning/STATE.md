@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 21 of 21 (Agentic Intent Classification)
-Plan: 0 of ? in current phase
-Status: Not Started
-Last activity: 2026-01-16 — Added Phase 21 with agentic intent classification todo
+Phase: 21 of 21 (Jira Sync & Management)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-16 — Completed 21-01-PLAN.md (Channel Issue Tracker)
 
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 21)
+Progress: █░░░░░░░░░░░░░░░░░░░ 20% (Phase 21)
 
 ## v1.0 Summary
 
@@ -147,6 +147,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-12 | AMBIGUOUS default instead of TICKET | Reduces aggressive ticket creation, lets user decide via scope gate |
 | 20-12 | IntentType simplified to 5 values | TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS (PendingAction handles rest) |
 | 20-12 | event_router before intent classification | Priority: WorkflowEvent -> PendingAction -> thread_default -> intent |
+| 21-01 | TrackedIssue as dataclass | Simpler than Pydantic for internal data transfer |
+| 21-01 | UPSERT pattern for track() | Re-tracking same issue updates tracked_at and tracked_by |
+| 21-01 | Non-blocking auto-tracking | Failures are logged but don't interrupt user-facing operations |
+| 21-01 | Normalize issue keys to uppercase | Ensures consistency with Jira's format |
 
 ### Roadmap Evolution
 
@@ -175,9 +179,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Added Phase 21 (Agentic Intent Classification)
+Stopped at: Completed 21-01-PLAN.md (Channel Issue Tracker)
 Resume file: None
-Next action: Plan Phase 21 (/gsd:plan-phase 21)
+Next action: Execute 21-02-PLAN.md (Pinned Board Dashboard)
 
 ## Phase 11 Summary (Complete)
 
