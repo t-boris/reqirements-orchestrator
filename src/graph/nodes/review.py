@@ -269,3 +269,74 @@ async def review_node(state: AgentState) -> dict[str, Any]:
                 "topic": topic,
             }
         }
+
+
+# Patterns that indicate user is done with review (triggers freeze)
+REVIEW_COMPLETE_PATTERNS = [
+    r"\bthanks?\b",
+    r"\bok\b",
+    r"\bgot it\b",
+    r"\ball good\b",
+    r"\blooks?\s+good\b",
+    r"\bperfect\b",
+    r"\bgreat\b",
+]
+
+
+def freeze_review(state: dict) -> dict:
+    """Freeze current review context into artifact.
+
+    Called when REVIEW_COMPLETE detected (thanks/ok/got it).
+    Moves review_context -> review_artifact and clears review_context.
+
+    Freeze semantics (from 20-CONTEXT.md):
+    - review_artifact remains accessible for Review→Ticket handoff
+    - But doesn't trigger continuation automatically
+    - And doesn't bias next message's intent classification
+
+    Returns:
+        State update with review_artifact set and review_context cleared
+    """
+    from src.schemas.state import ReviewArtifact
+
+    review_context = state.get("review_context")
+    if not review_context:
+        return {}
+
+    from datetime import datetime, timezone
+
+    # Map persona name to ReviewArtifact kind
+    persona = review_context.get("persona", "architect")
+    persona_to_kind = {
+        "Architect": "architecture",
+        "Security Analyst": "security",
+        "Product Manager": "pm",
+        # Fallback mappings for lowercase
+        "architect": "architecture",
+        "security": "security",
+        "pm": "pm",
+    }
+    kind = persona_to_kind.get(persona, "architecture")
+
+    artifact: ReviewArtifact = {
+        "summary": review_context.get("review_summary", ""),
+        "kind": kind,
+        "version": 1,  # First freeze is v1
+        "topic": review_context.get("topic", ""),
+        "frozen_at": datetime.now(timezone.utc).isoformat(),
+        "thread_ts": review_context.get("thread_ts", ""),
+    }
+
+    logger.info(
+        "Freezing review context into artifact",
+        extra={
+            "topic": artifact["topic"],
+            "kind": artifact["kind"],
+            "thread_ts": artifact["thread_ts"],
+        },
+    )
+
+    return {
+        "review_artifact": artifact,
+        "review_context": None,  # Clear to stop continuation triggers
+    }
