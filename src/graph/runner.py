@@ -126,6 +126,15 @@ class GraphRunner:
             "question_history": [],
             # First message tracking
             "is_first_message": True,
+            # Workflow state (Phase 20 - Brain Refactor)
+            "pending_action": None,
+            "pending_payload": None,
+            "workflow_step": None,
+            "ui_version": 0,
+            "last_event_id": None,
+            "last_event_type": None,
+            "thread_default_intent": None,
+            "thread_default_expires_at": None,
         }
 
     async def _run_until_interrupt(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -144,7 +153,7 @@ class GraphRunner:
             decision_result = current_state.get("decision_result", {})
             action = decision_result.get("action")
 
-            if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint", "ticket_action"]:
+            if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint", "ticket_action", "review_continuation", "decision_approval"]:
                 # Interrupt - return current state
                 logger.info(f"Graph interrupted at {action}")
                 return self._merge_state(state, current_state)
@@ -220,6 +229,20 @@ class GraphRunner:
                 "ticket_key": decision_result.get("ticket_key"),
                 "action_type": decision_result.get("action_type"),
                 "already_bound_to_same": decision_result.get("already_bound_to_same", False),
+            }
+        elif action == "review_continuation":
+            return {
+                "action": "review_continuation",
+                "message": decision_result.get("message", ""),
+                "persona": decision_result.get("persona", ""),
+                "topic": decision_result.get("topic", ""),
+            }
+        elif action == "decision_approval":
+            return {
+                "action": "decision_approval",
+                "review_context": decision_result.get("review_context", {}),
+                "approval_message": decision_result.get("approval_message", ""),
+                "user_id": decision_result.get("user_id", ""),
             }
         else:
             return {"action": "continue"}
