@@ -230,7 +230,7 @@ async def _process_mention(
         if routing.result == RouteResult.CONTINUATION:
             # Handle pending action continuation
             await _handle_continuation(
-                identity, routing.pending_action, state, client, thread_ts, channel, tracker
+                identity, routing.pending_action, state, text, user, client, thread_ts, channel, tracker
             )
             return
 
@@ -267,6 +267,8 @@ async def _handle_continuation(
     identity: SessionIdentity,
     pending_action,
     state: dict,
+    text: str,
+    user: str,
     client: WebClient,
     thread_ts: str,
     channel: str,
@@ -276,6 +278,17 @@ async def _handle_continuation(
 
     Called when event_router returns RouteResult.CONTINUATION.
     Routes to appropriate continuation handler based on pending_action type.
+
+    Args:
+        identity: Session identity
+        pending_action: The pending action type from event_router
+        state: Current state dict
+        text: The NEW message text from the user (not from state!)
+        user: The user ID
+        client: Slack WebClient
+        thread_ts: Thread timestamp
+        channel: Channel ID
+        tracker: Progress tracker
     """
     from src.schemas.state import PendingAction
 
@@ -284,18 +297,27 @@ async def _handle_continuation(
         extra={
             "channel": channel,
             "thread_ts": thread_ts,
+            "text_preview": text[:50] if text else "",
         },
     )
-
-    # For now, log and continue to graph
-    # Full continuation handling will be implemented in subsequent plans
-    # (This is the integration point - handlers exist but routing is being wired)
 
     # Get runner to continue processing
     runner = get_runner(identity)
 
+    # Force REVIEW_CONTINUATION intent if we have review_context
+    # This ensures the graph routes to review_continuation_flow
+    review_context = state.get("review_context")
+    if review_context:
+        logger.info("Forcing REVIEW_CONTINUATION intent for active review")
+        current_state = await runner._get_current_state()
+        current_state["intent_result"] = {
+            "intent": "REVIEW_CONTINUATION",
+            "confidence": 1.0,
+            "reasons": ["continuation: active review_context detected"],
+        }
+        await runner.graph.aupdate_state(runner._config, current_state)
+
     # Build conversation context
-    from src.slack.handlers.core import _build_conversation_context
     conversation_context = await _build_conversation_context(
         client=client,
         team_id=identity.team_id,
@@ -304,10 +326,10 @@ async def _handle_continuation(
         message_ts=thread_ts,
     )
 
-    # Run graph (continuation logic handled by graph routing)
+    # Run graph with the NEW message (not the old one from state!)
     result = await runner.run_with_message(
-        state.get("user_message", ""),
-        state.get("user", ""),
+        text,  # Use the new message from user
+        user,  # Use the user ID passed in
         conversation_context=conversation_context,
     )
 
