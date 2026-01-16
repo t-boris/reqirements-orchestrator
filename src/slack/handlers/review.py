@@ -114,7 +114,15 @@ def handle_scope_gate_submit(ack, body, client: WebClient, view):
 
 
 async def _handle_scope_gate_submit_async(body, client: WebClient, view):
-    """Async handler for scope gate modal submission."""
+    """Async handler for scope gate modal submission.
+
+    Extracts items from review and routes to single or multi-ticket flow.
+    """
+    from src.slack.handlers.dispatch import _dispatch_result
+    from src.schemas.state import UserIntent, WorkflowStep, PendingAction
+    from src.graph.nodes.extraction import extract_multi_items_from_review
+    from src.slack.blocks.multi_ticket import build_multi_ticket_preview_blocks
+
     values = view["state"]["values"]
     private_metadata_raw = view.get("private_metadata", "{}")
 
@@ -132,6 +140,10 @@ async def _handle_scope_gate_submit_async(body, client: WebClient, view):
     thread_ts = metadata.get("thread_ts", "")
     review_text = metadata.get("review_text", "")
     topic = metadata.get("topic", "")
+
+    # Get team_id from body
+    team_id = body.get("team", {}).get("id") or body.get("user", {}).get("team_id", "")
+    user_id = body.get("user", {}).get("id", "")
 
     logger.info(
         "Scope gate submitted",
@@ -151,12 +163,152 @@ async def _handle_scope_gate_submit_async(body, client: WebClient, view):
     else:
         context_msg = f"Create a Jira ticket for: {custom_text}"
 
-    # Post as user message to trigger ticket flow
-    # The message handler will classify this as TICKET and proceed with extraction
+    # Post acknowledgment message
     client.chat_postMessage(
         channel=channel_id,
         thread_ts=thread_ts,
-        text=context_msg,
+        text="Analyzing review for ticket creation...",
+    )
+
+    # Extract items from review
+    items = await extract_multi_items_from_review(review_text, scope, topic)
+
+    if len(items) == 0:
+        logger.warning(
+            "No items extracted from review",
+            extra={
+                "channel": channel_id,
+                "thread_ts": thread_ts,
+                "topic": topic,
+            }
+        )
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="I couldn't identify any specific items to create. Please describe what you'd like to turn into tickets.",
+        )
+        return
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+
+    if len(items) == 1:
+        # Single-item flow - existing behavior
+        runner = get_runner(identity)
+
+        # Force TICKET intent and set the context message as user input
+        forced_intent_result = {
+            "intent": UserIntent.TICKET.value,
+            "confidence": 1.0,
+            "reasons": ["review_scope_gate: single item extracted from review"],
+        }
+
+        # Get current state and update with forced intent
+        state = await runner._get_current_state()
+        state["intent_result"] = forced_intent_result
+        state["user_message"] = context_msg
+        state["pending_action"] = None
+        state["workflow_step"] = None
+
+        await runner.graph.aupdate_state(runner._config, state)
+
+        # Run graph with the context message
+        try:
+            result = await runner.run_with_message(context_msg, user_id)
+            await _dispatch_result(result, identity, client, runner, tracker=None)
+        except Exception as e:
+            logger.error(f"Failed to create ticket from review: {e}", exc_info=True)
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="Sorry, I couldn't create the ticket. Please try again or create it manually.",
+            )
+    else:
+        # Multi-item flow - show preview
+        await _show_multi_ticket_preview(items, identity, client, metadata)
+
+
+async def _show_multi_ticket_preview(
+    items: list[dict],
+    identity: SessionIdentity,
+    client: WebClient,
+    metadata: dict,
+):
+    """Show multi-ticket preview and update state.
+
+    Args:
+        items: List of extracted items (id, type, title, description, parent_id)
+        identity: Session identity for state management
+        client: Slack WebClient
+        metadata: Original scope gate metadata (channel_id, thread_ts, topic)
+    """
+    from src.schemas.state import WorkflowStep, PendingAction
+    from src.slack.blocks.multi_ticket import build_multi_ticket_preview_blocks
+
+    channel_id = metadata.get("channel_id", "")
+    thread_ts = metadata.get("thread_ts", "")
+    topic = metadata.get("topic", "")
+
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+
+    # Calculate total content size
+    total_chars = sum(len(i.get("description", "")) + len(i.get("title", "")) for i in items)
+
+    # Find epic ID if present
+    epic_id = None
+    for item in items:
+        if item["type"] == "epic":
+            epic_id = item["id"]
+            break
+
+    # Build MultiTicketState
+    multi_ticket_state = {
+        "items": items,
+        "epic_id": epic_id,
+        "total_chars": total_chars,
+        "confirmed_quantity": False,
+        "confirmed_size": False,
+        "created_keys": [],
+    }
+
+    # Get current ui_version and increment
+    ui_version = state.get("ui_version", 0) + 1
+
+    # Update state
+    await runner._update_state({
+        "multi_ticket_state": multi_ticket_state,
+        "workflow_step": WorkflowStep.MULTI_TICKET_PREVIEW,
+        "pending_action": PendingAction.WAITING_STORY_EDIT,
+        "ui_version": ui_version,
+    })
+
+    # Build and post preview blocks
+    preview_blocks = build_multi_ticket_preview_blocks(items, ui_version)
+
+    epic_count = sum(1 for i in items if i["type"] == "epic")
+    story_count = sum(1 for i in items if i["type"] == "story")
+
+    client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        blocks=preview_blocks,
+        text=f"Multi-ticket preview: {epic_count} epic(s), {story_count} story(ies)",
+    )
+
+    logger.info(
+        "Posted multi-ticket preview",
+        extra={
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "item_count": len(items),
+            "epic_count": epic_count,
+            "story_count": story_count,
+            "topic": topic,
+        }
     )
 
 
