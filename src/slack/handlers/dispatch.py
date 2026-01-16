@@ -245,82 +245,85 @@ async def _dispatch_result(
             prefix = ""
 
         if review_msg:
-            # Split long messages into multiple blocks (Slack limit: 3000 chars per block)
+            # Split into multiple Slack messages to avoid collapse
+            # Slack collapses messages > ~4000 chars, so we split at ~3500 chars per message
             full_text = prefix + review_msg
-            chunk_size = 2900  # Leave margin for safety
+            MAX_MESSAGE_LENGTH = 3500  # Keep under Slack's collapse threshold
 
-            # Split into chunks at natural boundaries (paragraphs/lines)
-            chunks = []
+            # Split into message-sized chunks at natural boundaries
+            message_chunks = []
             remaining = full_text
             while remaining:
-                if len(remaining) <= chunk_size:
-                    chunks.append(remaining)
+                if len(remaining) <= MAX_MESSAGE_LENGTH:
+                    message_chunks.append(remaining)
                     break
 
-                # Find a good split point (prefer double newline, then single newline, then space)
-                split_at = chunk_size
+                # Find a good split point (prefer double newline, then single newline)
+                split_at = MAX_MESSAGE_LENGTH
                 # Try to find paragraph break
-                para_break = remaining.rfind("\n\n", 0, chunk_size)
-                if para_break > chunk_size // 2:  # Only use if reasonably far into the chunk
+                para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
+                if para_break > MAX_MESSAGE_LENGTH // 2:
                     split_at = para_break + 2
                 else:
                     # Try single newline
-                    line_break = remaining.rfind("\n", 0, chunk_size)
-                    if line_break > chunk_size // 2:
+                    line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
+                    if line_break > MAX_MESSAGE_LENGTH // 2:
                         split_at = line_break + 1
                     else:
                         # Fall back to space
-                        space = remaining.rfind(" ", 0, chunk_size)
-                        if space > chunk_size // 2:
+                        space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
+                        if space > MAX_MESSAGE_LENGTH // 2:
                             split_at = space + 1
 
-                chunks.append(remaining[:split_at].rstrip())
+                message_chunks.append(remaining[:split_at].rstrip())
                 remaining = remaining[split_at:].lstrip()
 
-            # Build blocks - one section per chunk
-            all_blocks = []
-            for chunk in chunks:
-                all_blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": chunk}
-                })
+            # Send each chunk as a separate Slack message
+            for i, chunk in enumerate(message_chunks):
+                is_last_message = (i == len(message_chunks) - 1)
 
-            # Slack limit: ~50 blocks per message. Split into multiple messages if needed.
-            MAX_BLOCKS_PER_MESSAGE = 45  # Leave room for action button
+                blocks = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": chunk}
+                    }
+                ]
 
-            # Send blocks in batches
-            for i in range(0, len(all_blocks), MAX_BLOCKS_PER_MESSAGE):
-                batch = all_blocks[i:i + MAX_BLOCKS_PER_MESSAGE]
-                is_last_batch = (i + MAX_BLOCKS_PER_MESSAGE >= len(all_blocks))
-
-                # Add action button only to the last message
-                if is_last_batch:
-                    button_value = json.dumps({
-                        "review_text": review_msg[:1500],  # Leave room for JSON overhead
+                # Add action buttons only to the last message
+                if is_last_message:
+                    ticket_button_value = json.dumps({
+                        "review_text": review_msg[:1500],
                         "topic": (topic or "")[:100],
                         "persona": persona or "",
                     })
-                    batch.append({
+                    approve_button_value = json.dumps({
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    blocks.append({
                         "type": "actions",
                         "elements": [
                             {
                                 "type": "button",
+                                "text": {"type": "plain_text", "text": "Approve & Post Decision"},
+                                "action_id": "approve_architecture",
+                                "value": approve_button_value,
+                                "style": "primary",
+                            },
+                            {
+                                "type": "button",
                                 "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
                                 "action_id": "review_to_ticket",
-                                "value": button_value,
-                                "style": "primary",
+                                "value": ticket_button_value,
                             }
                         ]
                     })
 
-                # Get fallback text from first block in this batch
-                fallback = batch[0]["text"]["text"][:100] if batch else review_msg[:100]
-
                 client.chat_postMessage(
                     channel=identity.channel_id,
                     thread_ts=identity.thread_ts if identity.thread_ts else None,
-                    blocks=batch,
-                    text=fallback,
+                    blocks=blocks,
+                    text=chunk[:200],  # Fallback text
                 )
 
     elif action == "ticket_action":

@@ -35,6 +35,8 @@ from src.slack.handlers import (
     # Review to ticket handling (Phase 13)
     handle_review_to_ticket,
     handle_scope_gate_submit,
+    # Architecture approval (Phase 20)
+    handle_approve_architecture,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -102,6 +104,9 @@ def register_handlers(app: App) -> None:
     # Review to ticket action (Phase 13)
     app.action("review_to_ticket")(handle_review_to_ticket)
 
+    # Architecture approval (Phase 20)
+    app.action("approve_architecture")(handle_approve_architecture)
+
     # Scope gate modal submission (Phase 13)
     app.view("review_scope_gate")(handle_scope_gate_submit)
 
@@ -110,4 +115,4 @@ def register_handlers(app: App) -> None:
     app.action("scope_gate_ticket")(handle_scope_gate_ticket)
     app.action("scope_gate_dismiss")(handle_scope_gate_dismiss)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, scope_gate_buttons")
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons")

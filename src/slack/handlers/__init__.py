@@ -66,6 +66,7 @@ from src.slack.handlers.onboarding import (
 from src.slack.handlers.review import (
     handle_review_to_ticket,
     handle_scope_gate_submit,
+    handle_approve_architecture,
 )
 
 # Scope gate handlers (AMBIGUOUS intent)
@@ -110,6 +111,7 @@ __all__ = [
     # Review
     "handle_review_to_ticket",
     "handle_scope_gate_submit",
+    "handle_approve_architecture",
     # Scope Gate (AMBIGUOUS intent)
     "handle_scope_gate_review",
     "handle_scope_gate_ticket",

@@ -1,6 +1,6 @@
-"""Review-to-ticket and scope gate handlers.
+"""Review-to-ticket, scope gate, and architecture approval handlers.
 
-Handles turning review responses into Jira tickets.
+Handles turning review responses into Jira tickets and posting architecture decisions.
 """
 
 import json
@@ -9,6 +9,8 @@ import logging
 from slack_sdk.web import WebClient
 
 from src.slack.handlers.core import _run_async
+from src.slack.session import SessionIdentity
+from src.graph.runner import get_runner
 
 logger = logging.getLogger(__name__)
 
@@ -156,3 +158,164 @@ async def _handle_scope_gate_submit_async(body, client: WebClient, view):
         thread_ts=thread_ts,
         text=context_msg,
     )
+
+
+def handle_approve_architecture(ack, body, client: WebClient):
+    """Handle "Approve & Post Decision" button click.
+
+    Posts architecture decision to the main channel (not thread).
+    Pattern: Sync wrapper with immediate ack, delegates to async.
+    """
+    ack()
+    _run_async(_handle_approve_architecture_async(body, client))
+
+
+async def _handle_approve_architecture_async(body, client: WebClient):
+    """Async handler for architecture approval."""
+    from src.slack.blocks import build_decision_blocks
+
+    # Extract context from button value
+    button_value = body["actions"][0].get("value", "{}")
+    try:
+        value = json.loads(button_value)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse approve_architecture button value: {button_value}")
+        value = {}
+
+    message = body.get("message", {})
+    thread_ts = message.get("thread_ts") or message.get("ts")
+    channel_id = body["channel"]["id"]
+    user_id = body["user"]["id"]
+    team_id = body.get("team", {}).get("id", "")
+
+    topic = value.get("topic", "Architecture Decision")
+    persona = value.get("persona", "")
+
+    logger.info(
+        "Approve architecture button clicked",
+        extra={
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+            "topic": topic,
+        }
+    )
+
+    # Get review context from state
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    review_context = state.get("review_context")
+
+    if not review_context:
+        # No review context - use message text as fallback
+        message_text = message.get("text", "")
+        review_summary = message_text[:1000] if message_text else "Architecture approved"
+    else:
+        review_summary = (
+            review_context.get("updated_recommendation") or
+            review_context.get("review_summary", "Architecture approved")
+        )
+
+    # Extract decision using LLM
+    from src.llm import get_llm
+    import re
+
+    try:
+        llm = get_llm()
+        extraction_prompt = f'''Based on this architecture review, extract the decision:
+
+Review: {review_summary[:2000]}
+
+Return a JSON object:
+{{
+    "topic": "What was being decided (1 line)",
+    "decision": "The chosen approach (1-2 sentences)"
+}}
+
+Be concise. This will be posted to the channel as a permanent record.
+'''
+        extraction_result = await llm.chat(extraction_prompt)
+
+        # Parse JSON response
+        json_match = re.search(r'\{[^{}]*\}', extraction_result, re.DOTALL)
+        if json_match:
+            decision_data = json.loads(json_match.group())
+        else:
+            decision_data = {"topic": topic, "decision": "Approved"}
+
+        extracted_topic = decision_data.get("topic", topic)
+        decision_text = decision_data.get("decision", "Approved")
+
+        # Build and post decision blocks to CHANNEL (not thread!)
+        decision_blocks = build_decision_blocks(
+            topic=extracted_topic,
+            decision=decision_text,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            user_id=user_id,
+        )
+
+        # Post to channel root (no thread_ts)
+        client.chat_postMessage(
+            channel=channel_id,
+            blocks=decision_blocks,
+            text=f"Architecture Decision: {extracted_topic}",
+        )
+
+        # Confirm in thread
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="Decision recorded in channel.",
+        )
+
+        # Freeze review_context to review_artifact (Phase 20)
+        if review_context:
+            import hashlib
+            from datetime import datetime, timezone
+            from src.schemas.state import ReviewState
+
+            review_context["state"] = ReviewState.POSTED
+
+            review_artifact = {
+                "kind": "architecture" if "architect" in persona.lower() else "security" if "security" in persona.lower() else "pm_review",
+                "version": review_context.get("version", 1),
+                "summary": review_context.get("review_summary", ""),
+                "updated_summary": review_context.get("updated_recommendation"),
+                "topic": extracted_topic,
+                "persona": persona,
+                "frozen_at": datetime.now(timezone.utc).isoformat(),
+                "thread_ts": thread_ts,
+                "channel_id": channel_id,
+                "content_hash": hashlib.sha256(
+                    (review_context.get("review_summary", "") +
+                     (review_context.get("updated_recommendation") or "")).encode()
+                ).hexdigest()[:16],
+            }
+
+            # Update state
+            await runner._update_state({
+                "review_artifact": review_artifact,
+                "review_context": None,
+            })
+
+            logger.info(
+                "Froze review_context to review_artifact via button",
+                extra={
+                    "topic": extracted_topic,
+                    "content_hash": review_artifact["content_hash"],
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="I understood that as approval, but couldn't extract the decision. The review is still available above.",
+        )
