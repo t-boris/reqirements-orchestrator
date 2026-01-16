@@ -1,12 +1,20 @@
 """Intent Router for classifying user messages.
 
-Classifies user messages into three flows:
+Classifies user messages into five pure user intents:
 - TICKET: User wants to create a Jira ticket
 - REVIEW: User wants analysis/feedback without Jira operations
 - DISCUSSION: Casual greeting, simple question, no action needed
+- META: Questions about the bot itself
+- AMBIGUOUS: Intent unclear - triggers scope gate for user to decide
+
+Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION are now
+PendingAction values handled by event_router BEFORE intent classification.
+This separation ensures intent classification only handles "what user wants"
+not "what system is doing".
 
 Pattern matching is applied first for explicit overrides.
 LLM classification is used only for ambiguous cases.
+When in doubt, LLM returns AMBIGUOUS (not TICKET) to let user decide.
 """
 import logging
 import re
@@ -19,13 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 class IntentType(str, Enum):
-    """Types of user intent."""
+    """Pure user intent - what user wants (not workflow state).
+
+    Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
+    are now PendingAction values in src/schemas/state.py, not intents.
+    These are detected via event_router before intent classification.
+    """
     TICKET = "TICKET"       # Create a Jira ticket
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
-    TICKET_ACTION = "TICKET_ACTION"  # Work with existing ticket (subtask, update, etc.)
-    DECISION_APPROVAL = "DECISION_APPROVAL"  # User approving review/architecture discussion
-    REVIEW_CONTINUATION = "REVIEW_CONTINUATION"  # Answering questions from previous review
+    META = "META"           # Questions about the bot itself
     AMBIGUOUS = "AMBIGUOUS"  # Intent unclear - triggers scope gate for user to decide
 
 
@@ -36,9 +47,6 @@ class IntentResult(BaseModel):
     persona_hint: Optional[Literal["pm", "architect", "security"]] = None
     topic: Optional[str] = None
     reasons: list[str] = Field(default_factory=list)
-    # For TICKET_ACTION intent
-    ticket_key: Optional[str] = None  # Referenced ticket (e.g., "SCRUM-1111")
-    action_type: Optional[str] = None  # Action: "create_subtask", "add_comment", "update", "link"
 
 
 # Explicit override patterns (checked BEFORE LLM)
@@ -51,21 +59,6 @@ NEGATION_PATTERNS = [
     (r"\bno\s+ticket\b", "pattern: no ticket"),
     (r"\bwithout\s+(?:a\s+)?(?:jira\s+)?ticket\b", "pattern: without ticket"),
     (r"\bjust\s+(?:review|analyze|discuss)\b", "pattern: just review"),
-]
-
-# TICKET_ACTION PATTERNS - checked after NEGATION but before TICKET
-# These trigger work with an existing ticket reference (SCRUM-XXX format)
-# Format: (pattern, reason, action_type)
-TICKET_ACTION_PATTERNS = [
-    # Subtask creation
-    (r"create\s+subtasks?\s+(?:for\s+)?([A-Z]+-\d+)", "pattern: create subtasks for ticket", "create_subtask"),
-    (r"add\s+subtasks?\s+(?:to\s+)?([A-Z]+-\d+)", "pattern: add subtasks to ticket", "create_subtask"),
-    # Update ticket
-    (r"update\s+([A-Z]+-\d+)", "pattern: update ticket", "update"),
-    # Add comment
-    (r"add\s+(?:a\s+)?comment\s+(?:to\s+)?([A-Z]+-\d+)", "pattern: add comment to ticket", "add_comment"),
-    # Link to ticket
-    (r"link\s+(?:this\s+)?to\s+([A-Z]+-\d+)", "pattern: link to ticket", "link"),
 ]
 
 TICKET_PATTERNS = [
@@ -122,86 +115,7 @@ DISCUSSION_PATTERNS = [
     (r"^how\s+does\s+this\s+work\??$", "pattern: how does this work"),
 ]
 
-# Decision approval patterns - user approving a review/architecture discussion
-# These only make sense AFTER a review has happened (check review_context in state)
-DECISION_APPROVAL_PATTERNS = [
-    (r"\blet'?s?\s+go\s+with\s+(?:this|that|option|approach)\b", "pattern: let's go with this"),
-    (r"\bapproved\b", "pattern: approved"),
-    (r"\bagreed\b", "pattern: agreed"),
-    (r"\bship\s+it\b", "pattern: ship it"),
-    (r"\blooks?\s+good,?\s+let'?s?\s+(?:do|proceed)\b", "pattern: looks good let's proceed"),
-    (r"\bthis\s+is\s+(?:the|our)\s+approach\b", "pattern: this is the approach"),
-    (r"\bI\s+(?:like|prefer)\s+(?:this|option)\b", "pattern: I like/prefer this"),
-    (r"\bgo\s+(?:ahead|for\s+it)\b", "pattern: go ahead"),
-    (r"\bsounds?\s+good\b", "pattern: sounds good"),
-]
-
-# Review continuation patterns - user answering questions from previous review
-# These are checked ONLY when has_review_context=True
-REVIEW_CONTINUATION_PATTERNS = [
-    # Direct answers (key-value style)
-    (r"^[\w\s]+\s*[-:]\s*\w+", "pattern: key-value answer format"),
-    # Numbered answers
-    (r"^\d+[.)]\s*\w+", "pattern: numbered answer"),
-    # Bullet answers
-    (r"^[-•]\s*\w+", "pattern: bullet answer"),
-    # "For X, I'd choose Y" pattern
-    (r"\bfor\s+\w+.*(?:choose|select|go with|use)\b", "pattern: for X choose Y"),
-    # Multiple comma-separated items (answers to multiple questions)
-    (r"^[\w\s]+,\s*[\w\s]+,\s*[\w\s]+", "pattern: comma-separated answers"),
-
-    # User deferring to bot - "you propose", "you decide", "suggest default"
-    (r"\b(?:you\s+)?(?:propose|suggest|recommend|decide|pick|choose)\b.*(?:default|for\s+me|how\s+you\s+see)", "pattern: user deferring decision to bot"),
-
-    # User asking bot for perspective
-    (r"\bhow\s+(?:do\s+)?you\s+see\s+it\b", "pattern: asking for bot's perspective"),
-
-    # Positive responses to review
-    (r"\bI\s+like\s+(?:the\s+)?(?:architecture|approach|design|solution)\b", "pattern: positive response to review"),
-]
-
-# NOT continuation patterns - these override continuation detection
-NOT_CONTINUATION_PATTERNS = [
-    # Explicit new topic requests (highest priority - check first)
-    (r"\bpropose\s+(?:new|another|different)\s+(?:architecture|approach|design)", "pattern: requesting new/different approach"),
-
-    (r"\bcreate\s+(?:a\s+)?(?:new\s+)?ticket\b", "pattern: create new ticket"),
-    (r"\bnew\s+(?:ticket|task|story|feature|bug)\b", "pattern: new ticket/task"),
-    (r"\blet'?s?\s+start\s+(?:over|fresh|new)\b", "pattern: start over"),
-    (r"\bactually\s*,?\s*(?:I\s+)?(?:want|need)\s+(?:a\s+)?(?:new|different)\b", "pattern: actually want new/different"),
-]
-
-
-def _check_review_continuation(message: str) -> Optional[IntentResult]:
-    """Check if message looks like answers to review questions.
-
-    Called only when has_review_context=True.
-    Returns IntentResult if continuation detected, None otherwise.
-    """
-    message_lower = message.lower().strip()
-
-    # First check NOT_CONTINUATION patterns (these override)
-    for pattern, reason in NOT_CONTINUATION_PATTERNS:
-        if re.search(pattern, message_lower, re.IGNORECASE):
-            # Explicit new request - not a continuation
-            return None
-
-    # Check continuation patterns
-    for pattern, reason in REVIEW_CONTINUATION_PATTERNS:
-        if re.search(pattern, message, re.IGNORECASE):  # Use original case for some patterns
-            return IntentResult(
-                intent=IntentType.REVIEW_CONTINUATION,
-                confidence=0.9,  # High but not 1.0 to allow LLM override
-                reasons=[reason],
-            )
-
-    return None
-
-
-def classify_intent_patterns(
-    message: str,
-    has_review_context: bool = False,
-) -> Optional[IntentResult]:
+def classify_intent_patterns(message: str) -> Optional[IntentResult]:
     """Classify intent using explicit patterns only.
 
     Returns IntentResult if explicit pattern found, None if LLM needed.
@@ -209,15 +123,16 @@ def classify_intent_patterns(
 
     Pattern priority:
     1. NEGATION patterns (e.g., "don't create ticket") -> REVIEW
-    2. TICKET_ACTION patterns (e.g., "create subtasks for SCRUM-1111") -> TICKET_ACTION
-    3. TICKET patterns (e.g., "create ticket") -> TICKET
-    4. REVIEW patterns (e.g., "review as security") -> REVIEW
-    5. DECISION_APPROVAL patterns (only if has_review_context) -> DECISION_APPROVAL
-    6. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
+    2. TICKET patterns (e.g., "create ticket") -> TICKET
+    3. REVIEW patterns (e.g., "review as security") -> REVIEW
+    4. DISCUSSION patterns (e.g., "hi", "help") -> DISCUSSION
+
+    Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION patterns
+    are now handled via event_router/PendingAction before this is called.
+    This function only handles pure user intents.
 
     Args:
         message: User's message text
-        has_review_context: Whether there's a recent review to approve (Phase 14)
     """
     message_lower = message.lower().strip()
 
@@ -231,31 +146,6 @@ def classify_intent_patterns(
                 intent=IntentType.REVIEW,
                 confidence=1.0,
                 reasons=[reason],
-            )
-
-    # Check REVIEW_CONTINUATION patterns (when in review context)
-    if has_review_context:
-        continuation_result = _check_review_continuation(message)
-        if continuation_result is not None:
-            return continuation_result
-
-    # Check TICKET_ACTION patterns (before TICKET patterns)
-    # These detect explicit ticket references like "create subtasks for SCRUM-1111"
-    # Need to use original message (not lowercased) to capture ticket key correctly
-    for pattern_tuple in TICKET_ACTION_PATTERNS:
-        pattern = pattern_tuple[0]
-        reason = pattern_tuple[1]
-        action_type = pattern_tuple[2]
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            # Extract ticket key from capture group (group 1)
-            ticket_key = match.group(1).upper()  # Normalize to uppercase
-            return IntentResult(
-                intent=IntentType.TICKET_ACTION,
-                confidence=1.0,
-                reasons=[reason],
-                ticket_key=ticket_key,
-                action_type=action_type,
             )
 
     # Check TICKET patterns
@@ -282,19 +172,6 @@ def classify_intent_patterns(
                 reasons=[reason],
             )
 
-    # Check DECISION_APPROVAL patterns (only if review context exists)
-    # These patterns only make sense after a review has been given
-    if has_review_context:
-        for pattern_tuple in DECISION_APPROVAL_PATTERNS:
-            pattern = pattern_tuple[0]
-            reason = pattern_tuple[1]
-            if re.search(pattern, message_lower, re.IGNORECASE):
-                return IntentResult(
-                    intent=IntentType.DECISION_APPROVAL,
-                    confidence=1.0,
-                    reasons=[reason],
-                )
-
     # Check DISCUSSION patterns
     for pattern_tuple in DISCUSSION_PATTERNS:
         pattern = pattern_tuple[0]
@@ -309,68 +186,39 @@ def classify_intent_patterns(
     return None
 
 
-async def _llm_classify(message: str, has_review_context: bool = False) -> IntentResult:
+async def _llm_classify(message: str) -> IntentResult:
     """Use LLM to classify ambiguous messages.
 
     Called only when pattern matching doesn't produce a result.
+    Note: has_review_context handling is no longer needed here since
+    REVIEW_CONTINUATION and DECISION_APPROVAL are now PendingActions
+    handled by event_router before intent classification.
 
     Args:
         message: User's message text
-        has_review_context: Whether there's a recent review (biases toward REVIEW_CONTINUATION)
     """
     from src.llm import get_llm
 
     llm = get_llm()
 
-    if has_review_context:
-        prompt = f"""Classify this user message. IMPORTANT: This message is a reply in a thread
-where the bot just provided an architecture review with open questions.
-
-User message: "{message}"
-
-REVIEW_CONTINUATION applies to ANY message that continues the architecture discussion:
-- Answering the bot's open questions (e.g., "1. We'll use Okta", "Option A", "Yes")
-- Requesting to see the updated architecture after providing answers (e.g., "What is the architecture now?", "Show me the design", "Create updated architecture")
-- Asking follow-up questions about the review (e.g., "What about security?", "How does caching work?")
-- Providing additional context or constraints (e.g., "We also need to support mobile", "Budget is $50k")
-
-DECISION_APPROVAL is when user approves the current approach as final (e.g., "Let's go with this", "Approved", "Ship it").
-
-TICKET is ONLY for explicit new ticket creation requests (e.g., "Create a ticket for this", "File a bug").
-
-DISCUSSION is for generic conversation unrelated to the review (e.g., "Thanks", "What can you do?").
-
-DEFAULT: When in doubt, if the message relates to the architecture review at all, choose REVIEW_CONTINUATION.
-
-Categories:
-- REVIEW_CONTINUATION: Any message continuing the architecture discussion (answering questions, requesting updates, follow-ups)
-- DECISION_APPROVAL: Approving the reviewed approach as final
-- TICKET: Explicitly requesting a new Jira ticket
-- DISCUSSION: Generic conversation unrelated to review
-
-Respond in this exact format:
-INTENT: <REVIEW_CONTINUATION|DECISION_APPROVAL|TICKET|DISCUSSION>
-CONFIDENCE: <0.0-1.0>
-REASON: <brief explanation>
-"""
-    else:
-        prompt = f"""Classify this user message for a Jira ticket assistant bot.
+    prompt = f"""Classify this user message for a Jira ticket assistant bot.
 
 User message: "{message}"
 
 Classify into ONE category:
-- TICKET: User wants to create a NEW Jira ticket, story, bug, or task (e.g., "we need feature X", "create story for Y", "file a bug for Z")
-- TICKET_ACTION: User wants to work with an EXISTING ticket by reference (e.g., "create subtasks for SCRUM-123", "update PROJ-456", "add comment to ABC-789")
-- REVIEW: User wants analysis, feedback, or discussion without creating a Jira ticket (e.g., "what do you think about X", "review this design", "analyze the risks")
+- TICKET: User EXPLICITLY wants to create a NEW Jira ticket, story, bug, or task (e.g., "create ticket for Y", "file a bug for Z", "make a story for X")
+- REVIEW: User wants analysis, feedback, or discussion without creating a Jira ticket (e.g., "review this design", "analyze the risks", "what's the best approach")
 - DISCUSSION: Casual greeting, simple question about the bot, or conversation that requires no action (e.g., "hi", "thanks", "what can you do")
-- AMBIGUOUS: User intent is unclear - could be either a ticket request or a review request. Use when message could reasonably go either way (e.g., "what do you think about microservices?", "we should probably do something about auth")
+- META: Questions about the bot's capabilities or how it works (e.g., "what can you do?", "how do you work?")
+- AMBIGUOUS: User intent is unclear - could be either a ticket request or a review request. Use when message could reasonably go either way (e.g., "what do you think about microservices?", "we should probably do something about auth", "we need to handle X")
+
+IMPORTANT: When in doubt, choose AMBIGUOUS. Do NOT default to TICKET.
+The scope gate will let the user clarify their intent.
 
 Respond in this exact format:
-INTENT: <TICKET|TICKET_ACTION|REVIEW|DISCUSSION|AMBIGUOUS>
+INTENT: <TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 REASON: <brief explanation>
-TICKET_KEY: <ticket key if TICKET_ACTION, e.g., "SCRUM-123", otherwise empty>
-ACTION_TYPE: <action if TICKET_ACTION: "create_subtask", "update", "add_comment", "link", otherwise empty>
 
 If the user's intent is unclear (could be ticket OR review), choose AMBIGUOUS.
 If they're asking for feedback or analysis, choose REVIEW.
@@ -381,17 +229,15 @@ If it's just conversation, choose DISCUSSION."""
 
         # Parse the response
         lines = result.strip().split("\n")
-        intent_str = "TICKET"
+        intent_str = "AMBIGUOUS"  # Default to AMBIGUOUS, not TICKET
         confidence = 0.7
         reason = "llm classification"
-        ticket_key = None
-        action_type = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "DECISION_APPROVAL", "REVIEW_CONTINUATION", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -402,50 +248,40 @@ If it's just conversation, choose DISCUSSION."""
                     pass
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
-            elif line.upper().startswith("TICKET_KEY:"):
-                key_value = line.split(":", 1)[1].strip().upper()
-                if key_value and key_value != "EMPTY" and re.match(r"[A-Z]+-\d+", key_value):
-                    ticket_key = key_value
-            elif line.upper().startswith("ACTION_TYPE:"):
-                action_value = line.split(":", 1)[1].strip().lower()
-                if action_value in ["create_subtask", "update", "add_comment", "link"]:
-                    action_type = action_value
 
         return IntentResult(
             intent=IntentType(intent_str),
             confidence=confidence,
             reasons=[reason],
-            ticket_key=ticket_key,
-            action_type=action_type,
         )
 
     except Exception as e:
-        logger.warning(f"LLM intent classification failed: {e}, defaulting to TICKET")
+        logger.warning(f"LLM intent classification failed: {e}, defaulting to AMBIGUOUS")
         return IntentResult(
-            intent=IntentType.TICKET,
+            intent=IntentType.AMBIGUOUS,
             confidence=0.5,
-            reasons=["llm classification failed, default to TICKET"],
+            reasons=["llm classification failed, default to AMBIGUOUS"],
         )
 
 
-async def classify_intent(
-    message: str,
-    has_review_context: bool = False,
-) -> IntentResult:
+async def classify_intent(message: str) -> IntentResult:
     """Classify user message intent.
 
     First checks explicit override patterns (no LLM call).
     Falls back to LLM classification for ambiguous cases.
 
+    Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
+    are now handled via event_router before intent classification.
+    This function only classifies pure user intents.
+
     Args:
         message: User's message text
-        has_review_context: Whether there's a recent review to approve (Phase 14)
 
     Returns:
         IntentResult with intent type, confidence, and reasons
     """
     # Pattern matching first (no LLM call)
-    pattern_result = classify_intent_patterns(message, has_review_context=has_review_context)
+    pattern_result = classify_intent_patterns(message)
     if pattern_result is not None:
         logger.info(
             f"Intent classified by pattern: {pattern_result.intent.value}, "
@@ -454,7 +290,7 @@ async def classify_intent(
         return pattern_result
 
     # LLM fallback for ambiguous cases
-    llm_result = await _llm_classify(message, has_review_context=has_review_context)
+    llm_result = await _llm_classify(message)
     logger.info(
         f"Intent classified by LLM: {llm_result.intent.value}, "
         f"confidence={llm_result.confidence}, reasons={llm_result.reasons}"
@@ -467,6 +303,10 @@ async def intent_router_node(state: dict) -> dict:
 
     Gets the latest human message and classifies intent.
     Returns partial state update with intent_result.
+
+    Note: This node only handles pure user intents (TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS).
+    TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION are now PendingActions
+    handled by event_router BEFORE the graph runs.
 
     Args:
         state: Current AgentState dict
@@ -485,20 +325,16 @@ async def intent_router_node(state: dict) -> dict:
             latest_human_message = msg.content
             break
 
-    # Check if there's a recent review context (Phase 14 - Architecture Decisions)
-    review_context = state.get("review_context")
-    has_review_context = review_context is not None
-
     if not latest_human_message:
         logger.warning("No human message found for intent classification")
-        # Default to TICKET if no message
+        # Default to AMBIGUOUS if no message (not TICKET - let user decide)
         result = IntentResult(
-            intent=IntentType.TICKET,
+            intent=IntentType.AMBIGUOUS,
             confidence=0.5,
-            reasons=["no message found, default to TICKET"],
+            reasons=["no message found, default to AMBIGUOUS"],
         )
     else:
-        result = await classify_intent(latest_human_message, has_review_context=has_review_context)
+        result = await classify_intent(latest_human_message)
 
     logger.info(
         f"IntentRouter: intent={result.intent.value}, "
