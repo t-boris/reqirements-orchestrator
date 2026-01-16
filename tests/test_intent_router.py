@@ -179,6 +179,7 @@ class TestPatternMatchReasons:
         assert "pattern:" in result.reasons[0] or "command:" in result.reasons[0]
 
 
+@pytest.mark.skip(reason="Phase 20-12: TICKET_ACTION now PendingAction, handled by event_router")
 class TestTicketActionPatterns:
     """Test TICKET_ACTION pattern detection for existing ticket references."""
 
@@ -208,6 +209,7 @@ class TestTicketActionPatterns:
         assert result.confidence == 1.0
 
 
+@pytest.mark.skip(reason="Phase 20-12: TICKET_ACTION now PendingAction, handled by event_router")
 class TestTicketActionPriority:
     """Test that TICKET_ACTION takes priority over TICKET."""
 
@@ -228,6 +230,7 @@ class TestTicketActionPriority:
         assert result.intent == IntentType.TICKET
 
 
+@pytest.mark.skip(reason="Phase 20-12: TICKET_ACTION now PendingAction, handled by event_router")
 class TestTicketKeyFormats:
     """Test various ticket key formats."""
 

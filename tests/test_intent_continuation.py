@@ -1,6 +1,16 @@
 """Tests for REVIEW_CONTINUATION intent classification.
 
-Phase 15: When user replies to a REVIEW with answers, should classify as
+NOTE (Phase 20-12): REVIEW_CONTINUATION and DECISION_APPROVAL are now
+PendingAction values handled by event_router BEFORE intent classification.
+These tests are SKIPPED because:
+1. IntentType no longer has REVIEW_CONTINUATION or DECISION_APPROVAL
+2. classify_intent_patterns no longer accepts has_review_context parameter
+3. These patterns are now handled by event_router, not intent classification
+
+See: src/slack/event_router.py for current implementation
+See: tests/test_event_router.py for current tests
+
+Original Phase 15: When user replies to a REVIEW with answers, should classify as
 REVIEW_CONTINUATION (not TICKET).
 """
 import importlib.util
@@ -19,6 +29,12 @@ _spec.loader.exec_module(_intent_module)
 
 classify_intent_patterns = _intent_module.classify_intent_patterns
 IntentType = _intent_module.IntentType
+
+# Mark all tests in this file as skipped for Phase 20-12 refactor
+pytestmark = pytest.mark.skip(
+    reason="Phase 20-12: REVIEW_CONTINUATION/DECISION_APPROVAL now PendingAction values, "
+           "handled by event_router before intent classification"
+)
 
 
 class TestReviewContinuationPatterns:
