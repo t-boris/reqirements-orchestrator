@@ -27,9 +27,13 @@ class IntentType(str, Enum):
 
     TICKET_ACTION is still classified here because it requires LLM to extract
     the ticket_key from the user's message.
+
+    JIRA_COMMAND is for natural language Jira management commands like
+    "change the priority of that ticket to high" or "set status to Done".
     """
     TICKET = "TICKET"       # Create a NEW Jira ticket
     TICKET_ACTION = "TICKET_ACTION"  # Action on EXISTING ticket (subtasks, update, comment)
+    JIRA_COMMAND = "JIRA_COMMAND"  # Edit/update/delete Jira issues via natural language
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     META = "META"           # Questions about the bot itself
@@ -46,6 +50,11 @@ class IntentResult(BaseModel):
     # For TICKET_ACTION intent
     ticket_key: Optional[str] = None  # e.g., "SCRUM-113"
     action_type: Optional[Literal["create_subtask", "create_stories", "update", "add_comment", "link"]] = None
+    # For JIRA_COMMAND intent
+    command_type: Optional[Literal["update", "delete"]] = None  # Type of Jira command
+    command_field: Optional[str] = None  # Field to change (priority, status, assignee, etc.)
+    command_value: Optional[str] = None  # New value for the field
+    target_type: Optional[Literal["explicit", "contextual"]] = None  # How target was specified
 
 
 async def _llm_classify(message: str, conversation_context: dict | None = None) -> IntentResult:
@@ -84,7 +93,20 @@ CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
 
-- TICKET_ACTION: User wants to perform an action on an EXISTING Jira ticket
+- JIRA_COMMAND: User wants to CHANGE/MODIFY an existing Jira ticket's field values
+  Key verbs: change, update, set, modify, edit, delete, remove, close, mark
+  Key fields: priority, status, assignee, description, summary, labels
+  Target: ticket key (SCRUM-XXX) OR contextual reference ("that ticket", "the auth ticket", "it")
+  Examples:
+  - "change the priority of SCRUM-123 to high" -> command_type=update, field=priority, value=high
+  - "update that ticket's status to Done" -> command_type=update, field=status, value=Done, target=contextual
+  - "delete SCRUM-456" -> command_type=delete
+  - "change the assignee to @john" -> command_type=update, field=assignee, value=@john
+  - "set the status of the auth ticket to In Progress" -> command_type=update, field=status
+  - "mark SCRUM-789 as done" -> command_type=update, field=status, value=done
+  - "close that ticket" -> command_type=update, field=status, value=closed
+
+- TICKET_ACTION: User wants to CREATE NEW items linked to an existing ticket
   The message must reference a specific ticket key (e.g., SCRUM-123, PROJ-456).
   Examples:
   - "create user stories for SCRUM-113" -> action_type=create_stories
@@ -111,20 +133,28 @@ Classify the user's intent into ONE category:
   This should be RARE. Most requests are clearly REVIEW (discussion/help) or TICKET (explicit creation).
 
 IMPORTANT RULES:
-1. If user mentions a ticket key (like SCRUM-XXX, PROJ-XXX) AND wants to create items under it = TICKET_ACTION
-2. "Create stories/subtasks for [TICKET]" = TICKET_ACTION with action_type=create_stories or create_subtask
-3. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
-4. "Define architecture" or "design system" = REVIEW (architecture discussion)
-5. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
-6. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
-7. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
+1. JIRA_COMMAND is for MODIFYING existing ticket fields (priority, status, assignee)
+2. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
+3. "Change priority of X" or "set status to Y" = JIRA_COMMAND
+4. "Create stories for X" or "add comment to X" = TICKET_ACTION
+5. If user mentions a ticket key AND wants to CREATE items under it = TICKET_ACTION
+6. If user wants to MODIFY/CHANGE field values = JIRA_COMMAND
+7. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
+8. "Define architecture" or "design system" = REVIEW (architecture discussion)
+9. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
+10. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
+11. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
 
 Respond in this exact format:
-INTENT: <TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <JIRA_COMMAND|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
 ACTION_TYPE: <create_stories|create_subtask|update|add_comment|link|none>
+COMMAND_TYPE: <update|delete|none>
+COMMAND_FIELD: <priority|status|assignee|description|summary|labels|none>
+COMMAND_VALUE: <the value to set, or "none">
+TARGET_TYPE: <explicit|contextual|none>
 REASON: <brief explanation>"""
 
     try:
@@ -138,12 +168,16 @@ REASON: <brief explanation>"""
         persona_hint = None
         ticket_key = None
         action_type = None
+        command_type = None
+        command_field = None
+        command_value = None
+        target_type = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -165,6 +199,22 @@ REASON: <brief explanation>"""
                 valid_actions = ["create_stories", "create_subtask", "update", "add_comment", "link"]
                 if type_value in valid_actions:
                     action_type = type_value
+            elif line.upper().startswith("COMMAND_TYPE:"):
+                type_value = line.split(":", 1)[1].strip().lower()
+                if type_value in ["update", "delete"]:
+                    command_type = type_value
+            elif line.upper().startswith("COMMAND_FIELD:"):
+                field_value = line.split(":", 1)[1].strip().lower()
+                if field_value and field_value != "none":
+                    command_field = field_value
+            elif line.upper().startswith("COMMAND_VALUE:"):
+                value = line.split(":", 1)[1].strip()
+                if value and value.lower() != "none":
+                    command_value = value
+            elif line.upper().startswith("TARGET_TYPE:"):
+                type_value = line.split(":", 1)[1].strip().lower()
+                if type_value in ["explicit", "contextual"]:
+                    target_type = type_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -174,6 +224,10 @@ REASON: <brief explanation>"""
             persona_hint=persona_hint,
             ticket_key=ticket_key,
             action_type=action_type,
+            command_type=command_type,
+            command_field=command_field,
+            command_value=command_value,
+            target_type=target_type,
             reasons=[reason],
         )
 
