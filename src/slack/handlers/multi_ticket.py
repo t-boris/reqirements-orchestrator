@@ -3,16 +3,21 @@
 Handles actions from multi-ticket preview:
 - Quantity confirmation (>3 items)
 - Split into batches
-- Edit individual story
+- Edit individual item (epic/story)
+- Edit submit and preview refresh
+- Remove item
 - Approve all
 - Cancel
 """
+import json
 import logging
 from typing import Optional
 
 from slack_sdk.web import WebClient
 
 from src.slack.handlers.core import _run_async
+from src.graph.runner import get_runner
+from src.slack.session import SessionIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +103,10 @@ async def _handle_multi_ticket_split_async(body: dict, client: WebClient) -> Non
     # This will be wired up when the full multi-ticket flow is integrated
 
 
-def handle_multi_ticket_edit_story(ack, body: dict, client: WebClient) -> None:
-    """Handle edit story button click.
+def handle_multi_ticket_edit_item(ack, body: dict, client: WebClient) -> None:
+    """Handle edit item button click.
 
-    Opens modal to edit story title/description.
+    Opens modal to edit item (epic or story) with all fields.
 
     Args:
         ack: Slack ack function
@@ -109,30 +114,87 @@ def handle_multi_ticket_edit_story(ack, body: dict, client: WebClient) -> None:
         client: Slack WebClient for API calls
     """
     ack()
-    _run_async(_handle_multi_ticket_edit_story_async(body, client))
+    _run_async(_handle_multi_ticket_edit_item_async(body, client))
 
 
-async def _handle_multi_ticket_edit_story_async(body: dict, client: WebClient) -> None:
-    """Async handler for multi-ticket edit story."""
+# Keep old name as alias for backward compatibility with existing router
+handle_multi_ticket_edit_story = handle_multi_ticket_edit_item
+
+
+async def _handle_multi_ticket_edit_item_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket edit item.
+
+    1. Parse item_id from action_id
+    2. Find item in state's multi_ticket_state.items
+    3. Open modal with form fields
+    """
     trigger_id = body.get("trigger_id")
     if not trigger_id:
-        logger.warning("Missing trigger_id in edit_story body")
+        logger.warning("Missing trigger_id in edit_item body")
         return
 
-    story_id = _extract_story_id(body)
+    channel_id = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+
+    if not channel_id:
+        logger.warning("Missing channel_id in edit_item body")
+        return
+
+    item_id = _extract_item_id(body)
     ui_version = _extract_ui_version(body)
 
     logger.info(
-        "Multi-ticket edit story requested",
-        extra={"story_id": story_id, "ui_version": ui_version},
+        "Multi-ticket edit item requested",
+        extra={"item_id": item_id, "ui_version": ui_version, "channel_id": channel_id},
     )
 
-    # TODO: Import and call modal opener when modals module exists
-    # from src.slack.modals import open_story_edit_modal
-    # open_story_edit_modal(client, trigger_id, story_id)
+    # Get state to find the item
+    team_id = body.get("team", {}).get("id", "unknown")
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
 
-    # For now, log that the action was received
-    logger.info(f"Would open story edit modal for story {story_id}")
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for edit_item: {e}", exc_info=True)
+        return
+
+    multi_ticket_state = state.get("multi_ticket_state")
+    if not multi_ticket_state:
+        logger.warning("No multi_ticket_state found")
+        return
+
+    items = multi_ticket_state.get("items", [])
+    item = None
+    for i in items:
+        if i.get("id") == item_id:
+            item = i
+            break
+
+    if not item:
+        logger.warning(f"Item {item_id} not found in multi_ticket_state")
+        return
+
+    # Build and open modal
+    modal_view = _build_edit_item_modal(
+        item=item,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+        message_ts=message_ts,
+    )
+
+    try:
+        client.views_open(
+            trigger_id=trigger_id,
+            view=modal_view,
+        )
+    except Exception as e:
+        logger.error(f"Failed to open edit item modal: {e}", exc_info=True)
 
 
 def handle_multi_ticket_approve(ack, body: dict, client: WebClient) -> None:
@@ -224,25 +286,30 @@ async def _handle_multi_ticket_cancel_async(body: dict, client: WebClient) -> No
     )
 
 
-def _extract_story_id(body: dict) -> Optional[str]:
-    """Extract story ID from action_id.
+def _extract_item_id(body: dict) -> Optional[str]:
+    """Extract item ID from action_id.
 
-    Action ID format: multi_ticket_edit_story:{story_id}:{ui_version}
+    Action ID format: multi_ticket_edit_item:{item_id}:{ui_version}
+    or multi_ticket_remove_item:{item_id}:{ui_version}
 
     Args:
         body: Slack action body
 
     Returns:
-        Story ID or None if not found
+        Item ID or None if not found
     """
     actions = body.get("actions", [])
     if actions:
         action_id = actions[0].get("action_id", "")
-        # Format: multi_ticket_edit_story:story_id:ui_version
+        # Format: multi_ticket_edit_item:item_id:ui_version
         parts = action_id.split(":")
         if len(parts) >= 2:
             return parts[1]
     return None
+
+
+# Alias for backward compatibility
+_extract_story_id = _extract_item_id
 
 
 def _extract_ui_version(body: dict) -> int:
@@ -279,3 +346,126 @@ def _extract_ui_version(body: dict) -> int:
             return int(version_part)
 
     return 0
+
+
+def _build_edit_item_modal(
+    item: dict,
+    channel_id: str,
+    thread_ts: str,
+    message_ts: Optional[str] = None,
+) -> dict:
+    """Build modal view for editing a multi-ticket item.
+
+    Args:
+        item: MultiTicketItem dict with id, type, title, description, etc.
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+        message_ts: Preview message timestamp for updating after edit
+
+    Returns:
+        Slack modal view structure
+    """
+    item_id = item.get("id", "")
+    item_type = item.get("type", "story")
+    title = item.get("title", "")
+    description = item.get("description", "")
+    problem_statement = item.get("problem_statement", "")
+    acceptance_criteria = item.get("acceptance_criteria", "")
+
+    # Build private metadata for submission handler
+    private_metadata = json.dumps({
+        "item_id": item_id,
+        "channel_id": channel_id,
+        "thread_ts": thread_ts,
+        "message_ts": message_ts,
+    })
+
+    # Type selection: Epic or Story
+    type_options = [
+        {"text": {"type": "plain_text", "text": "Epic"}, "value": "epic"},
+        {"text": {"type": "plain_text", "text": "Story"}, "value": "story"},
+    ]
+
+    # Find initial selected type
+    initial_type = next(
+        (opt for opt in type_options if opt["value"] == item_type),
+        type_options[1],  # Default to story
+    )
+
+    modal: dict = {
+        "type": "modal",
+        "callback_id": "multi_ticket_edit_submit",
+        "private_metadata": private_metadata,
+        "title": {"type": "plain_text", "text": "Edit Item"},
+        "submit": {"type": "plain_text", "text": "Save"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": [
+            # Title input (required)
+            {
+                "type": "input",
+                "block_id": "title_block",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "title",
+                    "initial_value": title,
+                    "placeholder": {"type": "plain_text", "text": "Enter title..."},
+                },
+                "label": {"type": "plain_text", "text": "Title"},
+            },
+            # Type selection (radio buttons)
+            {
+                "type": "input",
+                "block_id": "type_block",
+                "element": {
+                    "type": "radio_buttons",
+                    "action_id": "item_type",
+                    "initial_option": initial_type,
+                    "options": type_options,
+                },
+                "label": {"type": "plain_text", "text": "Type"},
+            },
+            # Description (multiline, required)
+            {
+                "type": "input",
+                "block_id": "description_block",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "description",
+                    "multiline": True,
+                    "initial_value": description,
+                    "placeholder": {"type": "plain_text", "text": "Enter description..."},
+                },
+                "label": {"type": "plain_text", "text": "Description"},
+            },
+            # Problem Statement (multiline, optional)
+            {
+                "type": "input",
+                "block_id": "problem_block",
+                "optional": True,
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "problem_statement",
+                    "multiline": True,
+                    "initial_value": problem_statement,
+                    "placeholder": {"type": "plain_text", "text": "What problem does this solve?"},
+                },
+                "label": {"type": "plain_text", "text": "Problem Statement"},
+            },
+            # Acceptance Criteria (multiline, optional)
+            {
+                "type": "input",
+                "block_id": "acceptance_criteria_block",
+                "optional": True,
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "acceptance_criteria",
+                    "multiline": True,
+                    "initial_value": acceptance_criteria,
+                    "placeholder": {"type": "plain_text", "text": "How do we know when this is done?"},
+                },
+                "label": {"type": "plain_text", "text": "Acceptance Criteria"},
+            },
+        ],
+    }
+
+    return modal
