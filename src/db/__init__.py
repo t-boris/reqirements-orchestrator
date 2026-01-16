@@ -56,6 +56,7 @@ from src.db.root_index_store import RootIndexStore
 from src.db.listening_store import ListeningStore
 from src.db.event_store import EventStore, make_button_event_id
 from src.db.fact_store import FactStore, compute_canonical_id
+from src.db.board_store import BoardStore, BoardState
 
 __all__ = [
     # Connection (02-01)
@@ -93,4 +94,7 @@ __all__ = [
     # Fact Store (20-11)
     "FactStore",
     "compute_canonical_id",
+    # Board Store (21-02)
+    "BoardStore",
+    "BoardState",
 ]
