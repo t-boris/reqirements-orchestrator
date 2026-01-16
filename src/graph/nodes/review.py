@@ -340,3 +340,131 @@ def freeze_review(state: dict) -> dict:
         "review_artifact": artifact,
         "review_context": None,  # Clear to stop continuation triggers
     }
+
+
+# Full synthesis prompt - combines all patches into complete document
+FULL_SYNTHESIS_PROMPT = '''Generate a complete architecture synthesis incorporating all previous patches.
+
+Original topic: {topic}
+Persona: {persona}
+
+Previous review versions:
+{all_patches}
+
+Current state of open questions:
+{open_questions}
+
+Generate a COMPLETE architecture document that:
+1. Incorporates all decisions from all versions
+2. Reflects current risks and mitigations
+3. Lists any remaining open questions
+4. Provides clear recommendations
+
+This is the full synthesis - be comprehensive but structured.
+
+Format for Slack (not Markdown):
+- Bold: *text* (single asterisks)
+- Italic: _text_ (underscores)
+- Code: `code`
+- Lists: Use bullet character • or dash -
+- NO ### headers (use *Bold Title:* instead)
+- NO **double asterisks**
+'''
+
+
+async def generate_full_synthesis(state: dict) -> dict:
+    """Generate full architecture synthesis from all patches.
+
+    Triggered by "Show full architecture" button.
+    Combines all patch history into complete document.
+
+    Args:
+        state: Current AgentState dict
+
+    Returns:
+        State update with decision_result containing full synthesis
+    """
+    from src.llm import get_llm
+
+    review_context = state.get("review_context", {})
+    review_artifact = state.get("review_artifact", {})
+
+    # Gather all patches/versions from review history
+    patches = []
+
+    # Include frozen artifact if exists
+    if review_artifact:
+        version = review_artifact.get("version", 1)
+        summary = review_artifact.get("summary", "")
+        if summary:
+            patches.append(f"v{version} (archived): {summary}")
+
+    # Include current review context
+    if review_context:
+        version = review_context.get("version", 1)
+        summary = review_context.get("review_summary", "")
+        updated = review_context.get("updated_recommendation", "")
+
+        if summary:
+            patches.append(f"v{version} (original): {summary}")
+        if updated:
+            patches.append(f"v{version} (updated): {updated}")
+
+    # Get topic and persona
+    topic = (
+        review_context.get("topic") or
+        review_artifact.get("topic", "architecture")
+    )
+    persona = (
+        review_context.get("persona") or
+        review_artifact.get("kind", "architect")
+    )
+
+    # Build open questions section
+    open_questions = "See previous patches for open questions"
+    if review_context.get("updated_recommendation"):
+        # Try to extract open questions from latest patch
+        open_questions = "Review latest patch for current open questions"
+
+    llm = get_llm()
+    prompt = FULL_SYNTHESIS_PROMPT.format(
+        topic=topic,
+        persona=persona,
+        all_patches="\n\n---\n\n".join(patches) if patches else "No previous patches",
+        open_questions=open_questions,
+    )
+
+    try:
+        full_review = await llm.chat(prompt)
+
+        logger.info(
+            "Full synthesis generated",
+            extra={
+                "topic": topic,
+                "persona": persona,
+                "patch_count": len(patches),
+                "synthesis_length": len(full_review),
+            },
+        )
+
+        return {
+            "decision_result": {
+                "action": "full_synthesis",
+                "review": full_review,
+                "message": full_review,
+                "topic": topic,
+                "persona": persona,
+                "is_full_synthesis": True,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Full synthesis LLM call failed: {e}")
+        return {
+            "decision_result": {
+                "action": "full_synthesis",
+                "message": f"I encountered an error generating the full synthesis: {str(e)}",
+                "topic": topic,
+                "persona": persona,
+            }
+        }
