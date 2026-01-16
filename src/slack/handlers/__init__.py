@@ -97,6 +97,15 @@ from src.slack.handlers.decision_link import (
     handle_skip_decision_link,
 )
 
+# Sync handlers (Phase 21-04)
+from src.slack.handlers.sync import (
+    handle_sync_apply_all,
+    handle_sync_use_slack,
+    handle_sync_use_jira,
+    handle_sync_skip,
+    handle_sync_cancel,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -149,4 +158,10 @@ __all__ = [
     # Decision linking (Phase 21-05)
     "handle_link_decision",
     "handle_skip_decision_link",
+    # Sync handlers (Phase 21-04)
+    "handle_sync_apply_all",
+    "handle_sync_use_slack",
+    "handle_sync_use_jira",
+    "handle_sync_skip",
+    "handle_sync_cancel",
 ]

@@ -209,6 +209,8 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro tracked - List all tracked issues for this channel
     - /maro board - Post/update pinned board with tracked issues
     - /maro board hide - Remove the pinned board
+    - /maro sync - Show pending changes between Slack and Jira
+    - /maro sync --auto - Apply obvious changes automatically
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -252,6 +254,10 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
             await _handle_maro_board_hide(channel, client, say)
         else:
             await _handle_maro_board_show(channel, client, say)
+    elif subcommand == "sync":
+        # /maro sync or /maro sync --auto
+        auto_mode = "--auto" in args or "-a" in args
+        await _handle_maro_sync(channel, client, user_id, auto_mode)
     else:
         # Default to help for empty or unknown
         await _handle_maro_help(channel, client)
@@ -705,3 +711,17 @@ async def _handle_maro_board_hide(
             text="Sorry, I couldn't remove the board. Please try again.",
             channel=channel_id,
         )
+
+
+# --- Sync Commands (Phase 21-04) ---
+
+async def _handle_maro_sync(
+    channel_id: str,
+    client: WebClient,
+    user_id: str,
+    auto_mode: bool = False,
+):
+    """Handle /maro sync command - show and apply Jira sync changes."""
+    from src.slack.handlers.sync import handle_maro_sync
+
+    await handle_maro_sync(channel_id, client, user_id, auto_mode)

@@ -55,6 +55,13 @@ from src.slack.handlers.jira_commands import (
     handle_jira_command_cancel,
     handle_jira_command_select,
 )
+from src.slack.handlers.sync import (
+    handle_sync_apply_all,
+    handle_sync_use_slack,
+    handle_sync_use_jira,
+    handle_sync_skip,
+    handle_sync_cancel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,4 +149,12 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^link_decision_.*"))(handle_link_decision)
     app.action("skip_decision_link")(handle_skip_decision_link)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link")
+    # Sync actions (Phase 21-04)
+    app.action("sync_apply_all")(handle_sync_apply_all)
+    app.action("sync_cancel")(handle_sync_cancel)
+    # Pattern matches: sync_use_slack_*, sync_use_jira_*, sync_skip_*
+    app.action(re.compile(r"^sync_use_slack.*"))(handle_sync_use_slack)
+    app.action(re.compile(r"^sync_use_jira.*"))(handle_sync_use_jira)
+    app.action(re.compile(r"^sync_skip.*"))(handle_sync_skip)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync")
