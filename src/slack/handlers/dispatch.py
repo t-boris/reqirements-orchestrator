@@ -203,9 +203,9 @@ async def _dispatch_result(
 
     elif action == "review_continuation":
         # Review continuation - synthesized response to user's answers
-        # Similar to review, but more concise (follow-up, not initial analysis)
         continuation_msg = result.get("message", "")
         persona = result.get("persona", "")
+        topic = result.get("topic", "")
 
         if persona:
             prefix = f"*{persona}:*\n\n"
@@ -213,23 +213,83 @@ async def _dispatch_result(
             prefix = ""
 
         if continuation_msg:
+            # Use same chunking logic as review (Slack block text limit is 3000 chars)
             full_text = prefix + continuation_msg
+            MAX_MESSAGE_LENGTH = 2900
 
-            # Build blocks (similar to review, but no chunking needed for shorter response)
-            blocks = [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": full_text[:2900]}  # Truncate if needed
-                }
-            ]
+            # Split into message-sized chunks at natural boundaries
+            message_chunks = []
+            remaining = full_text
+            while remaining:
+                if len(remaining) <= MAX_MESSAGE_LENGTH:
+                    message_chunks.append(remaining)
+                    break
 
-            # Post continuation response
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts if identity.thread_ts else None,
-                blocks=blocks,
-                text=full_text[:200],  # Fallback text
-            )
+                split_at = MAX_MESSAGE_LENGTH
+                para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
+                if para_break > MAX_MESSAGE_LENGTH // 2:
+                    split_at = para_break + 2
+                else:
+                    line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
+                    if line_break > MAX_MESSAGE_LENGTH // 2:
+                        split_at = line_break + 1
+                    else:
+                        space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
+                        if space > MAX_MESSAGE_LENGTH // 2:
+                            split_at = space + 1
+
+                message_chunks.append(remaining[:split_at].rstrip())
+                remaining = remaining[split_at:].lstrip()
+
+            logger.info(f"Sending review_continuation: {len(full_text)} chars in {len(message_chunks)} message(s)")
+
+            # Send each chunk as a separate Slack message
+            for i, chunk in enumerate(message_chunks):
+                is_last_message = (i == len(message_chunks) - 1)
+
+                blocks = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": chunk}
+                    }
+                ]
+
+                # Add action buttons only to the last message
+                if is_last_message:
+                    ticket_button_value = json.dumps({
+                        "review_text": continuation_msg[:1500],
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    approve_button_value = json.dumps({
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    blocks.append({
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Approve & Post Decision"},
+                                "action_id": "approve_architecture",
+                                "value": approve_button_value,
+                                "style": "primary",
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                                "action_id": "review_to_ticket",
+                                "value": ticket_button_value,
+                            }
+                        ]
+                    })
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts if identity.thread_ts else None,
+                    blocks=blocks,
+                    text=chunk[:200],
+                )
 
     elif action == "review":
         # Review response - persona-based analysis without Jira operations
