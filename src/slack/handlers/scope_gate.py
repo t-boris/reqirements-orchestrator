@@ -24,11 +24,12 @@ logger = logging.getLogger(__name__)
 REMEMBER_TTL_HOURS = 2
 
 
-def handle_scope_gate_review(body: dict, client: WebClient):
+def handle_scope_gate_review(ack, body: dict, client: WebClient):
     """Handle 'Review' button click on scope gate.
 
     Routes to review flow. If 'Remember' was checked, stores thread default.
     """
+    ack()
     channel = body.get("channel", {}).get("id")
     thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
     user_id = body.get("user", {}).get("id")
@@ -58,11 +59,12 @@ def handle_scope_gate_review(body: dict, client: WebClient):
     _route_to_flow(body, client, UserIntent.REVIEW)
 
 
-def handle_scope_gate_ticket(body: dict, client: WebClient):
+def handle_scope_gate_ticket(ack, body: dict, client: WebClient):
     """Handle 'Create ticket' button click on scope gate.
 
     Routes to ticket flow. If 'Remember' was checked, stores thread default.
     """
+    ack()
     channel = body.get("channel", {}).get("id")
     thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
     message_ts = body.get("message", {}).get("ts")
@@ -87,11 +89,12 @@ def handle_scope_gate_ticket(body: dict, client: WebClient):
     _route_to_flow(body, client, UserIntent.TICKET)
 
 
-def handle_scope_gate_dismiss(body: dict, client: WebClient):
+def handle_scope_gate_dismiss(ack, body: dict, client: WebClient):
     """Handle 'Not now' button click on scope gate.
 
     Clears pending_action and stops cycle.
     """
+    ack()
     channel = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
 

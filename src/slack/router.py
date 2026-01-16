@@ -36,6 +36,11 @@ from src.slack.handlers import (
     handle_review_to_ticket,
     handle_scope_gate_submit,
 )
+from src.slack.handlers.scope_gate import (
+    handle_scope_gate_review,
+    handle_scope_gate_ticket,
+    handle_scope_gate_dismiss,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,4 +105,9 @@ def register_handlers(app: App) -> None:
     # Scope gate modal submission (Phase 13)
     app.view("review_scope_gate")(handle_scope_gate_submit)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, scope_gate")
+    # Scope gate button actions (Phase 20)
+    app.action("scope_gate_review")(handle_scope_gate_review)
+    app.action("scope_gate_ticket")(handle_scope_gate_ticket)
+    app.action("scope_gate_dismiss")(handle_scope_gate_dismiss)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, scope_gate_buttons")
