@@ -255,6 +255,9 @@ class DecisionLinker:
         decision_content: str,
         mode: str = "add_comment",
         add_label: bool = True,
+        channel_id: Optional[str] = None,
+        decision_ts: Optional[str] = None,
+        topic: Optional[str] = None,
     ) -> bool:
         """Apply decision to a Jira issue.
 
@@ -265,6 +268,9 @@ class DecisionLinker:
                 - "add_comment": Add as comment (default, safest)
                 - "append_description": Append to description
             add_label: Whether to add "decision" label
+            channel_id: Optional channel ID for sync tracking
+            decision_ts: Optional decision timestamp for sync tracking
+            topic: Optional decision topic for sync tracking
 
         Returns:
             True if successful, False otherwise
@@ -293,6 +299,17 @@ class DecisionLinker:
             # Add "decision" label if requested
             if add_label:
                 await self.add_label_if_not_exists(issue_key, "decision")
+
+            # Record for sync tracking (non-blocking)
+            if channel_id and decision_ts:
+                await self.record_decision_sync(
+                    channel_id=channel_id,
+                    decision_ts=decision_ts,
+                    topic=topic or "",
+                    decision_text=decision_content,
+                    related_issues=[issue_key],
+                    synced_to_jira=True,  # We just synced it
+                )
 
             return True
 
@@ -344,4 +361,90 @@ class DecisionLinker:
         except Exception as e:
             # Label operations are non-critical, log but don't fail
             logger.warning(f"Failed to add label to {issue_key}: {e}")
+            return False
+
+    async def record_decision_sync(
+        self,
+        channel_id: str,
+        decision_ts: str,
+        topic: str,
+        decision_text: str,
+        related_issues: list[str],
+        synced_to_jira: bool = True,
+    ) -> bool:
+        """Record decision in database for sync tracking.
+
+        Creates entry in channel_decisions table used by sync engine.
+
+        Args:
+            channel_id: Slack channel ID
+            decision_ts: Decision message timestamp
+            topic: Decision topic
+            decision_text: Full decision text
+            related_issues: List of linked Jira issue keys
+            synced_to_jira: Whether already synced (True if we just applied it)
+
+        Returns:
+            True if recorded successfully
+        """
+        try:
+            from src.db import get_connection
+
+            async with get_connection() as conn:
+                async with conn.cursor() as cur:
+                    # Create table if not exists
+                    await cur.execute("""
+                        CREATE TABLE IF NOT EXISTS channel_decisions (
+                            channel_id TEXT NOT NULL,
+                            decision_ts TEXT NOT NULL,
+                            topic TEXT NOT NULL,
+                            decision_text TEXT NOT NULL,
+                            related_issues JSONB DEFAULT '[]',
+                            synced_to_jira BOOLEAN DEFAULT FALSE,
+                            synced_at TIMESTAMPTZ,
+                            created_at TIMESTAMPTZ DEFAULT NOW(),
+                            PRIMARY KEY (channel_id, decision_ts)
+                        )
+                    """)
+
+                    # UPSERT decision
+                    await cur.execute(
+                        """
+                        INSERT INTO channel_decisions (
+                            channel_id, decision_ts, topic, decision_text,
+                            related_issues, synced_to_jira, synced_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
+                        ON CONFLICT (channel_id, decision_ts) DO UPDATE SET
+                            topic = EXCLUDED.topic,
+                            decision_text = EXCLUDED.decision_text,
+                            related_issues = EXCLUDED.related_issues,
+                            synced_to_jira = EXCLUDED.synced_to_jira,
+                            synced_at = EXCLUDED.synced_at
+                        """,
+                        (
+                            channel_id,
+                            decision_ts,
+                            topic,
+                            decision_text,
+                            str(related_issues).replace("'", '"'),  # Convert to JSON array
+                            synced_to_jira,
+                            datetime.now(timezone.utc) if synced_to_jira else None,
+                        ),
+                    )
+                    await conn.commit()
+
+            logger.info(
+                "Decision recorded for sync tracking",
+                extra={
+                    "channel_id": channel_id,
+                    "decision_ts": decision_ts,
+                    "related_issues": related_issues,
+                    "synced": synced_to_jira,
+                },
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to record decision: {e}")
             return False

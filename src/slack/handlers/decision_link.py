@@ -76,6 +76,9 @@ async def _handle_link_decision_async(body, client: WebClient):
             formatted_decision,
             mode="add_comment",
             add_label=True,
+            channel_id=channel_id,
+            decision_ts=thread_ts,
+            topic=topic,
         )
 
         await linker.close()

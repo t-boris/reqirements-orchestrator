@@ -902,6 +902,9 @@ async def _link_decision_to_jira(
                 formatted_decision,
                 mode="add_comment",
                 add_label=True,
+                channel_id=channel_id,
+                decision_ts=thread_ts,
+                topic=topic,
             )
 
             if success:
