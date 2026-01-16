@@ -315,27 +315,30 @@ MARO becomes the single interface for Jira in Slack. The channel is the source o
 - `/maro sync` — Detect and apply pending changes
 - `@Maro update Jira issues` — Natural language sync trigger
 
-### Phase 22: Multi-Ticket from Review
+### Phase 22: Multi-Ticket from Review — IN PROGRESS
 **Goal**: Smart detection and batch creation of multiple tickets from review proposals
 **Depends on**: Phase 21
 **Research**: None needed
-**Plans**: TBD
+**Plans**: 4 plans in 2 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 22 to break down)
+- [x] 22-01: Multi-Item Extraction (Wave 1) — completed 2026-01-16
+- [x] 22-02: Wire Multi-Ticket Handlers (Wave 1) — completed 2026-01-16
+- [x] 22-03: Multi-Ticket Preview UI (Wave 2) — completed 2026-01-16
+- [ ] 22-04: Jira Batch Creation (Wave 2) — pending
 
 **Vision (from 22-CONTEXT.md):**
 When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "Turn into Jira ticket" detects all items and creates them in batch.
 
 **Features:**
-- [ ] Smart detection of multiple items from review text
-- [ ] Table preview with Type, Title, Description columns
-- [ ] Per-item editing via modal (full draft fields)
-- [ ] Hierarchy preservation (Epic → linked Stories)
-- [ ] Duplicate warning per item with link option
-- [ ] Live progress during creation (checkmarks per row)
-- [ ] Auto-track all created tickets
-- [ ] Rich announcement with all ticket links
+- [x] Smart detection of multiple items from review text — 22-01
+- [x] Table preview with Type, Title, Description columns — 22-03
+- [x] Per-item editing via modal (full draft fields) — 22-03
+- [x] Hierarchy preservation (Epic → linked Stories) — 22-01, 22-03
+- [ ] Duplicate warning per item with link option — 22-04
+- [ ] Live progress during creation (checkmarks per row) — 22-04
+- [ ] Auto-track all created tickets — 22-04
+- [ ] Rich announcement with all ticket links — 22-04
 
 ## Progress
 
@@ -363,4 +366,4 @@ When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "T
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
 | 21. Jira Sync & Management | v1.1 | 5/5 | Complete | 2026-01-16 |
-| 22. Multi-Ticket from Review | v1.1 | 0/? | Not started | - |
+| 22. Multi-Ticket from Review | v1.1 | 3/4 | In progress | - |

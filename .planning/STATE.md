@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 22 (Multi-Ticket from Review)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 22-02-PLAN.md (Wire Multi-Ticket Handlers)
+Last activity: 2026-01-16 — Completed 22-03-PLAN.md (Multi-Ticket Preview UI)
 
-Progress: ██░░ 50% (Phase 22)
+Progress: ███░ 75% (Phase 22)
 
 ## v1.0 Summary
 
@@ -169,6 +169,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-04 | Record unlinked decisions | Enables later linking via /maro sync |
 | 22-01 | parent_index to parent_id UUID conversion | Avoids asking LLM to generate UUIDs; simpler prompt |
 | 22-01 | Single-item falls back to single-ticket flow | Richer draft editing experience for single items |
+| 22-03 | Orphan child stories when removing epic | Less destructive than deleting - stories remain, just unlinked |
+| 22-03 | Single-item prompt when 1 remaining | User may want richer single-ticket editing experience |
+| 22-03 | Source context from review_artifact | Connects preview to its review origin for traceability |
 
 ### Roadmap Evolution
 
@@ -197,9 +200,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 22-01-PLAN.md (Multi-Item Extraction)
+Stopped at: Completed 22-03-PLAN.md (Multi-Ticket Preview UI)
 Resume file: None
-Next action: Continue Phase 22 execution with 22-02-PLAN.md
+Next action: Continue Phase 22 execution with 22-04-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
