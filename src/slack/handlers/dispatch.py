@@ -322,6 +322,20 @@ async def _dispatch_result(
         # Architecture decision approval (Phase 14)
         await _handle_decision_approval(result, identity, client)
 
+    elif action == "scope_gate":
+        # AMBIGUOUS intent - show 3-button scope gate (Phase 20)
+        from src.slack.blocks.scope_gate import build_scope_gate_blocks
+
+        message_preview = result.get("message_preview", "")[:100]
+        blocks = build_scope_gate_blocks(message_preview)
+
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text="How would you like me to help?",
+            blocks=blocks,
+        )
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
