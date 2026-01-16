@@ -8,6 +8,28 @@ from langgraph.graph.message import add_messages
 from src.schemas.ticket import JiraTicketBase
 from src.schemas.draft import TicketDraft
 
+# Eviction limits per scope for salient facts
+FACT_LIMITS = {
+    "thread": 50,
+    "epic": 200,
+    "channel": 300,
+}
+
+
+class Fact(TypedDict):
+    """Structured salient fact for context persistence.
+
+    Facts are decisions, constraints, or assumptions extracted from conversation.
+    Includes confidence for dedup/contradiction detection.
+    """
+    type: Literal["decision", "constraint", "assumption"]
+    scope: Literal["channel", "epic", "thread"]
+    source_ts: str  # Slack message timestamp
+    text: str  # The fact content
+    confidence: float  # 0.0 - 1.0, for ranking/eviction
+    canonical_id: str  # hash(text + scope + type) for dedup
+
+
 if TYPE_CHECKING:
     from src.skills.ask_user import QuestionSet
 
@@ -254,6 +276,9 @@ class AgentState(TypedDict):
 
     # Multi-ticket state (Phase 20)
     multi_ticket_state: Optional[MultiTicketState]  # Epic + linked stories batch
+
+    # Context persistence (Phase 20)
+    salient_facts: list[Fact]  # Structured facts with confidence + canonical_id
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
