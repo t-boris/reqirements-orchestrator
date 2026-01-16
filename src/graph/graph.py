@@ -121,35 +121,38 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     intent_result = state.get("intent_result", {})
     intent = intent_result.get("intent", "TICKET")
 
+    # Normalize to uppercase for comparison (scope_gate may set lowercase)
+    intent_upper = intent.upper() if isinstance(intent, str) else str(intent).upper()
+
     # Check for thread default (set by "Remember for this thread")
     thread_default = state.get("thread_default_intent")
-    if thread_default and intent == "AMBIGUOUS":
+    if thread_default and intent_upper == "AMBIGUOUS":
         logger.info(f"Intent router: AMBIGUOUS overridden by thread_default={thread_default}")
-        intent = thread_default
+        intent_upper = thread_default.upper() if isinstance(thread_default, str) else str(thread_default).upper()
 
-    if intent == "REVIEW":
+    if intent_upper == "REVIEW":
         logger.info("Intent router: routing to review_flow")
         return "review_flow"
-    elif intent == "DISCUSSION":
+    elif intent_upper == "DISCUSSION":
         logger.info("Intent router: routing to discussion_flow")
         return "discussion_flow"
-    elif intent == "META":
+    elif intent_upper == "META":
         # META questions get brief responses like discussion
         logger.info("Intent router: routing META to discussion_flow")
         return "discussion_flow"
-    elif intent == "AMBIGUOUS":
+    elif intent_upper == "AMBIGUOUS":
         # Show scope gate - let user decide
         logger.info("Intent router: routing AMBIGUOUS to scope_gate_flow")
         return "scope_gate_flow"
-    elif intent == "TICKET_ACTION":
+    elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
         return "ticket_action_flow"
-    elif intent == "DECISION_APPROVAL":
+    elif intent_upper == "DECISION_APPROVAL":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to decision_approval_flow")
         return "decision_approval_flow"
-    elif intent == "REVIEW_CONTINUATION":
+    elif intent_upper == "REVIEW_CONTINUATION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to review_continuation_flow")
         return "review_continuation_flow"
