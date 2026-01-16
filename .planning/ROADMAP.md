@@ -315,6 +315,28 @@ MARO becomes the single interface for Jira in Slack. The channel is the source o
 - `/maro sync` — Detect and apply pending changes
 - `@Maro update Jira issues` — Natural language sync trigger
 
+### Phase 22: Multi-Ticket from Review
+**Goal**: Smart detection and batch creation of multiple tickets from review proposals
+**Depends on**: Phase 21
+**Research**: None needed
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 22 to break down)
+
+**Vision (from 22-CONTEXT.md):**
+When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "Turn into Jira ticket" detects all items and creates them in batch.
+
+**Features:**
+- [ ] Smart detection of multiple items from review text
+- [ ] Table preview with Type, Title, Description columns
+- [ ] Per-item editing via modal (full draft fields)
+- [ ] Hierarchy preservation (Epic → linked Stories)
+- [ ] Duplicate warning per item with link option
+- [ ] Live progress during creation (checkmarks per row)
+- [ ] Auto-track all created tickets
+- [ ] Rich announcement with all ticket links
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -341,3 +363,4 @@ MARO becomes the single interface for Jira in Slack. The channel is the source o
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
 | 21. Jira Sync & Management | v1.1 | 5/5 | Complete | 2026-01-16 |
+| 22. Multi-Ticket from Review | v1.1 | 0/? | Not started | - |
