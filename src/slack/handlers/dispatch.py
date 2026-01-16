@@ -421,6 +421,10 @@ async def _dispatch_result(
             blocks=blocks,
         )
 
+    elif action == "sync_request":
+        # Sync request - trigger Jira sync analysis (Phase 21-04)
+        await _handle_sync_request(result, identity, client)
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -1033,4 +1037,27 @@ async def _prompt_decision_link(
         thread_ts=identity.thread_ts,
         blocks=blocks,
         text="Link decision to Jira?",
+    )
+
+
+async def _handle_sync_request(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle sync_request action - run sync analysis and show summary.
+
+    Triggered by "@Maro update Jira issues" or similar sync phrases.
+    """
+    from src.slack.handlers.sync import handle_maro_sync
+
+    channel_id = result.get("channel_id") or identity.channel_id
+    user_id = identity.user_id if hasattr(identity, "user_id") else "system"
+
+    # Run sync analysis (same as /maro sync)
+    await handle_maro_sync(
+        channel_id=channel_id,
+        client=client,
+        user_id=user_id,
+        auto_mode=False,  # Show summary for natural language trigger
     )

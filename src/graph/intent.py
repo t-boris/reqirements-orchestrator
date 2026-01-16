@@ -30,10 +30,14 @@ class IntentType(str, Enum):
 
     JIRA_COMMAND is for natural language Jira management commands like
     "change the priority of that ticket to high" or "set status to Done".
+
+    SYNC_REQUEST is for Jira sync commands like "update Jira issues" or
+    "sync the tickets" - triggers the sync flow to compare Slack and Jira state.
     """
     TICKET = "TICKET"       # Create a NEW Jira ticket
     TICKET_ACTION = "TICKET_ACTION"  # Action on EXISTING ticket (subtasks, update, comment)
     JIRA_COMMAND = "JIRA_COMMAND"  # Edit/update/delete Jira issues via natural language
+    SYNC_REQUEST = "SYNC_REQUEST"  # Sync channel decisions with Jira
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     META = "META"           # Questions about the bot itself
@@ -93,6 +97,17 @@ CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
 
+- SYNC_REQUEST: User wants to SYNC channel decisions with Jira (bulk update)
+  Key phrases: "update Jira issues", "sync Jira", "sync tickets", "update the tickets",
+  "sync everything", "synchronize", "push changes to Jira", "update Jira with our decisions"
+  Examples:
+  - "update Jira issues" -> SYNC_REQUEST
+  - "sync Jira" -> SYNC_REQUEST
+  - "update the tickets" -> SYNC_REQUEST
+  - "sync everything with Jira" -> SYNC_REQUEST
+  - "push our decisions to Jira" -> SYNC_REQUEST
+  NOTE: This is for BULK sync, not single ticket changes. Single ticket = JIRA_COMMAND
+
 - JIRA_COMMAND: User wants to CHANGE/MODIFY an existing Jira ticket's field values
   Key verbs: change, update, set, modify, edit, delete, remove, close, mark
   Key fields: priority, status, assignee, description, summary, labels
@@ -133,20 +148,22 @@ Classify the user's intent into ONE category:
   This should be RARE. Most requests are clearly REVIEW (discussion/help) or TICKET (explicit creation).
 
 IMPORTANT RULES:
-1. JIRA_COMMAND is for MODIFYING existing ticket fields (priority, status, assignee)
-2. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
-3. "Change priority of X" or "set status to Y" = JIRA_COMMAND
-4. "Create stories for X" or "add comment to X" = TICKET_ACTION
-5. If user mentions a ticket key AND wants to CREATE items under it = TICKET_ACTION
-6. If user wants to MODIFY/CHANGE field values = JIRA_COMMAND
-7. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
-8. "Define architecture" or "design system" = REVIEW (architecture discussion)
-9. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
-10. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
-11. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
+1. SYNC_REQUEST is for BULK sync ("update Jira issues", "sync tickets") - no specific ticket mentioned
+2. JIRA_COMMAND is for MODIFYING existing ticket fields (priority, status, assignee)
+3. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
+4. "Change priority of X" or "set status to Y" = JIRA_COMMAND
+5. "Create stories for X" or "add comment to X" = TICKET_ACTION
+6. If user mentions a ticket key AND wants to CREATE items under it = TICKET_ACTION
+7. If user wants to MODIFY/CHANGE field values = JIRA_COMMAND
+8. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
+9. "Define architecture" or "design system" = REVIEW (architecture discussion)
+10. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
+11. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
+12. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
+13. "Update Jira" or "sync Jira" without a specific ticket = SYNC_REQUEST
 
 Respond in this exact format:
-INTENT: <JIRA_COMMAND|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <SYNC_REQUEST|JIRA_COMMAND|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -177,7 +194,7 @@ REASON: <brief explanation>"""
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "SYNC_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
