@@ -12,19 +12,28 @@ from typing import Optional
 
 from slack_sdk.web import WebClient
 
+from src.slack.handlers.core import _run_async
+
 logger = logging.getLogger(__name__)
 
 
-def handle_multi_ticket_confirm_quantity(body: dict, client: WebClient) -> None:
+def handle_multi_ticket_confirm_quantity(ack, body: dict, client: WebClient) -> None:
     """Handle quantity confirmation (>3 items).
 
     When user confirms they want to create more than MULTI_TICKET_QUANTITY_THRESHOLD
     items, update state and continue to preview.
 
     Args:
+        ack: Slack ack function
         body: Slack action body
         client: Slack WebClient for API calls
     """
+    ack()
+    _run_async(_handle_multi_ticket_confirm_quantity_async(body, client))
+
+
+async def _handle_multi_ticket_confirm_quantity_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket quantity confirmation."""
     channel = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
 
@@ -49,16 +58,23 @@ def handle_multi_ticket_confirm_quantity(body: dict, client: WebClient) -> None:
     # This handler just updates the UI immediately
 
 
-def handle_multi_ticket_split(body: dict, client: WebClient) -> None:
+def handle_multi_ticket_split(ack, body: dict, client: WebClient) -> None:
     """Handle split into batches request.
 
     When batch is too large, user can choose to split into smaller batches.
     Bot creates Epic first, then adds stories in groups.
 
     Args:
+        ack: Slack ack function
         body: Slack action body
         client: Slack WebClient for API calls
     """
+    ack()
+    _run_async(_handle_multi_ticket_split_async(body, client))
+
+
+async def _handle_multi_ticket_split_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket split."""
     channel = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
 
@@ -82,15 +98,22 @@ def handle_multi_ticket_split(body: dict, client: WebClient) -> None:
     # This will be wired up when the full multi-ticket flow is integrated
 
 
-def handle_multi_ticket_edit_story(body: dict, client: WebClient) -> None:
+def handle_multi_ticket_edit_story(ack, body: dict, client: WebClient) -> None:
     """Handle edit story button click.
 
     Opens modal to edit story title/description.
 
     Args:
+        ack: Slack ack function
         body: Slack action body
         client: Slack WebClient for API calls
     """
+    ack()
+    _run_async(_handle_multi_ticket_edit_story_async(body, client))
+
+
+async def _handle_multi_ticket_edit_story_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket edit story."""
     trigger_id = body.get("trigger_id")
     if not trigger_id:
         logger.warning("Missing trigger_id in edit_story body")
@@ -112,15 +135,22 @@ def handle_multi_ticket_edit_story(body: dict, client: WebClient) -> None:
     logger.info(f"Would open story edit modal for story {story_id}")
 
 
-def handle_multi_ticket_approve(body: dict, client: WebClient) -> None:
+def handle_multi_ticket_approve(ack, body: dict, client: WebClient) -> None:
     """Handle approve all button click.
 
     Triggers batch creation in Jira.
 
     Args:
+        ack: Slack ack function
         body: Slack action body
         client: Slack WebClient for API calls
     """
+    ack()
+    _run_async(_handle_multi_ticket_approve_async(body, client))
+
+
+async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket approve."""
     channel = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
     user_id = body.get("user", {}).get("id")
@@ -153,15 +183,22 @@ def handle_multi_ticket_approve(body: dict, client: WebClient) -> None:
     # This handler updates UI to show progress
 
 
-def handle_multi_ticket_cancel(body: dict, client: WebClient) -> None:
+def handle_multi_ticket_cancel(ack, body: dict, client: WebClient) -> None:
     """Handle cancel button click.
 
     Cancels multi-ticket creation and clears state.
 
     Args:
+        ack: Slack ack function
         body: Slack action body
         client: Slack WebClient for API calls
     """
+    ack()
+    _run_async(_handle_multi_ticket_cancel_async(body, client))
+
+
+async def _handle_multi_ticket_cancel_async(body: dict, client: WebClient) -> None:
+    """Async handler for multi-ticket cancel."""
     channel = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
     user_id = body.get("user", {}).get("id")
