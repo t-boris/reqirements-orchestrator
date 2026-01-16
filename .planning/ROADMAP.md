@@ -282,8 +282,8 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 - [x] Multi-ticket flow with safety latches (>3 items, >10k chars)
 - [x] Context persistence (structured Fact with eviction)
 
-### Phase 21: Agentic Intent Classification
-**Goal**: Make intent classification agentic with tool access for dynamic action detection
+### Phase 21: Jira Sync & Management
+**Goal**: Make MARO the single interface for Jira - channel-level tracking, smart auto-sync, natural language commands
 **Depends on**: Phase 20
 **Research**: None (todo captured from user feedback)
 **Plans**: TBD
