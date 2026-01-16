@@ -63,6 +63,32 @@ class PendingAction(str, Enum):
     WAITING_SIZE_CONFIRM = "waiting_size_confirm"   # Multi-ticket large batch, confirm split
 
 
+class WorkflowStep(str, Enum):
+    """Typed workflow positions for event validation.
+
+    Each step has allowed events defined in ALLOWED_EVENTS. Invalid events
+    (e.g., clicking old button after state changed) return "stale UI" message.
+    This replaces stringly-typed workflow_step and enables deterministic testing.
+    """
+    DRAFT_PREVIEW = "draft_preview"             # Single ticket draft shown
+    MULTI_TICKET_PREVIEW = "multi_ticket_preview"  # Epic + stories preview shown
+    DECISION_PREVIEW = "decision_preview"       # Architecture decision preview
+    REVIEW_ACTIVE = "review_active"             # Review in progress, awaiting response
+    REVIEW_FROZEN = "review_frozen"             # Review complete, context preserved for handoff
+    SCOPE_GATE = "scope_gate"                   # Ambiguous intent, showing 3-button choice
+
+
+class WorkflowEventType(str, Enum):
+    """Types of workflow events (buttons, commands, modals).
+
+    Used for event routing and validation. Workflow events bypass intent
+    classification and route directly to handlers.
+    """
+    BUTTON_CLICK = "button_click"     # Slack button interaction
+    SLASH_COMMAND = "slash_command"   # /maro command
+    MODAL_SUBMIT = "modal_submit"     # Modal form submission
+
+
 class AgentState(TypedDict):
     """State for the Analyst Agent in LangGraph.
 
