@@ -109,6 +109,15 @@ from src.slack.handlers.sync import (
     handle_sync_merge_submit,
 )
 
+# Multi-ticket handlers (Phase 22)
+from src.slack.handlers.multi_ticket import (
+    handle_multi_ticket_confirm_quantity,
+    handle_multi_ticket_split,
+    handle_multi_ticket_edit_story,
+    handle_multi_ticket_approve,
+    handle_multi_ticket_cancel,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -170,4 +179,10 @@ __all__ = [
     "handle_sync_cancel",
     "handle_sync_merge",
     "handle_sync_merge_submit",
+    # Multi-ticket handlers (Phase 22)
+    "handle_multi_ticket_confirm_quantity",
+    "handle_multi_ticket_split",
+    "handle_multi_ticket_edit_story",
+    "handle_multi_ticket_approve",
+    "handle_multi_ticket_cancel",
 ]
