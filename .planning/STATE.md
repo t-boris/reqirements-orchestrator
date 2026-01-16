@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 9 of 12 in current phase
+Plan: 10 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-09-PLAN.md (Multi-Ticket Foundation)
+Last activity: 2026-01-16 — Completed 20-10-PLAN.md (Multi-Ticket Creation)
 
-Progress: ████████░░░░░░░░░░░░ 75% (Phase 20)
+Progress: █████████░░░░░░░░░░░ 83% (Phase 20)
 
 ## v1.0 Summary
 
@@ -138,6 +138,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-09 | Stories linked to Epic via parent_id | Not Jira subtasks - configurable Epic-Story relationship |
 | 20-09 | Quantity threshold >3 items | Small batches (2-3) proceed without confirmation |
 | 20-09 | Size threshold 10k chars | Large batches offer split option |
+| 20-10 | Dry-run validation before batch creation | Catches errors before any tickets are created |
+| 20-10 | Epic created first for parent linking | Stories reference Epic key in parent field |
+| 20-10 | Handlers update UI, graph handles state | Separation of concerns for responsiveness |
 
 ### Roadmap Evolution
 
@@ -163,9 +166,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-09-PLAN.md (Multi-Ticket Foundation)
+Stopped at: Completed 20-10-PLAN.md (Multi-Ticket Creation)
 Resume file: None
-Next action: Execute 20-10-PLAN.md
+Next action: Execute 20-11-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
