@@ -118,6 +118,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-03 | WorkflowStep -> set[str] mapping | Each step has explicit allowed event actions |
 | 20-03 | Separate ui_version check | Validates stale preview clicks within same step |
 | 20-03 | Predefined error messages | STALE_EVENT_MESSAGE, STALE_VERSION_MESSAGE for consistent UX |
+| 20-04 | pending_payload as dict[str, Any] | Flexible container for minimal refs (story_id, draft_id) |
+| 20-04 | ui_version starts at 0 | Incremented on each preview update for stale button detection |
+| 20-04 | thread_default_expires_at as ISO string | Compatible with other timestamp fields in state |
 | 20-05 | RouteResult as Enum for typed routing outcomes | Type safety and JSON serialization support |
 | 20-05 | RoutingDecision dataclass with Optional fields | Structured routing decisions for different outcomes |
 | 20-05 | UI version parsed from button value suffix | Format: value:version for stale preview detection |
@@ -147,9 +150,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-05-PLAN.md (Event Router)
+Stopped at: Completed 20-04-PLAN.md (Extend AgentState)
 Resume file: None
-Next action: Execute 20-06-PLAN.md
+Next action: Execute 20-05-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
