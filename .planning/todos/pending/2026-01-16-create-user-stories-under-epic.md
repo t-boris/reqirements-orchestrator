@@ -24,6 +24,15 @@ This suggests either:
 1. Intent classification is not recognizing "create user stories for EPIC-XXX" as TICKET_ACTION
 2. Or the extraction is treating it as a new ticket creation instead of creating stories under the epic
 
+**Log evidence (2026-01-16):**
+```
+Intent classified by LLM: TICKET, confidence=0.95, persona=pm
+reasons: 'The user is reiterating and clarifying a previous request to create multiple Jira entities (epics and stories) based on an existing item. This is an explicit request for ticket creation.'
+```
+
+The LLM classifies as TICKET (new ticket) instead of TICKET_ACTION (action on existing ticket).
+Even though user explicitly said "create MULTIPLE items based on jira item that already exists".
+
 ## Solution
 
 1. Check if intent classification recognizes "create user stories for SCRUM-XXX" pattern
