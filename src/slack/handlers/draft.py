@@ -23,6 +23,77 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _build_ticket_announcement_blocks(
+    draft: "TicketDraft",
+    jira_key: str,
+    jira_url: str,
+    created_by: str,
+    thread_ts: str,
+    channel: str,
+    client: WebClient,
+) -> list[dict]:
+    """Build announcement blocks for main channel notification.
+
+    Creates a card with:
+    - Ticket key and title (linked)
+    - Brief problem description
+    - Who created it
+    - Link to the thread
+
+    Args:
+        draft: The ticket draft that was created
+        jira_key: Created Jira ticket key (e.g., SCRUM-113)
+        jira_url: URL to the Jira ticket
+        created_by: Slack user ID who created the ticket
+        thread_ts: Thread timestamp for permalink
+        channel: Channel ID for permalink
+        client: Slack client for getting permalink
+
+    Returns:
+        List of Slack blocks for the announcement
+    """
+    # Get thread permalink
+    thread_link = ""
+    try:
+        result = client.chat_getPermalink(channel=channel, message_ts=thread_ts)
+        thread_link = result.get("permalink", "")
+    except Exception as e:
+        logger.warning(f"Failed to get thread permalink: {e}")
+
+    # Build problem preview (truncate if too long)
+    problem_preview = draft.problem or "No description"
+    if len(problem_preview) > 200:
+        problem_preview = problem_preview[:197] + "..."
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f":white_check_mark: *Ticket Created:* <{jira_url}|{jira_key}>\n*{draft.title or 'Untitled'}*",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"_{problem_preview}_",
+            },
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Created by <@{created_by}>" + (f" • <{thread_link}|View thread>" if thread_link else ""),
+                },
+            ],
+        },
+    ]
+
+    return blocks
+
+
 def handle_approve_draft(ack, body, client: WebClient, action):
     """Synchronous wrapper for draft approval.
 
@@ -286,6 +357,32 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 thread_ts=thread_ts,
                 text=f"Ticket created: <{create_result.jira_url}|{create_result.jira_key}>",
             )
+
+            # Post announcement card in MAIN channel (not thread)
+            try:
+                # Build announcement blocks
+                announcement_blocks = _build_ticket_announcement_blocks(
+                    draft=draft,
+                    jira_key=create_result.jira_key,
+                    jira_url=create_result.jira_url,
+                    created_by=user_id,
+                    thread_ts=thread_ts,
+                    channel=channel,
+                    client=client,
+                )
+                client.chat_postMessage(
+                    channel=channel,
+                    # No thread_ts - posts to main channel
+                    text=f"Ticket created: {create_result.jira_key} - {draft.title}",
+                    blocks=announcement_blocks,
+                )
+                logger.info(
+                    "Posted ticket announcement to main channel",
+                    extra={"jira_key": create_result.jira_key, "channel": channel},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to post main channel announcement: {e}")
+                # Non-blocking - thread notification already sent
     else:
         # Creation failed after retries - show error with action buttons
         await post_error_actions(client, channel, thread_ts, session_id, button_hash, create_result.error)
