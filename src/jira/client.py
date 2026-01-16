@@ -134,15 +134,15 @@ class JiraService:
     async def _get_epic_link_field(self) -> Optional[str]:
         """Get the Epic Link custom field ID.
 
-        Jira Cloud uses a custom field for linking issues to epics.
-        The field ID varies by instance (commonly customfield_10014).
-        This method discovers it dynamically by querying the field metadata.
+        Jira Cloud uses different methods for linking issues to epics:
+        - Classic (company-managed) projects: Epic Link custom field
+        - Next-gen (team-managed) projects: parent field
 
         Returns:
-            Custom field ID (e.g., "customfield_10014") or None if not found
+            Custom field ID (e.g., "customfield_10014") or "parent" for next-gen projects
         """
         if self._epic_link_field is not None:
-            return self._epic_link_field
+            return self._epic_link_field if self._epic_link_field else None
 
         try:
             fields = await self._request("GET", "/rest/api/3/field")
@@ -150,7 +150,6 @@ class JiraService:
                 # Look for Epic Link field by name or schema
                 name = field.get("name", "").lower()
                 schema = field.get("schema", {})
-                custom_id = schema.get("customId")
 
                 if "epic link" in name or (
                     schema.get("type") == "any" and "epic" in name
@@ -159,10 +158,10 @@ class JiraService:
                     logger.info(f"Discovered Epic Link field: {self._epic_link_field}")
                     return self._epic_link_field
 
-            # Fallback: try common field IDs
-            logger.warning("Could not discover Epic Link field, will skip epic linking")
-            self._epic_link_field = ""  # Empty string = not found
-            return None
+            # No Epic Link field found - use parent field (team-managed projects)
+            logger.info("No Epic Link custom field found, using parent field for team-managed project")
+            self._epic_link_field = "parent"
+            return "parent"
         except Exception as e:
             logger.warning(f"Failed to discover Epic Link field: {e}")
             self._epic_link_field = ""
@@ -434,7 +433,12 @@ class JiraService:
             # Get Epic Link custom field (varies by Jira instance)
             epic_link_field = await self._get_epic_link_field()
             if epic_link_field:
-                payload["fields"][epic_link_field] = request.epic_key
+                if epic_link_field == "parent":
+                    # Team-managed projects use parent field with key object
+                    payload["fields"]["parent"] = {"key": request.epic_key}
+                else:
+                    # Classic projects use custom field with key string
+                    payload["fields"][epic_link_field] = request.epic_key
                 logger.info(f"Using Epic Link field {epic_link_field} = {request.epic_key}")
             else:
                 logger.warning(f"Epic Link field not found, story will not be linked to epic {request.epic_key}")
