@@ -68,6 +68,13 @@ from src.slack.handlers.review import (
     handle_scope_gate_submit,
 )
 
+# Scope gate handlers (AMBIGUOUS intent)
+from src.slack.handlers.scope_gate import (
+    handle_scope_gate_review,
+    handle_scope_gate_ticket,
+    handle_scope_gate_dismiss,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -103,4 +110,8 @@ __all__ = [
     # Review
     "handle_review_to_ticket",
     "handle_scope_gate_submit",
+    # Scope Gate (AMBIGUOUS intent)
+    "handle_scope_gate_review",
+    "handle_scope_gate_ticket",
+    "handle_scope_gate_dismiss",
 ]

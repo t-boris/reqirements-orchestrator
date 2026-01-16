@@ -1,0 +1,148 @@
+"""Handlers for scope gate interactions.
+
+Handles the 3-button scope gate for AMBIGUOUS intent:
+- Review: Route to review flow
+- Create ticket: Route to ticket flow
+- Not now: Dismiss
+
+Plus "Remember for this thread" checkbox state.
+"""
+import logging
+from datetime import datetime, timedelta
+
+from slack_sdk.web import WebClient
+
+from src.schemas.state import UserIntent, PendingAction, WorkflowStep
+from src.slack.blocks.scope_gate import (
+    build_scope_gate_dismissed_blocks,
+    build_scope_gate_remembered_blocks,
+)
+
+logger = logging.getLogger(__name__)
+
+# How long "Remember" lasts (2 hours)
+REMEMBER_TTL_HOURS = 2
+
+
+def handle_scope_gate_review(body: dict, client: WebClient):
+    """Handle 'Review' button click on scope gate.
+
+    Routes to review flow. If 'Remember' was checked, stores thread default.
+    """
+    channel = body.get("channel", {}).get("id")
+    thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
+    user_id = body.get("user", {}).get("id")
+
+    # Check if remember was selected
+    remember = _check_remember_selected(body)
+
+    # Update original message to show selection
+    message_ts = body.get("message", {}).get("ts")
+    if remember:
+        blocks = build_scope_gate_remembered_blocks("review")
+    else:
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "Routing to review..."}}]
+
+    client.chat_update(
+        channel=channel,
+        ts=message_ts,
+        blocks=blocks,
+        text="Routing to review...",
+    )
+
+    # Store thread default if remember selected
+    if remember:
+        _store_thread_default(channel, thread_ts, UserIntent.REVIEW)
+
+    # Re-route to review flow with original message
+    _route_to_flow(body, client, UserIntent.REVIEW)
+
+
+def handle_scope_gate_ticket(body: dict, client: WebClient):
+    """Handle 'Create ticket' button click on scope gate.
+
+    Routes to ticket flow. If 'Remember' was checked, stores thread default.
+    """
+    channel = body.get("channel", {}).get("id")
+    thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
+    message_ts = body.get("message", {}).get("ts")
+
+    remember = _check_remember_selected(body)
+
+    if remember:
+        blocks = build_scope_gate_remembered_blocks("ticket")
+    else:
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "Creating ticket..."}}]
+
+    client.chat_update(
+        channel=channel,
+        ts=message_ts,
+        blocks=blocks,
+        text="Creating ticket...",
+    )
+
+    if remember:
+        _store_thread_default(channel, thread_ts, UserIntent.TICKET)
+
+    _route_to_flow(body, client, UserIntent.TICKET)
+
+
+def handle_scope_gate_dismiss(body: dict, client: WebClient):
+    """Handle 'Not now' button click on scope gate.
+
+    Clears pending_action and stops cycle.
+    """
+    channel = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+
+    blocks = build_scope_gate_dismissed_blocks()
+    client.chat_update(
+        channel=channel,
+        ts=message_ts,
+        blocks=blocks,
+        text="Got it. Just @ me when you're ready.",
+    )
+
+    # Clear any pending action in state
+    # This happens via state update in the main handler
+
+
+def _check_remember_selected(body: dict) -> bool:
+    """Check if 'Remember' checkbox was selected.
+
+    The checkbox state is in body.state.values.
+    """
+    state = body.get("state", {})
+    values = state.get("values", {})
+
+    for block_id, block_values in values.items():
+        for action_id, action_value in block_values.items():
+            if action_id == "scope_gate_remember":
+                selected_options = action_value.get("selected_options", [])
+                return len(selected_options) > 0
+
+    return False
+
+
+def _store_thread_default(channel_id: str, thread_ts: str, intent: UserIntent):
+    """Store thread default intent with 2h expiry.
+
+    TODO: This will be integrated with state persistence in 20-04.
+    For now, log intent for debugging.
+    """
+    expires_at = datetime.utcnow() + timedelta(hours=REMEMBER_TTL_HOURS)
+    logger.info(
+        f"Storing thread default: {intent.value} for {channel_id}/{thread_ts}, "
+        f"expires {expires_at.isoformat()}"
+    )
+    # State update will be handled by graph runner
+
+
+def _route_to_flow(body: dict, client: WebClient, intent: UserIntent):
+    """Re-route original message to the selected flow.
+
+    TODO: This needs integration with graph runner.
+    For now, log the routing decision.
+    """
+    logger.info(f"Routing to {intent.value} flow after scope gate selection")
+    # Integration with graph runner in a later plan
