@@ -245,6 +245,43 @@ Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-l
 - [x] Audit function length (document >100 line functions as accepted complexity)
 - [x] Audit DRY violations (no significant duplication found)
 
+### Phase 20: Brain Refactor (In Progress)
+**Goal**: Separate user intent from workflow events, enable resumable graphs, prevent stale UI
+**Depends on**: Phase 18
+**Research**: Complete (20-CONTEXT.md, BRAIN-ANALYSIS.md)
+**Plans**: 12 plans in 6 waves
+
+Plans:
+- [x] 20-01: State Types (Wave 1) — completed 2026-01-16
+- [x] 20-02: Event Store (Wave 1) — completed 2026-01-16
+- [x] 20-03: Event Validation (Wave 1) — completed 2026-01-16
+- [ ] 20-04: Idempotency Integration (Wave 1)
+- [ ] 20-05: Event Router Skeleton (Wave 2)
+- [ ] 20-06: PendingAction Flow (Wave 2)
+- [ ] 20-07: Scope Gate (Wave 3)
+- [ ] 20-08: Thread Default Intent (Wave 3)
+- [ ] 20-09: Review Lifecycle (Wave 4)
+- [ ] 20-10: Multi-Ticket Flow (Wave 5)
+- [ ] 20-11: Context Persistence (Wave 6)
+- [ ] 20-12: Integration Tests (Wave 6)
+
+**Problem solved:**
+Intent classification is overloaded — handles both user intent AND workflow events. Adding features requires new intent types. No resumable graphs. Stale buttons affect current state.
+
+**Features (from 20-CONTEXT.md):**
+- [x] UserIntent enum (TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS)
+- [x] PendingAction enum (WAITING_APPROVAL, etc.)
+- [x] WorkflowStep enum with allowed events per step
+- [x] EventStore for idempotency tracking
+- [x] Event validation for stale UI prevention
+- [ ] Event-first routing (WorkflowEvent → PendingAction → UserIntent)
+- [ ] AMBIGUOUS triggers 3-button scope gate
+- [ ] "Remember for this thread" option
+- [ ] Resumable graph via pending_action + pending_payload
+- [ ] Review lifecycle (patch mode, REVIEW_COMPLETE, freeze semantics)
+- [ ] Multi-ticket flow with safety latches
+- [ ] Context persistence (structured salient_facts)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -269,3 +306,4 @@ Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-l
 | 15. Review Conversation Flow | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
+| 20. Brain Refactor | v1.1 | 3/12 | In progress | - |

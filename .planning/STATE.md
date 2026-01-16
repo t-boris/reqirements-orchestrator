@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 1 of 12 in current phase
+Plan: 3 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-01-PLAN.md (State Types)
+Last activity: 2026-01-16 — Completed 20-03-PLAN.md (Event Validation)
 
-Progress: █░░░░░░░░░░░░░░░░░░░ 8% (Phase 20)
+Progress: ███░░░░░░░░░░░░░░░░░ 25% (Phase 20)
 
 ## v1.0 Summary
 
@@ -115,6 +115,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-01 | PendingAction replaces IntentType overload | DECISION_APPROVAL becomes PendingAction |
 | 20-01 | WorkflowStep typed, not stringly | Enables event validation per workflow step |
 | 20-01 | str+Enum inheritance | All enums inherit from (str, Enum) for serialization |
+| 20-03 | WorkflowStep -> set[str] mapping | Each step has explicit allowed event actions |
+| 20-03 | Separate ui_version check | Validates stale preview clicks within same step |
+| 20-03 | Predefined error messages | STALE_EVENT_MESSAGE, STALE_VERSION_MESSAGE for consistent UX |
 
 ### Roadmap Evolution
 
@@ -140,9 +143,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-01-PLAN.md (State Types)
+Stopped at: Completed 20-03-PLAN.md (Event Validation)
 Resume file: None
-Next action: Execute 20-02-PLAN.md
+Next action: Execute 20-04-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
