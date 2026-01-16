@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 20 of 20 (Brain Refactor)
-Plan: 12 of 12 in current phase
-Status: Complete
-Last activity: 2026-01-16 — Completed 20-12-PLAN.md (Intent Router Simplification)
+Phase: 21 of 21 (Agentic Intent Classification)
+Plan: 0 of ? in current phase
+Status: Not Started
+Last activity: 2026-01-16 — Added Phase 21 with agentic intent classification todo
 
-Progress: ████████████████████ 100% (Phase 20)
+Progress: ░░░░░░░░░░░░░░░░░░░░ 0% (Phase 21)
 
 ## v1.0 Summary
 
@@ -155,6 +155,7 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 - Phase 13 added: Intent Router — Route messages to Ticket/Review/Discussion flows before extraction
 - Phase 13.1 inserted: Ticket Reference Handling — Handle "create subtasks for SCRUM-XXX", fix re-linking bug
 - Phase 14 added: Architecture Decision Records — Auto-detect decisions, post to channel
+- Phase 21 added: Agentic Intent Classification — Make intent classification agentic with tool access (from user feedback)
 
 ### Deferred Issues
 
@@ -164,6 +165,8 @@ None (onboarding addressed in Phase 12).
 
 1. ~~**Add intent detection to distinguish review requests from ticket creation** (graph)~~ → Promoted to Phase 13
    - File: `.planning/todos/pending/2026-01-15-intent-detection-review-vs-ticket.md` (archived)
+2. ~~**Make intent classification agentic with tool access** (graph)~~ → Promoted to Phase 21
+   - File: `.planning/todos/pending/2026-01-16-agentic-intent-classification.md`
 
 ### Blockers/Concerns
 
@@ -172,9 +175,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-12-PLAN.md (Intent Router Simplification)
+Stopped at: Added Phase 21 (Agentic Intent Classification)
 Resume file: None
-Next action: Phase 20 complete - start new milestone or review
+Next action: Plan Phase 21 (/gsd:plan-phase 21)
 
 ## Phase 11 Summary (Complete)
 

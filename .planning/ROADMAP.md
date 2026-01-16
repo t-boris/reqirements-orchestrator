@@ -282,6 +282,30 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 - [x] Multi-ticket flow with safety latches (>3 items, >10k chars)
 - [x] Context persistence (structured Fact with eviction)
 
+### Phase 21: Agentic Intent Classification
+**Goal**: Make intent classification agentic with tool access for dynamic action detection
+**Depends on**: Phase 20
+**Research**: None (todo captured from user feedback)
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 21 to break down)
+
+**Problem solved:**
+Current implementation hardcodes specific action types (create_stories, create_subtask, update, add_comment) for TICKET_ACTION. The LLM should decide what to do dynamically, not hardcoded decisions. Classification should have tool access to fetch Jira tickets before deciding.
+
+**Features (from todo):**
+- [ ] Tool-equipped classification: fetch_jira_ticket(), search_jira(), ask_clarification()
+- [ ] Open-ended action detection instead of fixed action types
+- [ ] Two-phase approach: analyze + gather context, then decide on action
+- [ ] Dynamic operation detection based on full context
+
+**Examples not currently supported:**
+- "Expand all our epics with user stories"
+- "Update the title of SCRUM-113"
+- "Add acceptance criteria to SCRUM-113 based on our discussion"
+- "Split SCRUM-113 into smaller tickets"
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -307,3 +331,4 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
+| 21. Agentic Intent Classification | v1.1 | 0/? | Not Started | - |
