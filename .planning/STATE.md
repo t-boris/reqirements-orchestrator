@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 21 of 21 (Jira Sync & Management)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 21-01-PLAN.md (Channel Issue Tracker)
+Last activity: 2026-01-16 — Completed 21-02-PLAN.md (Pinned Board Dashboard)
 
-Progress: █░░░░░░░░░░░░░░░░░░░ 20% (Phase 21)
+Progress: ██░░░░░░░░░░░░░░░░░░ 40% (Phase 21)
 
 ## v1.0 Summary
 
@@ -151,6 +151,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-01 | UPSERT pattern for track() | Re-tracking same issue updates tracked_at and tracked_by |
 | 21-01 | Non-blocking auto-tracking | Failures are logged but don't interrupt user-facing operations |
 | 21-01 | Normalize issue keys to uppercase | Ensures consistency with Jira's format |
+| 21-02 | Rate limit auto-refresh to 30s | Prevents API spam on rapid track/untrack operations |
+| 21-02 | Status categories: open/in_progress/done | Mapped from Jira statuses for dashboard display |
+| 21-02 | Board auto-pinned on post | Visibility as persistent dashboard |
+| 21-02 | Non-blocking refresh failures | Log but don't interrupt user operations |
 
 ### Roadmap Evolution
 
@@ -179,9 +183,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 21-01-PLAN.md (Channel Issue Tracker)
+Stopped at: Completed 21-02-PLAN.md (Pinned Board Dashboard)
 Resume file: None
-Next action: Execute 21-02-PLAN.md (Pinned Board Dashboard)
+Next action: Execute 21-03-PLAN.md (Status Sync Worker)
 
 ## Phase 11 Summary (Complete)
 
