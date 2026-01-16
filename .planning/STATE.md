@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 8 of 12 in current phase
+Plan: 9 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-08-PLAN.md (Patch Mode for Reviews)
+Last activity: 2026-01-16 — Completed 20-09-PLAN.md (Multi-Ticket Foundation)
 
-Progress: ███████░░░░░░░░░░░░░ 67% (Phase 20)
+Progress: ████████░░░░░░░░░░░░ 75% (Phase 20)
 
 ## v1.0 Summary
 
@@ -135,6 +135,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-08 | Patch mode as default for review continuations | Reduces expensive full regeneration on every user answer |
 | 20-08 | 4-section patch structure | New Decisions, New Risks, New Open Questions, Changes Since (max 12 bullets) |
 | 20-08 | Full synthesis via explicit button | "Show Full Architecture" triggers complete document generation |
+| 20-09 | Stories linked to Epic via parent_id | Not Jira subtasks - configurable Epic-Story relationship |
+| 20-09 | Quantity threshold >3 items | Small batches (2-3) proceed without confirmation |
+| 20-09 | Size threshold 10k chars | Large batches offer split option |
 
 ### Roadmap Evolution
 
@@ -160,9 +163,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-08-PLAN.md (Patch Mode for Reviews)
+Stopped at: Completed 20-09-PLAN.md (Multi-Ticket Foundation)
 Resume file: None
-Next action: Execute 20-09-PLAN.md
+Next action: Execute 20-10-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
