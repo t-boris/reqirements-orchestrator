@@ -26,6 +26,7 @@ class IntentType(str, Enum):
     TICKET_ACTION = "TICKET_ACTION"  # Work with existing ticket (subtask, update, etc.)
     DECISION_APPROVAL = "DECISION_APPROVAL"  # User approving review/architecture discussion
     REVIEW_CONTINUATION = "REVIEW_CONTINUATION"  # Answering questions from previous review
+    AMBIGUOUS = "AMBIGUOUS"  # Intent unclear - triggers scope gate for user to decide
 
 
 class IntentResult(BaseModel):
@@ -89,6 +90,11 @@ REVIEW_PATTERNS = [
     (r"\barchitecture\s+review\b", "pattern: architecture review", "architect"),
     (r"\barchitect(?:ure)?\s+perspective\b", "pattern: architect perspective", "architect"),
     (r"\bpropose\s+(?:an?\s+)?architecture\b", "pattern: propose architecture", "architect"),
+    # Help requests for architecture/design (always REVIEW, never TICKET)
+    (r"\bhelp\s+(?:me\s+)?(?:to\s+)?(?:organize|design|architect|plan|structure)\s+(?:an?\s+)?architecture\b", "pattern: help organize/design architecture", "architect"),
+    (r"\bhelp\s+(?:me\s+)?(?:with|to\s+design)\s+(?:an?\s+)?(?:architecture|system|design)\b", "pattern: help with architecture/design", "architect"),
+    (r"\bhelp\s+(?:me\s+)?architect\b", "pattern: help architect", "architect"),
+    (r"\bneed\s+(?:help|guidance|advice)\s+(?:with|on|for)\s+(?:architecture|design|system\s+design)\b", "pattern: need help with architecture", "architect"),
     # Review with persona hint (pm)
     (r"\breview\s+(?:this\s+)?as\s+pm\b", "pattern: review as pm", "pm"),
     (r"\breview\s+from\s+pm\b", "pattern: review from pm", "pm"),
@@ -322,16 +328,25 @@ where the bot just provided an architecture review with open questions.
 
 User message: "{message}"
 
-If the message looks like answers to questions (e.g., "Option A", "Yes",
-key-value pairs, bullet points, comma-separated choices), classify as REVIEW_CONTINUATION.
+REVIEW_CONTINUATION applies to ANY message that continues the architecture discussion:
+- Answering the bot's open questions (e.g., "1. We'll use Okta", "Option A", "Yes")
+- Requesting to see the updated architecture after providing answers (e.g., "What is the architecture now?", "Show me the design", "Create updated architecture")
+- Asking follow-up questions about the review (e.g., "What about security?", "How does caching work?")
+- Providing additional context or constraints (e.g., "We also need to support mobile", "Budget is $50k")
 
-Only classify as TICKET if user explicitly asks for a new ticket.
+DECISION_APPROVAL is when user approves the current approach as final (e.g., "Let's go with this", "Approved", "Ship it").
+
+TICKET is ONLY for explicit new ticket creation requests (e.g., "Create a ticket for this", "File a bug").
+
+DISCUSSION is for generic conversation unrelated to the review (e.g., "Thanks", "What can you do?").
+
+DEFAULT: When in doubt, if the message relates to the architecture review at all, choose REVIEW_CONTINUATION.
 
 Categories:
-- REVIEW_CONTINUATION: Answering questions from previous review
-- DECISION_APPROVAL: Approving the reviewed approach ("let's go with this", "approved")
+- REVIEW_CONTINUATION: Any message continuing the architecture discussion (answering questions, requesting updates, follow-ups)
+- DECISION_APPROVAL: Approving the reviewed approach as final
 - TICKET: Explicitly requesting a new Jira ticket
-- DISCUSSION: General conversation, clarifying question
+- DISCUSSION: Generic conversation unrelated to review
 
 Respond in this exact format:
 INTENT: <REVIEW_CONTINUATION|DECISION_APPROVAL|TICKET|DISCUSSION>
@@ -348,15 +363,16 @@ Classify into ONE category:
 - TICKET_ACTION: User wants to work with an EXISTING ticket by reference (e.g., "create subtasks for SCRUM-123", "update PROJ-456", "add comment to ABC-789")
 - REVIEW: User wants analysis, feedback, or discussion without creating a Jira ticket (e.g., "what do you think about X", "review this design", "analyze the risks")
 - DISCUSSION: Casual greeting, simple question about the bot, or conversation that requires no action (e.g., "hi", "thanks", "what can you do")
+- AMBIGUOUS: User intent is unclear - could be either a ticket request or a review request. Use when message could reasonably go either way (e.g., "what do you think about microservices?", "we should probably do something about auth")
 
 Respond in this exact format:
-INTENT: <TICKET|TICKET_ACTION|REVIEW|DISCUSSION>
+INTENT: <TICKET|TICKET_ACTION|REVIEW|DISCUSSION|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 REASON: <brief explanation>
 TICKET_KEY: <ticket key if TICKET_ACTION, e.g., "SCRUM-123", otherwise empty>
 ACTION_TYPE: <action if TICKET_ACTION: "create_subtask", "update", "add_comment", "link", otherwise empty>
 
-If the user seems to want to work on something but it's unclear if they want a ticket, lean toward TICKET.
+If the user's intent is unclear (could be ticket OR review), choose AMBIGUOUS.
 If they're asking for feedback or analysis, choose REVIEW.
 If it's just conversation, choose DISCUSSION."""
 
@@ -375,7 +391,7 @@ If it's just conversation, choose DISCUSSION."""
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "DECISION_APPROVAL", "REVIEW_CONTINUATION"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "DECISION_APPROVAL", "REVIEW_CONTINUATION", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
