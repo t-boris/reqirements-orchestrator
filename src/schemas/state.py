@@ -56,18 +56,23 @@ class ReviewState(str, Enum):
     POSTED = "posted"             # Decision posted to channel, can clear context
 
 
-class ReviewArtifact(TypedDict):
+class ReviewArtifact(TypedDict, total=False):
     """Frozen review context for handoff.
 
-    Explicit structure instead of raw review_context dict.
+    Created by decision_approval_node when user approves a review.
+    Preserved in state for ticket/epic creation to reference.
     Used for Review→Ticket handoff after freeze.
     """
-    summary: str  # Compressed review content
-    kind: Literal["architecture", "security", "pm"]  # Which persona gave review
+    summary: str  # Original review content
+    updated_summary: str  # Latest if patched (takes precedence)
+    kind: Literal["architecture", "security", "pm_review"]  # Which persona gave review
     version: int  # For patch mode tracking
     topic: str  # What was reviewed
+    persona: str  # Persona name for display
     frozen_at: str  # ISO timestamp when frozen
     thread_ts: str  # Source thread for reference
+    channel_id: str  # Channel where review happened
+    content_hash: str  # For idempotency - same content = same hash
 
 
 class UserIntent(str, Enum):

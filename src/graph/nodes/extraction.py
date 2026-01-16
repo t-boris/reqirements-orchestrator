@@ -64,7 +64,7 @@ EXTRACTION_PROMPT_WITH_REFERENCE = '''You are extracting requirements from a con
 The user is referencing prior discussion in the thread. Here is the recent context:
 
 {thread_context}
-
+{review_artifact_context}
 ---
 
 Current draft state:
@@ -73,7 +73,7 @@ Current draft state:
 New message to process:
 {message}
 
-Extract information from the user's request, using the thread context as reference material.
+Extract information from the user's request, using the thread context and architecture review as reference material.
 If the user says "create tickets for the architecture" or similar, extract multiple tickets from
 the architecture review sections (components, risks, flows, etc.).
 
@@ -88,7 +88,7 @@ Fields you can update:
 
 Return empty object {{}} if no new information to extract.
 
-IMPORTANT: Only extract factual information stated in the message or thread context. Do not invent or assume.
+IMPORTANT: Only extract factual information stated in the message, thread context, or architecture review. Do not invent or assume.
 
 JSON response:'''
 
@@ -293,33 +293,63 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     # Build conversation context string (Phase 11)
     conversation_context = state.get("conversation_context")
 
-    # If user referenced prior content, use special prompt with thread context
-    if references_prior_content and conversation_context:
+    # Check for review_artifact (frozen architecture review from decision_approval)
+    review_artifact = state.get("review_artifact")
+
+    # If user referenced prior content OR we have review_artifact, use special prompt
+    if (references_prior_content or review_artifact) and (conversation_context or review_artifact):
         # Build thread context from bot's messages (likely reviews/analyses)
-        messages = conversation_context.get("messages", [])
         thread_context_parts = []
+        if conversation_context:
+            conv_messages = conversation_context.get("messages", [])
+            for msg in conv_messages[-10:]:  # Last 10 messages
+                role = msg.get("role", "")
+                content = msg.get("text", "")
 
-        for msg in messages[-10:]:  # Last 10 messages
-            role = msg.get("role", "")
-            content = msg.get("text", "")
-
-            # Include bot messages (likely reviews) and longer human messages
-            if (role == "assistant" and len(content) > 100) or (role == "user" and len(content) > 50):
-                user = msg.get("user", "Assistant" if role == "assistant" else "User")
-                thread_context_parts.append(f"[{user}]: {content}")
+                # Include bot messages (likely reviews) and longer human messages
+                if (role == "assistant" and len(content) > 100) or (role == "user" and len(content) > 50):
+                    user = msg.get("user", "Assistant" if role == "assistant" else "User")
+                    thread_context_parts.append(f"[{user}]: {content}")
 
         thread_context = "\n\n".join(thread_context_parts) if thread_context_parts else "No prior content found"
+
+        # Build review artifact context (CRITICAL: preserves architecture after approval)
+        review_artifact_context = ""
+        if review_artifact:
+            artifact_summary = review_artifact.get("updated_summary") or review_artifact.get("summary", "")
+            if artifact_summary:
+                artifact_topic = review_artifact.get("topic", "Architecture Review")
+                artifact_kind = review_artifact.get("kind", "architecture")
+                artifact_persona = review_artifact.get("persona", "")
+                review_artifact_context = f"""
+=== APPROVED {artifact_kind.upper()} REVIEW ===
+Topic: {artifact_topic}
+Reviewed by: {artifact_persona}
+
+{artifact_summary}
+=== END APPROVED REVIEW ===
+"""
+                logger.info(
+                    "Injecting review_artifact into extraction context",
+                    extra={
+                        "artifact_kind": artifact_kind,
+                        "artifact_topic": artifact_topic,
+                        "content_hash": review_artifact.get("content_hash", ""),
+                    }
+                )
 
         logger.info(
             "Using reference-aware extraction prompt",
             extra={
                 "has_thread_context": bool(thread_context_parts),
                 "context_messages": len(thread_context_parts),
+                "has_review_artifact": bool(review_artifact),
             }
         )
 
         prompt = EXTRACTION_PROMPT_WITH_REFERENCE.format(
             thread_context=thread_context,
+            review_artifact_context=review_artifact_context,
             draft_json=draft_json,
             message=message_text,
         )
