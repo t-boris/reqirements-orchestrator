@@ -165,6 +165,20 @@ async def _process_thread_message(
 
         runner = get_runner(identity)
 
+        # Check for active review_context - treat as REVIEW_CONTINUATION (Phase 20)
+        state = await runner._get_current_state()
+        review_context = state.get("review_context")
+
+        if review_context:
+            logger.info("Active review_context found - forcing REVIEW_CONTINUATION intent")
+            # Force intent to REVIEW_CONTINUATION
+            state["intent_result"] = {
+                "intent": "REVIEW_CONTINUATION",
+                "confidence": 1.0,
+                "reasons": ["event_router: active review_context detected"],
+            }
+            await runner.graph.aupdate_state(runner._config, state)
+
         # Build conversation context BEFORE running graph (Phase 11)
         conversation_context = await _build_conversation_context(
             client=client,

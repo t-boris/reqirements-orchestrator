@@ -168,6 +168,16 @@ async def route_event(
             pending_action=pending_action,
         )
 
+    # Step 2.5: Active review_context -> treat as REVIEW continuation
+    # If there's a review_context, user replies are answers to open questions
+    review_context = state.get("review_context")
+    if review_context:
+        logger.info("Active review_context found - routing as REVIEW continuation")
+        return RoutingDecision(
+            result=RouteResult.CONTINUATION,
+            pending_action=PendingAction.WAITING_APPROVAL,  # Review waiting for answers
+        )
+
     # Step 3: Thread default intent (if "Remember" was selected)
     thread_default = state.get("thread_default_intent")
     if thread_default:

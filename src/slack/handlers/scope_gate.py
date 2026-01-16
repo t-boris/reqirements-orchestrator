@@ -144,8 +144,68 @@ def _store_thread_default(channel_id: str, thread_ts: str, intent: UserIntent):
 def _route_to_flow(body: dict, client: WebClient, intent: UserIntent):
     """Re-route original message to the selected flow.
 
-    TODO: This needs integration with graph runner.
-    For now, log the routing decision.
+    Runs the graph with forced intent (REVIEW or TICKET).
+    Uses the user_message saved in state during scope_gate_node.
     """
+    import asyncio
+    from src.graph.runner import get_runner
+    from src.slack.session import SessionIdentity
+    from src.slack.handlers.dispatch import _dispatch_result
+
     logger.info(f"Routing to {intent.value} flow after scope gate selection")
-    # Integration with graph runner in a later plan
+
+    # Extract identity from body
+    channel = body.get("channel", {}).get("id")
+    thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
+    team_id = body.get("team", {}).get("id") or body.get("user", {}).get("team_id")
+    user_id = body.get("user", {}).get("id")
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    async def _run_with_forced_intent():
+        runner = get_runner(identity)
+
+        # Get current state to retrieve user_message
+        state = await runner._get_current_state()
+        user_message = state.get("user_message", "")
+
+        if not user_message:
+            logger.warning("No user_message found in state for scope gate routing")
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text="Sorry, I lost track of your original request. Please try again.",
+            )
+            return
+
+        # Force the intent in state before running
+        forced_intent_result = {
+            "intent": intent.value,
+            "confidence": 1.0,
+            "reasons": [f"scope_gate: user selected {intent.value}"],
+        }
+
+        # Update state with forced intent
+        state["intent_result"] = forced_intent_result
+        state["pending_action"] = None  # Clear pending action
+        state["workflow_step"] = None
+
+        await runner.graph.aupdate_state(runner._config, state)
+
+        # Run graph - it will use the forced intent
+        result = await runner.run_with_message(user_message, user_id)
+
+        # Dispatch result
+        await _dispatch_result(result, identity, client, runner, tracker=None)
+
+    # Run async function from sync context
+    from src.slack.handlers.core import _background_loop
+    if _background_loop and _background_loop.is_running():
+        asyncio.run_coroutine_threadsafe(_run_with_forced_intent(), _background_loop)
+    else:
+        # Fallback - create new event loop
+        asyncio.run(_run_with_forced_intent())
