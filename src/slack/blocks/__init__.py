@@ -5,6 +5,7 @@ This package contains block builders split by purpose:
 - duplicates: Duplicate ticket handling
 - decisions: Architecture decision posts
 - ui: Generic UI elements (hints, buttons, help)
+- review: Patch mode and full synthesis review UIs
 """
 
 from src.slack.blocks.draft import (
@@ -30,6 +31,10 @@ from src.slack.blocks.scope_gate import (
     build_scope_gate_dismissed_blocks,
     build_scope_gate_remembered_blocks,
 )
+from src.slack.blocks.review import (
+    build_patch_review_blocks,
+    build_full_synthesis_blocks,
+)
 
 __all__ = [
     # Draft
@@ -52,4 +57,7 @@ __all__ = [
     "build_scope_gate_blocks",
     "build_scope_gate_dismissed_blocks",
     "build_scope_gate_remembered_blocks",
+    # Review
+    "build_patch_review_blocks",
+    "build_full_synthesis_blocks",
 ]
