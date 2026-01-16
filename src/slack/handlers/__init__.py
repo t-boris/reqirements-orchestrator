@@ -105,6 +105,8 @@ from src.slack.handlers.sync import (
     handle_sync_use_jira,
     handle_sync_skip,
     handle_sync_cancel,
+    handle_sync_merge,
+    handle_sync_merge_submit,
 )
 
 __all__ = [
@@ -166,4 +168,6 @@ __all__ = [
     "handle_sync_use_jira",
     "handle_sync_skip",
     "handle_sync_cancel",
+    "handle_sync_merge",
+    "handle_sync_merge_submit",
 ]

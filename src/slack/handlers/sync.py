@@ -603,3 +603,324 @@ def handle_sync_cancel(ack, body, client):
             "text": {"type": "mrkdwn", "text": "Sync cancelled"}
         }],
     )
+
+
+def handle_sync_merge(ack, body, client):
+    """Handle sync_merge button click - open merge modal."""
+    ack()
+
+    action = body["actions"][0]
+    data = json.loads(action["value"])
+
+    issue_key = data.get("issue_key")
+    field = data.get("field")
+    slack_value = data.get("slack_value", "")
+    jira_value = data.get("jira_value", "")
+
+    channel_id = body["channel"]["id"]
+    message_ts = body["message"]["ts"]
+    trigger_id = body.get("trigger_id")
+
+    if not trigger_id:
+        logger.warning("No trigger_id for merge modal")
+        return
+
+    # Build modal with both versions for manual merge
+    modal = {
+        "type": "modal",
+        "callback_id": "sync_merge_modal",
+        "private_metadata": json.dumps({
+            "issue_key": issue_key,
+            "field": field,
+            "channel_id": channel_id,
+            "message_ts": message_ts,
+        }),
+        "title": {
+            "type": "plain_text",
+            "text": f"Merge {field}",
+        },
+        "submit": {
+            "type": "plain_text",
+            "text": "Save Merged Version",
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+        },
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{issue_key}* - {field}\n\nCombine both versions below:"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Slack version:*\n```{slack_value[:1000] if slack_value else '(empty)'}```"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Jira version:*\n```{jira_value[:1000] if jira_value else '(empty)'}```"
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "merged_content",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "content",
+                    "multiline": True,
+                    "initial_value": jira_value or slack_value or "",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter merged content..."
+                    }
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Merged Content"
+                }
+            }
+        ]
+    }
+
+    client.views_open(trigger_id=trigger_id, view=modal)
+
+
+def handle_sync_merge_submit(ack, body, view, client):
+    """Handle sync_merge_modal submission."""
+    ack()
+
+    import asyncio
+    asyncio.create_task(_handle_sync_merge_submit_async(body, view, client))
+
+
+async def _handle_sync_merge_submit_async(body, view, client):
+    """Async handler for merge modal submission."""
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+    from src.slack.channel_tracker import trigger_board_refresh
+
+    private_metadata = json.loads(view.get("private_metadata", "{}"))
+    issue_key = private_metadata.get("issue_key")
+    field = private_metadata.get("field")
+    channel_id = private_metadata.get("channel_id")
+    message_ts = private_metadata.get("message_ts")
+
+    # Get merged content from form
+    values = view.get("values", {})
+    merged_content = values.get("merged_content", {}).get("content", {}).get("value", "")
+
+    if not merged_content:
+        logger.warning("Empty merged content submitted")
+        return
+
+    try:
+        settings = get_settings()
+        jira_service = JiraService(settings)
+        jira_url = settings.jira_url.rstrip("/")
+
+        # Apply merged content to Jira
+        if field in ("summary", "description"):
+            await jira_service.update_issue(issue_key, {field: merged_content})
+        elif field == "priority":
+            await jira_service.update_issue(issue_key, {"priority": {"name": merged_content}})
+
+        await jira_service.close()
+
+        # Update original message
+        result_text = f":white_check_mark: *{issue_key}* {field} updated with merged content"
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=result_text,
+            blocks=[{
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": result_text}
+            }],
+        )
+
+        # Trigger board refresh
+        await trigger_board_refresh(channel_id, jira_url)
+
+    except Exception as e:
+        logger.error(f"Merge submit failed: {e}", exc_info=True)
+        # Post error as new message since modal is closed
+        client.chat_postMessage(
+            channel=channel_id,
+            text=f":x: Failed to apply merged content to *{issue_key}*: {str(e)}",
+        )
+
+
+def build_full_conflict_blocks(
+    change,
+    jira_base_url: str = "",
+) -> list[dict]:
+    """Build full-page conflict resolution blocks.
+
+    Shows detailed side-by-side comparison with all resolution options.
+
+    Args:
+        change: ChangeDetection object
+        jira_base_url: Base URL for Jira links
+
+    Returns:
+        List of Slack block objects
+    """
+    blocks = []
+
+    if jira_base_url:
+        link = f"<{jira_base_url}/browse/{change.issue_key}|{change.issue_key}>"
+    else:
+        link = f"*{change.issue_key}*"
+
+    # Header with warning
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": f"Conflict: {change.issue_key} {change.field}",
+            "emoji": True,
+        }
+    })
+
+    # Context about the conflict
+    source_info = ""
+    if change.source.startswith("decision:"):
+        source_info = " (from architecture decision)"
+    elif change.source == "jira_update":
+        source_info = " (updated in Jira)"
+
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": f"Conflict detected{source_info} - choose which version to keep"
+        }]
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Slack version section
+    slack_text = change.slack_value or "(no value)"
+    if len(slack_text) > 2000:
+        slack_text = slack_text[:1997] + "..."
+
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Slack version:*"
+        }
+    })
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f">{slack_text.replace(chr(10), chr(10) + '>')}"
+        }
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Jira version section
+    jira_text = change.jira_value or "(no value)"
+    if len(jira_text) > 2000:
+        jira_text = jira_text[:1997] + "..."
+
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Jira version:*"
+        }
+    })
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f">{jira_text.replace(chr(10), chr(10) + '>')}"
+        }
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Resolution buttons
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Use Slack Version"},
+                "action_id": "sync_use_slack",
+                "value": json.dumps({
+                    "issue_key": change.issue_key,
+                    "field": change.field,
+                    "value": change.slack_value,
+                    "source_ts": change.source_ts,
+                }),
+                "style": "primary",
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Use Jira Version"},
+                "action_id": "sync_use_jira",
+                "value": json.dumps({
+                    "issue_key": change.issue_key,
+                    "field": change.field,
+                    "value": change.jira_value,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Merge..."},
+                "action_id": "sync_merge",
+                "value": json.dumps({
+                    "issue_key": change.issue_key,
+                    "field": change.field,
+                    "slack_value": change.slack_value,
+                    "jira_value": change.jira_value,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Skip"},
+                "action_id": "sync_skip",
+                "value": json.dumps({
+                    "issue_key": change.issue_key,
+                    "field": change.field,
+                }),
+            },
+        ]
+    })
+
+    return blocks
+
+
+async def show_conflict_detail(
+    change,
+    channel_id: str,
+    client: WebClient,
+    jira_base_url: str = "",
+) -> None:
+    """Show detailed conflict resolution UI for a single change.
+
+    Args:
+        change: ChangeDetection object
+        channel_id: Channel to post in
+        client: Slack WebClient
+        jira_base_url: Base URL for Jira links
+    """
+    blocks = build_full_conflict_blocks(change, jira_base_url)
+
+    client.chat_postMessage(
+        channel=channel_id,
+        text=f"Conflict: {change.issue_key} {change.field}",
+        blocks=blocks,
+    )

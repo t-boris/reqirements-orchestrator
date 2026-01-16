@@ -62,6 +62,8 @@ from src.slack.handlers.sync import (
     handle_sync_use_jira,
     handle_sync_skip,
     handle_sync_cancel,
+    handle_sync_merge,
+    handle_sync_merge_submit,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,6 +156,9 @@ def register_handlers(app: App) -> None:
     # Sync actions (Phase 21-04)
     app.action("sync_apply_all")(handle_sync_apply_all)
     app.action("sync_cancel")(handle_sync_cancel)
+    app.action("sync_merge")(handle_sync_merge)
+    # Sync merge modal submission
+    app.view("sync_merge_modal")(handle_sync_merge_submit)
     # Pattern matches: sync_use_slack_*, sync_use_jira_*, sync_skip_*
     app.action(re.compile(r"^sync_use_slack.*"))(handle_sync_use_slack)
     app.action(re.compile(r"^sync_use_jira.*"))(handle_sync_use_jira)
