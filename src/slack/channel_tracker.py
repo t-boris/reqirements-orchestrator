@@ -3,6 +3,7 @@
 Manages channel → Jira issue mappings for sync features.
 MARO needs to know which Jira issues are relevant to each channel.
 """
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,6 +12,41 @@ from typing import Optional
 from psycopg import AsyncConnection
 
 logger = logging.getLogger(__name__)
+
+
+async def trigger_board_refresh(
+    channel_id: str,
+    jira_base_url: str = "",
+) -> bool:
+    """Trigger a board refresh for a channel if a board exists.
+
+    Non-blocking utility that can be called from anywhere to
+    refresh the board after issue status changes.
+
+    Args:
+        channel_id: Slack channel ID.
+        jira_base_url: Base URL for Jira links.
+
+    Returns:
+        True if board was refreshed, False otherwise.
+    """
+    try:
+        from src.db import get_connection
+        from src.slack.pinned_board import PinnedBoardManager
+        from src.slack.app import get_slack_client
+
+        client = get_slack_client()
+        if not client:
+            logger.debug("No Slack client available for board refresh")
+            return False
+
+        async with get_connection() as conn:
+            manager = PinnedBoardManager(jira_base_url=jira_base_url)
+            return await manager.refresh_if_exists(client, channel_id, conn)
+
+    except Exception as e:
+        logger.debug(f"Board refresh trigger failed: {e}")
+        return False
 
 
 @dataclass

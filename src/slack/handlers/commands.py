@@ -240,9 +240,9 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     elif subcommand == "help":
         await _handle_maro_help(channel, client)
     elif subcommand == "track":
-        await _handle_maro_track(channel, user_id, args, say)
+        await _handle_maro_track(channel, user_id, args, client, say)
     elif subcommand == "untrack":
-        await _handle_maro_untrack(channel, args, say)
+        await _handle_maro_untrack(channel, args, client, say)
     elif subcommand == "tracked":
         await _handle_maro_tracked(channel, say)
     elif subcommand == "board":
@@ -408,11 +408,13 @@ async def _handle_maro_track(
     channel_id: str,
     user_id: str,
     issue_keys: list[str],
+    client: WebClient,
     say,
 ):
     """Handle /maro track SCRUM-123 [SCRUM-124 ...] - add issues to tracked list."""
     from src.db import get_connection
     from src.slack.channel_tracker import ChannelIssueTracker
+    from src.slack.pinned_board import PinnedBoardManager
     from src.jira.client import JiraService
     from src.config.settings import get_settings
 
@@ -499,6 +501,16 @@ async def _handle_maro_track(
 
         say(text="\n\n".join(response_parts), channel=channel_id)
 
+        # Refresh board if it exists (non-blocking)
+        if tracked:
+            try:
+                async with get_connection() as conn:
+                    manager = PinnedBoardManager(jira_base_url=jira_url)
+                    await manager.refresh_if_exists(client, channel_id, conn)
+            except Exception as e:
+                # Non-blocking - log and continue
+                logger.debug(f"Board refresh after track failed: {e}")
+
     except Exception as e:
         logger.error(f"Failed to track issues: {e}", exc_info=True)
         say(
@@ -510,11 +522,14 @@ async def _handle_maro_track(
 async def _handle_maro_untrack(
     channel_id: str,
     issue_keys: list[str],
+    client: WebClient,
     say,
 ):
     """Handle /maro untrack SCRUM-123 - remove issue from tracked list."""
     from src.db import get_connection
     from src.slack.channel_tracker import ChannelIssueTracker
+    from src.slack.pinned_board import PinnedBoardManager
+    from src.config.settings import get_settings
 
     if not issue_keys:
         say(
@@ -527,6 +542,9 @@ async def _handle_maro_untrack(
     issue_key = issue_keys[0].upper()
 
     try:
+        settings = get_settings()
+        jira_url = settings.jira_url.rstrip("/")
+
         async with get_connection() as conn:
             tracker = ChannelIssueTracker(conn)
             removed = await tracker.untrack(channel_id, issue_key)
@@ -536,6 +554,15 @@ async def _handle_maro_untrack(
                 text=f"*{issue_key}* is no longer tracked in this channel.",
                 channel=channel_id,
             )
+
+            # Refresh board if it exists (non-blocking)
+            try:
+                async with get_connection() as conn:
+                    manager = PinnedBoardManager(jira_base_url=jira_url)
+                    await manager.refresh_if_exists(client, channel_id, conn)
+            except Exception as e:
+                # Non-blocking - log and continue
+                logger.debug(f"Board refresh after untrack failed: {e}")
         else:
             say(
                 text=f"*{issue_key}* is not tracked in this channel.",

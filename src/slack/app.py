@@ -1,8 +1,11 @@
 """Slack Bolt application with Socket Mode."""
 
 import logging
+from typing import Optional
+
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_sdk.web import WebClient
 
 from src.config import get_settings
 
@@ -10,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 _app: App | None = None
 _handler: SocketModeHandler | None = None
+
+
+def get_slack_client() -> Optional[WebClient]:
+    """Get the Slack WebClient from the app.
+
+    Returns the WebClient if the app has been initialized, None otherwise.
+    Useful for triggering operations outside of handler context.
+    """
+    if _app is None:
+        return None
+    return _app.client
 
 
 def get_slack_app() -> App:
