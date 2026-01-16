@@ -880,8 +880,16 @@ async def _link_decision_to_jira(
         )
 
         if not related_issues:
-            # No related issues found - decision just stays in channel
-            logger.debug("No related Jira issues found for decision")
+            # No related issues found now, but record for later sync
+            logger.debug("No related Jira issues found for decision - recording for sync")
+            await linker.record_decision_sync(
+                channel_id=channel_id,
+                decision_ts=thread_ts,
+                topic=topic,
+                decision_text=decision_text,
+                related_issues=[],
+                synced_to_jira=False,  # Not synced yet - will appear in /maro sync
+            )
             await linker.close()
             return
 

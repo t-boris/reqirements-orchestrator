@@ -312,6 +312,45 @@ Be concise. This will be posted to the channel as a permanent record.
                 }
             )
 
+        # Record decision for sync tracking (Phase 21-04)
+        from src.slack.decision_linker import DecisionLinker
+        from src.slack.thread_bindings import get_binding_store
+
+        linker = DecisionLinker()
+
+        # Check for thread binding
+        binding_store = get_binding_store()
+        binding = await binding_store.get_binding(channel_id, thread_ts)
+        thread_binding = binding.issue_key if binding else None
+
+        # Find related issues
+        related_issues = await linker.find_related_issues(
+            decision_topic=extracted_topic,
+            decision_text=decision_text,
+            channel_id=channel_id,
+            thread_binding=thread_binding,
+        )
+
+        # Record decision
+        await linker.record_decision_sync(
+            channel_id=channel_id,
+            decision_ts=thread_ts,
+            topic=extracted_topic,
+            decision_text=decision_text,
+            related_issues=related_issues,
+            synced_to_jira=False,  # User can manually sync via /maro sync
+        )
+
+        await linker.close()
+
+        logger.info(
+            "Decision recorded for sync tracking",
+            extra={
+                "topic": extracted_topic,
+                "related_issues": related_issues,
+            }
+        )
+
     except Exception as e:
         logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
         client.chat_postMessage(
