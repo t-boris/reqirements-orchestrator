@@ -285,26 +285,35 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 ### Phase 21: Jira Sync & Management
 **Goal**: Make MARO the single interface for Jira - channel-level tracking, smart auto-sync, natural language commands
 **Depends on**: Phase 20
-**Research**: None (todo captured from user feedback)
-**Plans**: TBD
+**Research**: Complete (21-CONTEXT.md)
+**Plans**: 5 plans in 3 waves
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 21 to break down)
+- [ ] 21-01: Channel Issue Tracker (Wave 1) — PostgreSQL store, /maro track commands, auto-tracking
+- [ ] 21-02: Pinned Board Dashboard (Wave 1) — /maro board command, auto-refresh on changes
+- [ ] 21-03: Natural Language Commands (Wave 2) — "change priority to high", contextual target resolution
+- [ ] 21-04: Smart Sync Engine (Wave 3) — @Maro update Jira, conflict resolution, auto-apply obvious
+- [ ] 21-05: Decision Auto-Update (Wave 3) — Auto-link architecture decisions to Jira tickets
 
-**Problem solved:**
-Current implementation hardcodes specific action types (create_stories, create_subtask, update, add_comment) for TICKET_ACTION. The LLM should decide what to do dynamically, not hardcoded decisions. Classification should have tool access to fetch Jira tickets before deciding.
+**Vision (from 21-CONTEXT.md):**
+MARO becomes the single interface for Jira in Slack. The channel is the source of truth, Jira stays in sync.
 
-**Features (from todo):**
-- [ ] Tool-equipped classification: fetch_jira_ticket(), search_jira(), ask_clarification()
-- [ ] Open-ended action detection instead of fixed action types
-- [ ] Two-phase approach: analyze + gather context, then decide on action
-- [ ] Dynamic operation detection based on full context
+**Features:**
+- [ ] Channel-level Jira issue tracking (not just per-thread)
+- [ ] Pinned board dashboard showing tracked issues with status
+- [ ] Natural language commands: "change priority of that ticket to high"
+- [ ] Smart auto-sync: obvious updates automatic, conflicts require user input
+- [ ] Bidirectional awareness: changes from Slack or Jira are visible
+- [ ] Auto-update Jira when architecture decisions approved (Phase 14 integration)
+- [ ] Delete operations require confirmation even when explicitly requested
 
-**Examples not currently supported:**
-- "Expand all our epics with user stories"
-- "Update the title of SCRUM-113"
-- "Add acceptance criteria to SCRUM-113 based on our discussion"
-- "Split SCRUM-113 into smaller tickets"
+**Key commands:**
+- `/maro track SCRUM-123` — Add issue to channel's tracked list
+- `/maro untrack SCRUM-123` — Remove from tracked list
+- `/maro tracked` — List all tracked issues
+- `/maro board` — Post/update pinned board dashboard
+- `/maro sync` — Detect and apply pending changes
+- `@Maro update Jira issues` — Natural language sync trigger
 
 ## Progress
 
@@ -331,4 +340,4 @@ Current implementation hardcodes specific action types (create_stories, create_s
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
-| 21. Agentic Intent Classification | v1.1 | 0/? | Not Started | - |
+| 21. Jira Sync & Management | v1.1 | 0/5 | Planned | - |
