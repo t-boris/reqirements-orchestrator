@@ -9,13 +9,185 @@ Supports:
 - delete: Delete a ticket (requires confirmation)
 """
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from langchain_core.messages import HumanMessage
 
 from src.schemas.state import AgentState
 
+if TYPE_CHECKING:
+    from src.jira.client import JiraService
+
 logger = logging.getLogger(__name__)
+
+
+# Priority normalization mapping
+PRIORITY_NORMALIZATION = {
+    "urgent": "Highest",
+    "highest": "Highest",
+    "high": "High",
+    "medium": "Medium",
+    "normal": "Medium",
+    "low": "Low",
+    "lowest": "Lowest",
+}
+
+# Status normalization mapping (common variations)
+STATUS_NORMALIZATION = {
+    "todo": "To Do",
+    "to do": "To Do",
+    "open": "Open",
+    "in progress": "In Progress",
+    "inprogress": "In Progress",
+    "in-progress": "In Progress",
+    "done": "Done",
+    "closed": "Done",
+    "complete": "Done",
+    "completed": "Done",
+    "resolved": "Done",
+}
+
+
+def normalize_priority(value: str) -> str:
+    """Normalize natural language priority to Jira priority name.
+
+    Args:
+        value: User's priority value (e.g., "high", "urgent")
+
+    Returns:
+        Jira priority name (e.g., "High", "Highest")
+    """
+    return PRIORITY_NORMALIZATION.get(value.lower().strip(), value.title())
+
+
+def normalize_status(value: str, project_statuses: list[str] | None = None) -> str:
+    """Normalize natural language status to Jira status name.
+
+    Args:
+        value: User's status value (e.g., "done", "in progress")
+        project_statuses: Available statuses in the project (optional)
+
+    Returns:
+        Jira status name
+    """
+    value_lower = value.lower().strip().replace("-", " ")
+
+    # First try direct mapping
+    if value_lower in STATUS_NORMALIZATION:
+        normalized = STATUS_NORMALIZATION[value_lower]
+
+        # If we have project statuses, validate against them
+        if project_statuses:
+            # Exact match
+            if normalized in project_statuses:
+                return normalized
+
+            # Case-insensitive match
+            for status in project_statuses:
+                if status.lower() == normalized.lower():
+                    return status
+
+        return normalized
+
+    # Try matching against project statuses directly
+    if project_statuses:
+        value_clean = value_lower.replace(" ", "")
+        for status in project_statuses:
+            if status.lower().replace(" ", "") == value_clean:
+                return status
+
+    # Return title-cased as fallback
+    return value.title()
+
+
+async def resolve_assignee(slack_mention: str, jira_service: "JiraService") -> Optional[str]:
+    """Resolve Slack mention to Jira accountId.
+
+    Args:
+        slack_mention: Slack mention like "@john" or "<@U12345>"
+        jira_service: JiraService instance
+
+    Returns:
+        Jira accountId or None if not found
+    """
+    # Extract username from mention
+    if slack_mention.startswith("<@") and slack_mention.endswith(">"):
+        # Slack user ID format: <@U12345>
+        # Would need Slack API to get display name, then search Jira
+        # For now, return the ID and let Jira try to match
+        slack_user_id = slack_mention[2:-1]
+        logger.info(f"Slack user ID extracted: {slack_user_id}")
+        # TODO: Look up Slack user, get email, search Jira users
+        return None
+
+    # Plain username like "@john" or "john"
+    username = slack_mention.lstrip("@").strip()
+
+    try:
+        # Search Jira users
+        response = await jira_service._request(
+            "GET",
+            "/rest/api/3/user/search",
+            params={"query": username, "maxResults": 5},
+        )
+
+        if response and len(response) > 0:
+            # Return first match's accountId
+            return response[0].get("accountId")
+
+    except Exception as e:
+        logger.warning(f"Failed to search Jira users for '{username}': {e}")
+
+    return None
+
+
+async def normalize_field_value(
+    field: str,
+    value: str,
+    jira_service: "JiraService",
+    issue_key: str,
+) -> str:
+    """Normalize natural language field value to Jira-compatible value.
+
+    Args:
+        field: Field name (priority, status, assignee, etc.)
+        value: User's value
+        jira_service: JiraService instance
+        issue_key: Issue key for context (status transitions)
+
+    Returns:
+        Normalized value for Jira API
+    """
+    if field == "priority":
+        return normalize_priority(value)
+
+    elif field == "status":
+        # Get available transitions for this issue
+        try:
+            response = await jira_service._request(
+                "GET",
+                f"/rest/api/3/issue/{issue_key}/transitions",
+            )
+            transitions = response.get("transitions", [])
+            available_statuses = [t.get("to", {}).get("name") for t in transitions]
+            available_statuses = [s for s in available_statuses if s]  # Filter None
+
+            return normalize_status(value, available_statuses)
+
+        except Exception as e:
+            logger.warning(f"Failed to get transitions for {issue_key}: {e}")
+            return normalize_status(value)
+
+    elif field == "assignee":
+        # Try to resolve to accountId
+        account_id = await resolve_assignee(value, jira_service)
+        if account_id:
+            return account_id
+        # Return original if not resolved - will show error in Jira
+        return value
+
+    # For other fields, return as-is
+    return value
 
 
 async def _resolve_contextual_target(
