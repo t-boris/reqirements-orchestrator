@@ -34,6 +34,20 @@ class ReviewState(str, Enum):
     POSTED = "posted"             # Decision posted to channel, can clear context
 
 
+class UserIntent(str, Enum):
+    """Pure user intent - what the user wants, not workflow state.
+
+    This is separate from workflow events (button clicks, approvals) which
+    are handled by PendingAction. UserIntent represents the semantic meaning
+    of what the user is asking for.
+    """
+    TICKET = "ticket"           # Create a Jira ticket
+    REVIEW = "review"           # Analysis/feedback without Jira
+    DISCUSSION = "discussion"   # Casual greeting, simple question
+    META = "meta"               # Questions about the bot itself
+    AMBIGUOUS = "ambiguous"     # Unclear intent, triggers scope gate
+
+
 class AgentState(TypedDict):
     """State for the Analyst Agent in LangGraph.
 
