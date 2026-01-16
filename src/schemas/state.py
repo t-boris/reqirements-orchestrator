@@ -189,6 +189,17 @@ class AgentState(TypedDict):
     #     "created_at": float,             # Unix timestamp when review was created
     # }
 
+    # Workflow state (Phase 20 - Brain Refactor)
+    # Replaces overloaded intent with explicit workflow state
+    pending_action: Optional[PendingAction]  # What workflow is waiting for
+    pending_payload: Optional[dict[str, Any]]  # Minimal refs for pending action (story_id, draft_id)
+    workflow_step: Optional[WorkflowStep]  # Current workflow position (typed, not str)
+    ui_version: int  # Incremented on each preview update (for stale button detection)
+
+    # Event tracking for idempotency
+    last_event_id: Optional[str]  # Last processed event ID
+    last_event_type: Optional[WorkflowEventType]  # Type of last event
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
