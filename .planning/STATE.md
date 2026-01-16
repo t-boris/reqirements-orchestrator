@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 18 of 18 (Clean Code)
-Plan: 4 of 4 in current phase (Plans 1-4 complete)
-Status: Phase complete
-Last activity: 2026-01-15 — Completed 18-04-PLAN.md (Clean Code Audit)
+Phase: 20 of 20 (Brain Refactor)
+Plan: 2 of 12 in current phase
+Status: In progress
+Last activity: 2026-01-15 — Completed 20-02-PLAN.md (Event Store)
 
-Progress: ████████████████████ 100% (Phase 18)
+Progress: ██░░░░░░░░░░░░░░░░░░ 17% (Phase 20)
 
 ## v1.0 Summary
 
@@ -111,6 +111,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 18-01 | Module organization by responsibility | core/dispatch/draft/duplicates/commands/onboarding/review/misc |
 | 18-04 | Accept 21 functions >100 lines | Dispatchers, UI builders, state machines - splitting would harm readability |
 | 18-04 | Body extraction pattern inline | 4-5 lines inline clearer than helper function |
+| 20-02 | Use psycopg v3 for EventStore | Match existing db module pattern (not asyncpg) |
+| 20-02 | 24h TTL for event cleanup | Balance between dedup window and storage |
+| 20-02 | INSERT ON CONFLICT DO NOTHING | Race-safe marking without transactions |
 
 ### Roadmap Evolution
 
@@ -136,9 +139,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-15
-Stopped at: Completed 18-04-PLAN.md (Clean Code Audit)
+Stopped at: Completed 20-02-PLAN.md (Event Store)
 Resume file: None
-Next action: Complete milestone (all Phase 18 plans done)
+Next action: Execute 20-03-PLAN.md (Event Routing Integration)
 
 ## Phase 11 Summary (Complete)
 
