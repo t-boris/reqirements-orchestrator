@@ -469,3 +469,149 @@ def _build_edit_item_modal(
     }
 
     return modal
+
+
+def handle_multi_ticket_edit_submit(ack, body, client: WebClient, view) -> None:
+    """Handle edit item modal submission.
+
+    Update item in state and refresh preview message.
+
+    Args:
+        ack: Slack ack function
+        body: Slack view submission body
+        client: Slack WebClient for API calls
+        view: Slack view object with submitted values
+    """
+    ack()
+    _run_async(_handle_multi_ticket_edit_submit_async(body, client, view))
+
+
+async def _handle_multi_ticket_edit_submit_async(body, client: WebClient, view) -> None:
+    """Update item in state and refresh preview.
+
+    1. Parse form values from view["state"]["values"]
+    2. Get item_id and message context from private_metadata
+    3. Update item in multi_ticket_state.items
+    4. Rebuild preview blocks with updated item
+    5. Update the preview message using client.chat_update()
+    """
+    user_id = body.get("user", {}).get("id")
+    view_state = view.get("state", {}).get("values", {})
+    private_metadata_raw = view.get("private_metadata", "{}")
+
+    # Parse private metadata
+    try:
+        private_metadata = json.loads(private_metadata_raw)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
+        return
+
+    item_id = private_metadata.get("item_id", "")
+    channel_id = private_metadata.get("channel_id", "")
+    thread_ts = private_metadata.get("thread_ts", "")
+    message_ts = private_metadata.get("message_ts", "")
+
+    logger.info(
+        "Processing multi-ticket edit submit",
+        extra={
+            "item_id": item_id,
+            "channel_id": channel_id,
+            "user_id": user_id,
+        }
+    )
+
+    if not channel_id or not thread_ts:
+        logger.error("Missing channel_id or thread_ts in private_metadata")
+        return
+
+    # Parse submitted values
+    title = view_state.get("title_block", {}).get("title", {}).get("value", "")
+    item_type = view_state.get("type_block", {}).get("item_type", {}).get("selected_option", {}).get("value", "story")
+    description = view_state.get("description_block", {}).get("description", {}).get("value", "")
+    problem_statement = view_state.get("problem_block", {}).get("problem_statement", {}).get("value") or ""
+    acceptance_criteria = view_state.get("acceptance_criteria_block", {}).get("acceptance_criteria", {}).get("value") or ""
+
+    # Get runner and current state
+    team_id = body.get("team", {}).get("id", "unknown")
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for edit submit: {e}", exc_info=True)
+        return
+
+    multi_ticket_state = state.get("multi_ticket_state")
+    if not multi_ticket_state:
+        logger.warning("No multi_ticket_state found during edit submit")
+        return
+
+    items = multi_ticket_state.get("items", [])
+
+    # Find and update the item
+    item_found = False
+    for item in items:
+        if item.get("id") == item_id:
+            item["title"] = title
+            item["type"] = item_type
+            item["description"] = description
+            item["problem_statement"] = problem_statement
+            item["acceptance_criteria"] = acceptance_criteria
+            item_found = True
+            break
+
+    if not item_found:
+        logger.warning(f"Item {item_id} not found during edit submit")
+        return
+
+    # Update state with modified items
+    multi_ticket_state["items"] = items
+    ui_version = state.get("ui_version", 0) + 1
+
+    await runner.update_state({
+        "multi_ticket_state": multi_ticket_state,
+        "ui_version": ui_version,
+    })
+
+    # Rebuild and update preview message
+    from src.slack.blocks.multi_ticket import build_multi_ticket_preview_blocks
+
+    # Get source context from review_artifact if available
+    review_artifact = state.get("review_artifact", {})
+    source_persona = review_artifact.get("persona", "")
+    source_date = ""
+    if review_artifact.get("frozen_at"):
+        # Extract date from ISO timestamp
+        frozen_at = review_artifact.get("frozen_at", "")
+        if frozen_at:
+            source_date = frozen_at.split("T")[0] if "T" in frozen_at else frozen_at
+
+    preview_blocks = build_multi_ticket_preview_blocks(
+        items=items,
+        ui_version=ui_version,
+        source_persona=source_persona,
+        source_date=source_date,
+    )
+
+    # Update the preview message
+    if message_ts:
+        try:
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text=f"Create {len(items)} Jira Tickets",
+                blocks=preview_blocks,
+            )
+            logger.info(
+                "Preview updated after edit",
+                extra={"item_id": item_id, "message_ts": message_ts},
+            )
+        except Exception as e:
+            logger.error(f"Failed to update preview message: {e}", exc_info=True)
+    else:
+        logger.warning("No message_ts available to update preview")
