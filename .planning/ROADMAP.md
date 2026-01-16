@@ -260,9 +260,9 @@ Plans:
 - [x] 20-06: Scope Gate for AMBIGUOUS Intent (Wave 3) — completed 2026-01-16
 - [x] 20-07: ReviewArtifact with Freeze Semantics (Wave 4) — completed 2026-01-16
 - [x] 20-08: Patch Mode for Reviews (Wave 4) — completed 2026-01-16
-- [ ] 20-09: Review Lifecycle (Wave 4)
-- [ ] 20-10: Multi-Ticket Flow (Wave 5)
-- [ ] 20-11: Context Persistence (Wave 6)
+- [x] 20-09: Review Lifecycle (Wave 4) — completed 2026-01-16
+- [x] 20-10: Multi-Ticket Flow (Wave 5) — completed 2026-01-16
+- [x] 20-11: Context Persistence (Wave 6) — completed 2026-01-16
 - [ ] 20-12: Integration Tests (Wave 6)
 
 **Problem solved:**
