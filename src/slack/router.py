@@ -43,6 +43,10 @@ from src.slack.handlers.scope_gate import (
     handle_scope_gate_ticket,
     handle_scope_gate_dismiss,
 )
+from src.slack.handlers.stories import (
+    handle_create_stories_confirm,
+    handle_create_stories_cancel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,4 +119,8 @@ def register_handlers(app: App) -> None:
     app.action("scope_gate_ticket")(handle_scope_gate_ticket)
     app.action("scope_gate_dismiss")(handle_scope_gate_dismiss)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons")
+    # Story creation actions
+    app.action("create_stories_confirm")(handle_create_stories_confirm)
+    app.action("create_stories_cancel")(handle_create_stories_cancel)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories")

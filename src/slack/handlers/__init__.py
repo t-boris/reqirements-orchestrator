@@ -76,6 +76,12 @@ from src.slack.handlers.scope_gate import (
     handle_scope_gate_dismiss,
 )
 
+# Story creation handlers
+from src.slack.handlers.stories import (
+    handle_create_stories_confirm,
+    handle_create_stories_cancel,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -116,4 +122,7 @@ __all__ = [
     "handle_scope_gate_review",
     "handle_scope_gate_ticket",
     "handle_scope_gate_dismiss",
+    # Story creation
+    "handle_create_stories_confirm",
+    "handle_create_stories_cancel",
 ]

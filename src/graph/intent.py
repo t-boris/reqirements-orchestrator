@@ -22,11 +22,14 @@ logger = logging.getLogger(__name__)
 class IntentType(str, Enum):
     """Pure user intent - what user wants (not workflow state).
 
-    Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
-    are now PendingAction values in src/schemas/state.py, not intents.
-    These are detected via event_router before intent classification.
+    Note: DECISION_APPROVAL, REVIEW_CONTINUATION are now PendingAction values
+    in src/schemas/state.py, detected via event_router before intent classification.
+
+    TICKET_ACTION is still classified here because it requires LLM to extract
+    the ticket_key from the user's message.
     """
-    TICKET = "TICKET"       # Create a Jira ticket
+    TICKET = "TICKET"       # Create a NEW Jira ticket
+    TICKET_ACTION = "TICKET_ACTION"  # Action on EXISTING ticket (subtasks, update, comment)
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     META = "META"           # Questions about the bot itself
@@ -40,6 +43,9 @@ class IntentResult(BaseModel):
     persona_hint: Optional[Literal["pm", "architect", "security"]] = None
     topic: Optional[str] = None
     reasons: list[str] = Field(default_factory=list)
+    # For TICKET_ACTION intent
+    ticket_key: Optional[str] = None  # e.g., "SCRUM-113"
+    action_type: Optional[Literal["create_subtask", "create_stories", "update", "add_comment", "link"]] = None
 
 
 async def _llm_classify(message: str, conversation_context: dict | None = None) -> IntentResult:
@@ -78,7 +84,16 @@ CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
 
-- TICKET: User EXPLICITLY wants to create a Jira ticket/story/bug/task
+- TICKET_ACTION: User wants to perform an action on an EXISTING Jira ticket
+  The message must reference a specific ticket key (e.g., SCRUM-123, PROJ-456).
+  Examples:
+  - "create user stories for SCRUM-113" -> action_type=create_stories
+  - "create subtasks for PROJ-456" -> action_type=create_subtask
+  - "add a comment to SCRUM-123" -> action_type=add_comment
+  - "update PROJ-789 with the new requirements" -> action_type=update
+  - "break down SCRUM-100 into stories" -> action_type=create_stories
+
+- TICKET: User wants to create a NEW Jira ticket (no existing ticket referenced)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
 
 - REVIEW: User wants help, analysis, discussion, or feedback WITHOUT creating a ticket
@@ -96,16 +111,20 @@ Classify the user's intent into ONE category:
   This should be RARE. Most requests are clearly REVIEW (discussion/help) or TICKET (explicit creation).
 
 IMPORTANT RULES:
-1. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
-2. "Define architecture" or "design system" = REVIEW (architecture discussion)
-3. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
-4. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
-5. TICKET requires EXPLICIT ticket creation language
+1. If user mentions a ticket key (like SCRUM-XXX, PROJ-XXX) AND wants to create items under it = TICKET_ACTION
+2. "Create stories/subtasks for [TICKET]" = TICKET_ACTION with action_type=create_stories or create_subtask
+3. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
+4. "Define architecture" or "design system" = REVIEW (architecture discussion)
+5. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
+6. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
+7. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
 
 Respond in this exact format:
-INTENT: <TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
+TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
+ACTION_TYPE: <create_stories|create_subtask|update|add_comment|link|none>
 REASON: <brief explanation>"""
 
     try:
@@ -117,12 +136,14 @@ REASON: <brief explanation>"""
         confidence = 0.8
         reason = "llm classification"
         persona_hint = None
+        ticket_key = None
+        action_type = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -135,6 +156,15 @@ REASON: <brief explanation>"""
                 persona_value = line.split(":", 1)[1].strip().lower()
                 if persona_value in ["pm", "architect", "security"]:
                     persona_hint = persona_value
+            elif line.upper().startswith("TICKET_KEY:"):
+                key_value = line.split(":", 1)[1].strip().upper()
+                if key_value and key_value != "NONE":
+                    ticket_key = key_value
+            elif line.upper().startswith("ACTION_TYPE:"):
+                type_value = line.split(":", 1)[1].strip().lower()
+                valid_actions = ["create_stories", "create_subtask", "update", "add_comment", "link"]
+                if type_value in valid_actions:
+                    action_type = type_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -142,6 +172,8 @@ REASON: <brief explanation>"""
             intent=IntentType(intent_str),
             confidence=confidence,
             persona_hint=persona_hint,
+            ticket_key=ticket_key,
+            action_type=action_type,
             reasons=[reason],
         )
 

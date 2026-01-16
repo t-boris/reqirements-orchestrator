@@ -545,12 +545,183 @@ async def _handle_ticket_action(
                 text=f"Failed to add comment to *{ticket_key}*: {str(e)}",
             )
 
+    elif action_type == "create_stories":
+        # Create user stories under an existing epic
+        await _handle_create_stories(result, identity, client, ticket_key)
+
     else:
         # Unknown action type
         client.chat_postMessage(
             channel=identity.channel_id,
             thread_ts=identity.thread_ts,
             text=f"I'm not sure how to help with *{ticket_key}*. Try 'create subtasks for {ticket_key}' or 'link to {ticket_key}'.",
+        )
+
+
+STORY_GENERATION_PROMPT = '''Based on this Epic, generate user stories that break down the work.
+
+Epic Key: {epic_key}
+Epic Title: {epic_title}
+Epic Description:
+{epic_description}
+
+Generate 3-5 user stories that together achieve the Epic's goal.
+Each story should be:
+- Independent (can be worked on separately)
+- Valuable (delivers user value)
+- Estimable (clear enough to estimate)
+
+Return a JSON array:
+[
+  {{
+    "title": "User story title (action-oriented, e.g., 'Add voice command recognition')",
+    "description": "Brief description of what needs to be built and why",
+    "acceptance_criteria": ["Criterion 1", "Criterion 2"]
+  }}
+]
+
+Be specific and technical. These will become Jira tickets.
+'''
+
+
+async def _handle_create_stories(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+    ticket_key: str,
+):
+    """Handle creating user stories under an existing epic."""
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+    from src.llm import get_llm
+    import re
+
+    try:
+        settings = get_settings()
+        jira_service = JiraService(settings)
+
+        # Fetch the epic from Jira
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Fetching *{ticket_key}* from Jira...",
+        )
+
+        epic = await jira_service.get_issue(ticket_key)
+
+        if not epic:
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=f"Could not find *{ticket_key}* in Jira. Please check the ticket key.",
+            )
+            await jira_service.close()
+            return
+
+        logger.info(
+            "Fetched epic for story generation",
+            extra={
+                "epic_key": epic.key,
+                "epic_title": epic.summary,
+                "epic_description_length": len(epic.description or ""),
+            }
+        )
+
+        # Generate stories using LLM
+        llm = get_llm()
+        prompt = STORY_GENERATION_PROMPT.format(
+            epic_key=epic.key,
+            epic_title=epic.summary,
+            epic_description=epic.description or "No description provided",
+        )
+
+        generation_result = await llm.chat(prompt)
+
+        # Parse JSON from response
+        json_match = re.search(r'\[[\s\S]*\]', generation_result)
+        if not json_match:
+            raise ValueError("Could not parse stories from LLM response")
+
+        stories = json.loads(json_match.group())
+
+        if not stories:
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text=f"Could not generate stories for *{ticket_key}*. The epic may need more detail.",
+            )
+            await jira_service.close()
+            return
+
+        # Build preview of generated stories
+        preview_blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":clipboard: *Generated {len(stories)} User Stories for {epic.key}*\n_{epic.summary}_"
+                }
+            },
+            {"type": "divider"},
+        ]
+
+        for i, story in enumerate(stories, 1):
+            title = story.get("title", f"Story {i}")
+            description = story.get("description", "")
+            criteria = story.get("acceptance_criteria", [])
+
+            story_text = f"*{i}. {title}*\n{description}"
+            if criteria:
+                story_text += "\n_Acceptance Criteria:_\n" + "\n".join(f"• {c}" for c in criteria[:3])
+
+            # Truncate if too long for Slack block
+            if len(story_text) > 2900:
+                story_text = story_text[:2897] + "..."
+
+            preview_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": story_text}
+            })
+
+        # Add action buttons
+        preview_blocks.append({"type": "divider"})
+        preview_blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": f"Create {len(stories)} Stories"},
+                    "action_id": "create_stories_confirm",
+                    "value": json.dumps({
+                        "epic_key": epic.key,
+                        "stories": stories,
+                    }),
+                    "style": "primary",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "action_id": "create_stories_cancel",
+                    "value": epic.key,
+                },
+            ]
+        })
+
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Generated {len(stories)} user stories for {epic.key}",
+            blocks=preview_blocks,
+        )
+
+        await jira_service.close()
+
+    except Exception as e:
+        logger.error(f"Failed to generate stories: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Failed to generate stories for *{ticket_key}*: {str(e)}",
         )
 
 
