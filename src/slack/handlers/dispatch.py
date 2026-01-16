@@ -278,41 +278,50 @@ async def _dispatch_result(
                 remaining = remaining[split_at:].lstrip()
 
             # Build blocks - one section per chunk
-            blocks = []
+            all_blocks = []
             for chunk in chunks:
-                blocks.append({
+                all_blocks.append({
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": chunk}
                 })
 
-            # Button value is JSON - keep it compact (< 2000 chars)
-            button_value = json.dumps({
-                "review_text": review_msg[:1500],  # Leave room for JSON overhead
-                "topic": (topic or "")[:100],
-                "persona": persona or "",
-            })
+            # Slack limit: ~50 blocks per message. Split into multiple messages if needed.
+            MAX_BLOCKS_PER_MESSAGE = 45  # Leave room for action button
 
-            # Add action button at the end
-            blocks.append({
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                        "action_id": "review_to_ticket",
-                        "value": button_value,
-                        "style": "primary",
-                    }
-                ]
-            })
+            # Send blocks in batches
+            for i in range(0, len(all_blocks), MAX_BLOCKS_PER_MESSAGE):
+                batch = all_blocks[i:i + MAX_BLOCKS_PER_MESSAGE]
+                is_last_batch = (i + MAX_BLOCKS_PER_MESSAGE >= len(all_blocks))
 
-            # Post review analysis with action button
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts if identity.thread_ts else None,
-                blocks=blocks,
-                text=chunks[0] if chunks else review_msg,  # Fallback text
-            )
+                # Add action button only to the last message
+                if is_last_batch:
+                    button_value = json.dumps({
+                        "review_text": review_msg[:1500],  # Leave room for JSON overhead
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    batch.append({
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                                "action_id": "review_to_ticket",
+                                "value": button_value,
+                                "style": "primary",
+                            }
+                        ]
+                    })
+
+                # Get fallback text from first block in this batch
+                fallback = batch[0]["text"]["text"][:100] if batch else review_msg[:100]
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts if identity.thread_ts else None,
+                    blocks=batch,
+                    text=fallback,
+                )
 
     elif action == "ticket_action":
         # Handle operations on existing tickets (Phase 13.1)

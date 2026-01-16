@@ -94,32 +94,30 @@ User's latest message:
 
 First, determine what the user wants:
 - If they're asking for a FINAL/COMPLETE/FULL architecture summary, provide a comprehensive document
-- If they're providing answers, feedback, or incremental input, provide a PATCH update
+- If they're providing answers, feedback, or incremental input, provide a focused update
 
 For FULL SYNTHESIS (user wants complete summary):
-Provide a complete architecture document covering:
+Provide a complete, detailed architecture document. Be thorough and comprehensive - cover everything discussed. Include:
 1. High-level approach
 2. Key components and interactions
-3. Technical decisions made
+3. Technical decisions made (with rationale)
 4. Implementation considerations
 5. Risks and mitigations
 6. Remaining open questions (if any)
 
-For PATCH UPDATE (user providing incremental input):
-Provide exactly these 4 sections (max 12 bullets total):
-## New Decisions
-[Decisions made based on user's input - max 3 bullets]
-## New Risks
-[New risks identified - max 3 bullets, or "None identified"]
-## New Open Questions
-[Any new questions - max 3 bullets, or "None"]
-## Changes Since v{version}
-[What changed - max 3 bullets]
+For INCREMENTAL UPDATE (user providing answers/feedback):
+Focus on what's new or changed:
+- New decisions based on user's input
+- New risks identified
+- New open questions (if any)
+- What changed from previous version
 
 Format for Slack:
 - Bold: *text* (single asterisks)
 - Lists: Use bullet • or dash -
 - NO ### headers (use *Bold Title:* instead)
+
+Do not artificially limit your response. Provide as much detail as needed for a complete answer.
 '''
 
 
