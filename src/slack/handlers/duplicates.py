@@ -107,6 +107,40 @@ async def _handle_link_duplicate_async(body, client: WebClient, action):
         text=f"Linked to <{issue_url}|{issue_key}>. I'll keep you posted on updates.",
     )
 
+    # Auto-track the linked ticket in the channel (Phase 21)
+    try:
+        from src.db import get_connection
+        from src.slack.channel_tracker import ChannelIssueTracker
+        from src.jira.client import JiraService
+
+        async with get_connection() as conn:
+            tracker = ChannelIssueTracker(conn)
+            await tracker.create_tables()
+            await tracker.track(channel, issue_key, user_id)
+
+            # Try to get current Jira status for sync
+            try:
+                jira_service = JiraService(settings)
+                issue = await jira_service.get_issue(issue_key)
+                if issue:
+                    await tracker.update_sync_status(
+                        channel,
+                        issue_key,
+                        status=issue.status,
+                        summary=issue.summary,
+                    )
+                await jira_service.close()
+            except Exception as e:
+                logger.warning(f"Could not update sync status: {e}")
+
+        logger.info(
+            "Auto-tracked linked ticket",
+            extra={"issue_key": issue_key, "channel": channel},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to auto-track linked ticket: {e}")
+        # Non-blocking - link succeeded
+
 
 def handle_create_anyway(ack, body, client: WebClient, action):
     """Synchronous wrapper for create anyway action.
@@ -409,6 +443,40 @@ async def _handle_modal_link_duplicate_async(body, client: WebClient, action):
         thread_ts=thread_ts,
         text=f"Linked to <{issue_url}|{issue_key}>. I'll keep you posted on updates.",
     )
+
+    # Auto-track the linked ticket in the channel (Phase 21)
+    try:
+        from src.db import get_connection
+        from src.slack.channel_tracker import ChannelIssueTracker
+        from src.jira.client import JiraService
+
+        async with get_connection() as conn:
+            tracker = ChannelIssueTracker(conn)
+            await tracker.create_tables()
+            await tracker.track(channel, issue_key, user_id)
+
+            # Try to get current Jira status for sync
+            try:
+                jira_service = JiraService(settings)
+                issue = await jira_service.get_issue(issue_key)
+                if issue:
+                    await tracker.update_sync_status(
+                        channel,
+                        issue_key,
+                        status=issue.status,
+                        summary=issue.summary,
+                    )
+                await jira_service.close()
+            except Exception as e:
+                logger.warning(f"Could not update sync status: {e}")
+
+        logger.info(
+            "Auto-tracked linked ticket (from modal)",
+            extra={"issue_key": issue_key, "channel": channel},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to auto-track linked ticket: {e}")
+        # Non-blocking - link succeeded
 
 
 def handle_modal_create_anyway(ack, body, client: WebClient, action):

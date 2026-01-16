@@ -383,6 +383,29 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             except Exception as e:
                 logger.warning(f"Failed to post main channel announcement: {e}")
                 # Non-blocking - thread notification already sent
+
+            # Auto-track the created ticket in the channel (Phase 21)
+            try:
+                from src.slack.channel_tracker import ChannelIssueTracker
+
+                async with get_connection() as conn:
+                    tracker = ChannelIssueTracker(conn)
+                    await tracker.create_tables()
+                    await tracker.track(channel, create_result.jira_key, user_id)
+                    # Update sync status with current info
+                    await tracker.update_sync_status(
+                        channel,
+                        create_result.jira_key,
+                        status=draft.issue_type or "Task",
+                        summary=draft.title,
+                    )
+                logger.info(
+                    "Auto-tracked created ticket",
+                    extra={"issue_key": create_result.jira_key, "channel": channel},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to auto-track ticket: {e}")
+                # Non-blocking - ticket creation succeeded
     else:
         # Creation failed after retries - show error with action buttons
         await post_error_actions(client, channel, thread_ts, session_id, button_hash, create_result.error)

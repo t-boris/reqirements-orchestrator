@@ -106,6 +106,43 @@ async def _handle_create_stories_confirm_async(body, client: WebClient, action):
                 text=success_msg,
             )
 
+            # Auto-track created stories in the channel (Phase 21)
+            try:
+                from src.db import get_connection
+                from src.slack.channel_tracker import ChannelIssueTracker
+
+                async with get_connection() as conn:
+                    tracker = ChannelIssueTracker(conn)
+                    await tracker.create_tables()
+
+                    # Track each created story
+                    for story, key in zip(stories, created_keys):
+                        await tracker.track(channel, key, user_id)
+                        await tracker.update_sync_status(
+                            channel,
+                            key,
+                            status="To Do",  # New stories are typically in To Do
+                            summary=story.get("title", key),
+                        )
+
+                    # Also track the epic if not already tracked
+                    if not await tracker.is_tracked(channel, epic_key):
+                        await tracker.track(channel, epic_key, user_id)
+                        await tracker.update_sync_status(
+                            channel,
+                            epic_key,
+                            status=epic.status if epic else "Open",
+                            summary=epic.summary if epic else epic_key,
+                        )
+
+                logger.info(
+                    "Auto-tracked created stories",
+                    extra={"story_keys": created_keys, "epic_key": epic_key, "channel": channel},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to auto-track stories: {e}")
+                # Non-blocking - stories created successfully
+
             # Post announcement to main channel
             epic_url = f"{jira_url}/browse/{epic_key}"
             announcement_blocks = [
