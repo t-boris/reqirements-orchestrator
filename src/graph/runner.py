@@ -357,6 +357,9 @@ class GraphRunner:
         except Exception as e:
             logger.error(f"Failed to update state: {e}", exc_info=True)
 
+    # Public alias for update_state (used by handlers)
+    update_state = _update_state
+
 
 # Session runner cache
 _runners: dict[str, "GraphRunner"] = {}
