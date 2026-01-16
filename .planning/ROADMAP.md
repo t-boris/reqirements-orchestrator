@@ -245,25 +245,25 @@ Large files are hard to maintain. handlers.py at 3193 lines is 5x over the 600-l
 - [x] Audit function length (document >100 line functions as accepted complexity)
 - [x] Audit DRY violations (no significant duplication found)
 
-### Phase 20: Brain Refactor (In Progress)
+### Phase 20: Brain Refactor — COMPLETE
 **Goal**: Separate user intent from workflow events, enable resumable graphs, prevent stale UI
 **Depends on**: Phase 18
 **Research**: Complete (20-CONTEXT.md, BRAIN-ANALYSIS.md)
 **Plans**: 12 plans in 6 waves
 
 Plans:
-- [x] 20-01: State Types (Wave 1) — completed 2026-01-16
-- [x] 20-02: Event Store (Wave 1) — completed 2026-01-16
-- [x] 20-03: Event Validation (Wave 1) — completed 2026-01-16
-- [x] 20-04: Idempotency Integration (Wave 1) — completed 2026-01-16
-- [x] 20-05: Event Router (Wave 2) — completed 2026-01-16
-- [x] 20-06: Scope Gate for AMBIGUOUS Intent (Wave 3) — completed 2026-01-16
-- [x] 20-07: ReviewArtifact with Freeze Semantics (Wave 4) — completed 2026-01-16
-- [x] 20-08: Patch Mode for Reviews (Wave 4) — completed 2026-01-16
-- [x] 20-09: Review Lifecycle (Wave 4) — completed 2026-01-16
-- [x] 20-10: Multi-Ticket Flow (Wave 5) — completed 2026-01-16
-- [x] 20-11: Context Persistence (Wave 6) — completed 2026-01-16
-- [ ] 20-12: Integration Tests (Wave 6)
+- [x] 20-01: State Types (Wave 1) — completed 2026-01-15
+- [x] 20-02: Event Store (Wave 1) — completed 2026-01-15
+- [x] 20-03: Event Validation (Wave 1) — completed 2026-01-15
+- [x] 20-04: AgentState Extension (Wave 2) — completed 2026-01-15
+- [x] 20-05: Event Router (Wave 2) — completed 2026-01-15
+- [x] 20-06: Scope Gate for AMBIGUOUS Intent (Wave 3) — completed 2026-01-15
+- [x] 20-07: ReviewArtifact with Freeze Semantics (Wave 4) — completed 2026-01-15
+- [x] 20-08: Patch Mode for Reviews (Wave 4) — completed 2026-01-15
+- [x] 20-09: Multi-Ticket Foundation (Wave 5) — completed 2026-01-15
+- [x] 20-10: Multi-Ticket Jira Integration (Wave 5) — completed 2026-01-15
+- [x] 20-11: FactStore for Context Persistence (Wave 6) — completed 2026-01-15
+- [x] 20-12: System Integration (Wave 6) — completed 2026-01-15
 
 **Problem solved:**
 Intent classification is overloaded — handles both user intent AND workflow events. Adding features requires new intent types. No resumable graphs. Stale buttons affect current state.
@@ -272,15 +272,15 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 - [x] UserIntent enum (TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS)
 - [x] PendingAction enum (WAITING_APPROVAL, etc.)
 - [x] WorkflowStep enum with allowed events per step
-- [x] EventStore for idempotency tracking
-- [x] Event validation for stale UI prevention
+- [x] EventStore for idempotency tracking (PostgreSQL, 24h TTL)
+- [x] Event validation for stale UI prevention (ui_version)
 - [x] Event-first routing (WorkflowEvent → PendingAction → UserIntent)
 - [x] AMBIGUOUS triggers 3-button scope gate
-- [x] "Remember for this thread" option
-- [ ] Resumable graph via pending_action + pending_payload
-- [ ] Review lifecycle (patch mode, REVIEW_COMPLETE, freeze semantics)
-- [ ] Multi-ticket flow with safety latches
-- [ ] Context persistence (structured salient_facts)
+- [x] "Remember for this thread" option (2h expiry)
+- [x] Resumable graph via pending_action + pending_payload
+- [x] Review lifecycle (patch mode, freeze semantics)
+- [x] Multi-ticket flow with safety latches (>3 items, >10k chars)
+- [x] Context persistence (structured Fact with eviction)
 
 ## Progress
 
@@ -306,4 +306,4 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 | 15. Review Conversation Flow | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
-| 20. Brain Refactor | v1.1 | 8/12 | In progress | - |
+| 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
