@@ -84,10 +84,13 @@ REVIEW_PATTERNS = [
     (r"\barchitect(?:ure)?\s+perspective\b", "pattern: architect perspective", "architect"),
     (r"\bpropose\s+(?:an?\s+)?architecture\b", "pattern: propose architecture", "architect"),
     # Help requests for architecture/design (always REVIEW, never TICKET)
-    (r"\bhelp\s+(?:me\s+)?(?:to\s+)?(?:organize|design|architect|plan|structure)\s+(?:an?\s+)?architecture\b", "pattern: help organize/design architecture", "architect"),
+    (r"\bhelp\s+(?:me\s+)?(?:to\s+)?(?:organize|design|architect|plan|structure|define|create|build)\s+(?:an?\s+)?architecture\b", "pattern: help define architecture", "architect"),
     (r"\bhelp\s+(?:me\s+)?(?:with|to\s+design)\s+(?:an?\s+)?(?:architecture|system|design)\b", "pattern: help with architecture/design", "architect"),
     (r"\bhelp\s+(?:me\s+)?architect\b", "pattern: help architect", "architect"),
     (r"\bneed\s+(?:help|guidance|advice)\s+(?:with|on|for)\s+(?:architecture|design|system\s+design)\b", "pattern: need help with architecture", "architect"),
+    # General "help... architecture" patterns (catch-all for architecture discussions)
+    (r"\bhelp\s+.*\barchitecture\b", "pattern: help + architecture", "architect"),
+    (r"\bdefine\s+(?:an?\s+)?architecture\b", "pattern: define architecture", "architect"),
     # Review with persona hint (pm)
     (r"\breview\s+(?:this\s+)?as\s+pm\b", "pattern: review as pm", "pm"),
     (r"\breview\s+from\s+pm\b", "pattern: review from pm", "pm"),
