@@ -258,7 +258,7 @@ Plans:
 - [x] 20-04: Idempotency Integration (Wave 1) — completed 2026-01-16
 - [x] 20-05: Event Router (Wave 2) — completed 2026-01-16
 - [x] 20-06: Scope Gate for AMBIGUOUS Intent (Wave 3) — completed 2026-01-16
-- [ ] 20-07: PendingAction Flow (Wave 3)
+- [x] 20-07: ReviewArtifact with Freeze Semantics (Wave 4) — completed 2026-01-16
 - [ ] 20-08: Thread Default Intent (Wave 3)
 - [ ] 20-09: Review Lifecycle (Wave 4)
 - [ ] 20-10: Multi-Ticket Flow (Wave 5)
@@ -306,4 +306,4 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 | 15. Review Conversation Flow | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
-| 20. Brain Refactor | v1.1 | 6/12 | In progress | - |
+| 20. Brain Refactor | v1.1 | 7/12 | In progress | - |

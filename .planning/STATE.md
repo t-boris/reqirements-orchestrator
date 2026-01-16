@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 6 of 12 in current phase
+Plan: 7 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-06-PLAN.md (Scope Gate)
+Last activity: 2026-01-16 — Completed 20-07-PLAN.md (ReviewArtifact with Freeze Semantics)
 
-Progress: █████░░░░░░░░░░░░░░░ 50% (Phase 20)
+Progress: ██████░░░░░░░░░░░░░░ 58% (Phase 20)
 
 ## v1.0 Summary
 
@@ -129,6 +129,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-06 | 3-button scope gate for AMBIGUOUS | Review / Create Ticket / Not now gives user clear choices |
 | 20-06 | "Remember for this thread" checkbox | Reduces repeated scope gates in same thread |
 | 20-06 | 2h expiry for thread default | Aligns with 20-CONTEXT.md v4 requirements |
+| 20-07 | ReviewArtifact TypedDict structure | Explicit 6-field structure: summary, kind, version, topic, frozen_at, thread_ts |
+| 20-07 | freeze_review() clears review_context | Stops continuation triggers when review is frozen |
+| 20-07 | Check both enum and string states | Support ReviewState.POSTED and "POSTED" for flexibility |
 
 ### Roadmap Evolution
 
@@ -154,9 +157,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-06-PLAN.md (Scope Gate)
+Stopped at: Completed 20-07-PLAN.md (ReviewArtifact with Freeze Semantics)
 Resume file: None
-Next action: Execute 20-07-PLAN.md
+Next action: Execute 20-08-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
