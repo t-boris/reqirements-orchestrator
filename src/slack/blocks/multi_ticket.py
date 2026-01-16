@@ -2,7 +2,7 @@
 
 Supports Epic + linked stories workflow with safety latches.
 """
-from typing import Any
+from typing import Any, Optional
 
 
 def build_quantity_confirm_blocks(item_count: int) -> list[dict]:
@@ -218,5 +218,126 @@ def build_multi_ticket_preview_blocks(
             },
         ],
     })
+
+    return blocks
+
+
+def build_creation_progress_blocks(
+    items: list[dict[str, Any]],
+    results: list[dict[str, Any]],
+    current_idx: Optional[int] = None,
+) -> list[dict]:
+    """Build blocks showing creation progress.
+
+    Shows live status for each item during batch creation:
+    - Checkmark for success
+    - X for failed
+    - Spinner for current
+    - Square for pending
+
+    Args:
+        items: All items being created (in creation order)
+        results: Creation results so far
+        current_idx: Index of item currently being created (None if done)
+
+    Returns:
+        Slack blocks showing progress
+    """
+    # Build lookup for results
+    result_lookup: dict[str, dict] = {r["item_id"]: r for r in results}
+
+    # Count successes and failures
+    success_count = sum(1 for r in results if r.get("success"))
+    failure_count = sum(1 for r in results if not r.get("success"))
+
+    # Header
+    if current_idx is not None:
+        header_text = "Creating Jira Tickets..."
+    elif failure_count > 0:
+        header_text = f"Created {success_count} of {len(items)} tickets ({failure_count} failed)"
+    else:
+        header_text = f"Created {success_count} Jira Tickets"
+
+    blocks: list[dict] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": header_text,
+            },
+        },
+        {"type": "divider"},
+    ]
+
+    # Build item rows
+    for idx, item in enumerate(items):
+        item_id = item.get("id", "")
+        item_type = item.get("type", "story")
+        title = item.get("title", "Untitled")
+
+        # Type label
+        type_label = "Epic" if item_type == "epic" else "Story"
+
+        # Determine status
+        result = result_lookup.get(item_id)
+        if result:
+            if result.get("success"):
+                # Success - show checkmark and Jira key link
+                jira_key = result.get("jira_key", "")
+                jira_url = result.get("jira_url", "")
+                if jira_url:
+                    status_text = f":white_check_mark: *{type_label}* {title} -> <{jira_url}|{jira_key}>"
+                else:
+                    status_text = f":white_check_mark: *{type_label}* {title} -> {jira_key}"
+            else:
+                # Failed - show X and error
+                error = result.get("error", "Unknown error")
+                # Truncate long errors
+                if len(error) > 100:
+                    error = error[:100] + "..."
+                status_text = f":x: *{type_label}* {title} - Failed: {error}"
+        elif current_idx is not None and idx == current_idx:
+            # Currently being created - show spinner
+            status_text = f":hourglass_flowing_sand: *{type_label}* {title}"
+        else:
+            # Pending - show square
+            status_text = f":white_square: *{type_label}* {title}"
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": status_text,
+            },
+        })
+
+    blocks.append({"type": "divider"})
+
+    # Progress count
+    if current_idx is not None:
+        progress_text = f"{len(results)} of {len(items)} created"
+    else:
+        progress_text = f"Done: {success_count} created, {failure_count} failed"
+
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {"type": "mrkdwn", "text": progress_text},
+        ],
+    })
+
+    # Add retry button when done with failures
+    if current_idx is None and failure_count > 0:
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": f"Retry Failed ({failure_count})"},
+                    "action_id": "multi_ticket_retry_failed",
+                    "style": "primary",
+                },
+            ],
+        })
 
     return blocks

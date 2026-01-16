@@ -212,13 +212,28 @@ def handle_multi_ticket_approve(ack, body: dict, client: WebClient) -> None:
 
 
 async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> None:
-    """Async handler for multi-ticket approve."""
-    channel = body.get("channel", {}).get("id")
-    message_ts = body.get("message", {}).get("ts")
-    user_id = body.get("user", {}).get("id")
+    """Create all tickets and show progress.
 
-    if not channel or not message_ts:
-        logger.warning("Missing channel or message_ts in approve body")
+    1. Get items from state
+    2. Sort: Epics first, then Stories
+    3. Create tickets with progress updates
+    4. Post announcement
+    5. Auto-track created tickets
+    6. Clear multi_ticket_state
+    """
+    from src.config.settings import get_settings
+    from src.jira.client import JiraService
+    from src.jira.types import JiraCreateRequest, JiraIssueType, JiraPriority
+    from src.slack.blocks.multi_ticket import build_creation_progress_blocks
+
+    channel_id = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+    team_id = body.get("team", {}).get("id", "unknown")
+    user_id = body.get("user", {}).get("id", "unknown")
+
+    if not channel_id or not message_ts:
+        logger.warning("Missing channel_id or message_ts in approve body")
         return
 
     # Check ui_version from action value for stale button detection
@@ -227,22 +242,523 @@ async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> N
     logger.info(
         "Multi-ticket approve requested",
         extra={
-            "channel": channel,
+            "channel": channel_id,
             "message_ts": message_ts,
             "user_id": user_id,
             "ui_version": ui_version,
         },
     )
 
-    client.chat_update(
-        channel=channel,
-        ts=message_ts,
-        text="Creating tickets in Jira...",
-        blocks=[],
+    # Get items from state
+    identity = SessionIdentity(team_id=team_id, channel_id=channel_id, thread_ts=thread_ts)
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for approve: {e}", exc_info=True)
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="Failed to get state. Please try again.",
+            blocks=[],
+        )
+        return
+
+    multi_state = state.get("multi_ticket_state", {})
+    items = multi_state.get("items", [])
+
+    if not items:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="No items to create.",
+        )
+        return
+
+    # Get project from settings
+    settings = get_settings()
+    project_key = settings.jira_default_project
+    if not project_key:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="No default Jira project configured. Please set JIRA_DEFAULT_PROJECT.",
+        )
+        return
+
+    # Sort: Epics first, then Stories
+    epics = [i for i in items if i.get("type") == "epic"]
+    stories = [i for i in items if i.get("type") == "story"]
+    ordered = epics + stories
+
+    # Create tickets with progress updates
+    results: list[dict] = []
+    jira = JiraService(settings)
+
+    try:
+        for idx, item in enumerate(ordered):
+            # Update preview with progress (checkmark for done, spinner for current)
+            progress_blocks = build_creation_progress_blocks(ordered, results, current_idx=idx)
+            client.chat_update(channel=channel_id, ts=message_ts, blocks=progress_blocks)
+
+            try:
+                # Resolve parent_item_id to Jira key if story has parent
+                parent_key = None
+                if item.get("parent_id"):
+                    parent_result = next(
+                        (r for r in results if r["item_id"] == item["parent_id"] and r["success"]),
+                        None,
+                    )
+                    if parent_result:
+                        parent_key = parent_result["jira_key"]
+
+                # Create ticket
+                issue_type = JiraIssueType.EPIC if item.get("type") == "epic" else JiraIssueType.STORY
+
+                request = JiraCreateRequest(
+                    project_key=project_key,
+                    summary=item.get("title", "Untitled"),
+                    description=item.get("description", ""),
+                    issue_type=issue_type,
+                    priority=JiraPriority.MEDIUM,
+                    epic_key=parent_key,
+                )
+
+                jira_issue = await jira.create_issue(request)
+
+                results.append({
+                    "item_id": item.get("id"),
+                    "jira_key": jira_issue.key,
+                    "jira_url": jira_issue.url,
+                    "title": item.get("title", "Untitled"),
+                    "type": item.get("type", "story"),
+                    "parent_id": item.get("parent_id"),
+                    "success": True,
+                })
+
+                logger.info(
+                    "Created ticket",
+                    extra={
+                        "item_id": item.get("id"),
+                        "jira_key": jira_issue.key,
+                        "type": item.get("type"),
+                    },
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to create ticket for item {item.get('id')}: {e}")
+                results.append({
+                    "item_id": item.get("id"),
+                    "title": item.get("title", "Untitled"),
+                    "type": item.get("type", "story"),
+                    "parent_id": item.get("parent_id"),
+                    "success": False,
+                    "error": str(e),
+                })
+
+        # Final progress update
+        progress_blocks = build_creation_progress_blocks(ordered, results, current_idx=None)
+        client.chat_update(channel=channel_id, ts=message_ts, blocks=progress_blocks)
+
+        # Post announcement
+        await _post_creation_announcement(client, channel_id, thread_ts, results, user_id)
+
+        # Auto-track created tickets
+        await _track_created_tickets(results, channel_id, user_id)
+
+        # Check if any failures - if so, store results for retry, otherwise clear state
+        failure_count = sum(1 for r in results if not r.get("success"))
+        if failure_count > 0:
+            # Store results for retry
+            multi_state["last_results"] = results
+            await runner.update_state({"multi_ticket_state": multi_state})
+        else:
+            # Clear multi_ticket_state on success
+            await runner.update_state({"multi_ticket_state": None})
+
+    finally:
+        await jira.close()
+
+
+async def _post_creation_announcement(
+    client: WebClient,
+    channel_id: str,
+    thread_ts: str,
+    results: list[dict],
+    user_id: str,
+) -> None:
+    """Post rich announcement after batch creation.
+
+    Format:
+    - Header with count
+    - Epics section with links
+    - Stories section with links and parent references
+    - Failures section (if any)
+    - Footer note
+
+    Args:
+        client: Slack WebClient for API calls
+        channel_id: Channel ID to post to
+        thread_ts: Thread timestamp for reply
+        results: Creation results with jira_key, title, type, success, error
+        user_id: User who triggered creation
+    """
+    success_count = sum(1 for r in results if r.get("success"))
+    failure_count = sum(1 for r in results if not r.get("success"))
+
+    # Build epic key lookup for parent references
+    epic_keys: dict[str, str] = {}
+    for r in results:
+        if r.get("type") == "epic" and r.get("success"):
+            epic_keys[r.get("item_id", "")] = r.get("jira_key", "")
+
+    # Separate by type
+    epics = [r for r in results if r.get("type") == "epic" and r.get("success")]
+    stories = [r for r in results if r.get("type") == "story" and r.get("success")]
+    failures = [r for r in results if not r.get("success")]
+
+    # Build announcement text
+    lines = []
+
+    # Header
+    if failure_count == 0:
+        lines.append(f":tada: Created {success_count} Jira tickets")
+    else:
+        lines.append(f":warning: Created {success_count} of {len(results)} Jira tickets ({failure_count} failed)")
+
+    lines.append("")
+
+    # Epics section
+    if epics:
+        lines.append(":dart: *Epics:*")
+        for epic in epics:
+            jira_key = epic.get("jira_key", "")
+            jira_url = epic.get("jira_url", "")
+            title = epic.get("title", "")
+            if jira_url:
+                lines.append(f"  - <{jira_url}|{jira_key}> {title}")
+            else:
+                lines.append(f"  - {jira_key} {title}")
+        lines.append("")
+
+    # Stories section
+    if stories:
+        lines.append(":memo: *Stories:*")
+        for story in stories:
+            jira_key = story.get("jira_key", "")
+            jira_url = story.get("jira_url", "")
+            title = story.get("title", "")
+            parent_id = story.get("parent_id")
+
+            story_text = f"<{jira_url}|{jira_key}>" if jira_url else jira_key
+            story_text += f" {title}"
+
+            # Add parent reference
+            if parent_id and parent_id in epic_keys:
+                parent_key = epic_keys[parent_id]
+                story_text += f" (under {parent_key})"
+
+            lines.append(f"  - {story_text}")
+        lines.append("")
+
+    # Failures section
+    if failures:
+        lines.append(":x: *Failed:*")
+        for fail in failures:
+            title = fail.get("title", "")
+            error = fail.get("error", "Unknown error")
+            # Truncate long errors
+            if len(error) > 80:
+                error = error[:80] + "..."
+            lines.append(f"  - {title} - {error}")
+        lines.append("")
+
+    # Footer
+    lines.append("_All tickets linked to this thread for context._")
+
+    announcement_text = "\n".join(lines)
+
+    # Post announcement
+    client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        text=announcement_text,
     )
 
-    # Note: Actual batch creation will be triggered by graph runner
-    # This handler updates UI to show progress
+    logger.info(
+        "Posted creation announcement",
+        extra={
+            "channel_id": channel_id,
+            "success_count": success_count,
+            "failure_count": failure_count,
+        },
+    )
+
+
+async def _track_created_tickets(
+    results: list[dict],
+    channel_id: str,
+    user_id: str,
+) -> None:
+    """Auto-track all created tickets in channel.
+
+    Integrates with Phase 21's channel tracking. Non-blocking - failures
+    are logged but don't interrupt the user-facing operation.
+
+    Args:
+        results: Creation results with jira_key, title, type, success
+        channel_id: Slack channel ID
+        user_id: User who triggered creation
+    """
+    from src.db import get_connection
+    from src.slack.channel_tracker import ChannelIssueTracker
+
+    try:
+        async with get_connection() as conn:
+            tracker = ChannelIssueTracker(conn)
+            await tracker.create_tables()
+
+            tracked_count = 0
+            for result in results:
+                if not result.get("success"):
+                    continue
+
+                jira_key = result.get("jira_key", "")
+                if not jira_key:
+                    continue
+
+                try:
+                    await tracker.track(
+                        channel_id=channel_id,
+                        issue_key=jira_key,
+                        tracked_by=user_id,
+                    )
+                    tracked_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to track issue {jira_key}: {e}")
+
+            logger.info(
+                "Auto-tracked created tickets",
+                extra={
+                    "channel_id": channel_id,
+                    "tracked_count": tracked_count,
+                },
+            )
+
+    except Exception as e:
+        # Non-blocking - log but don't fail the operation
+        logger.warning(f"Failed to auto-track tickets: {e}")
+
+
+def handle_multi_ticket_retry_failed(ack, body: dict, client: WebClient) -> None:
+    """Handle retry failed items button.
+
+    Re-attempts creation of items that failed in the previous batch.
+
+    Args:
+        ack: Slack ack function
+        body: Slack action body
+        client: Slack WebClient for API calls
+    """
+    ack()
+    _run_async(_handle_multi_ticket_retry_failed_async(body, client))
+
+
+async def _handle_multi_ticket_retry_failed_async(body: dict, client: WebClient) -> None:
+    """Retry creation of failed items.
+
+    1. Get multi_ticket_state with last_results
+    2. Filter to failed items
+    3. Re-run creation for those items
+    4. Update results and announcement
+    """
+    from src.config.settings import get_settings
+    from src.jira.client import JiraService
+    from src.jira.types import JiraCreateRequest, JiraIssueType, JiraPriority
+    from src.slack.blocks.multi_ticket import build_creation_progress_blocks
+
+    channel_id = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+    team_id = body.get("team", {}).get("id", "unknown")
+    user_id = body.get("user", {}).get("id", "unknown")
+
+    if not channel_id or not message_ts:
+        logger.warning("Missing channel_id or message_ts in retry_failed body")
+        return
+
+    logger.info(
+        "Multi-ticket retry failed requested",
+        extra={"channel_id": channel_id, "user_id": user_id},
+    )
+
+    # Get items and previous results from state
+    identity = SessionIdentity(team_id=team_id, channel_id=channel_id, thread_ts=thread_ts)
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for retry: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="Failed to get state. Please try again.",
+        )
+        return
+
+    multi_state = state.get("multi_ticket_state", {})
+    items = multi_state.get("items", [])
+    last_results = multi_state.get("last_results", [])
+
+    if not items or not last_results:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="No failed items to retry.",
+        )
+        return
+
+    # Find failed item IDs
+    failed_ids = {r["item_id"] for r in last_results if not r.get("success")}
+
+    if not failed_ids:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="No failed items to retry.",
+        )
+        return
+
+    # Get only failed items, preserving order
+    failed_items = [i for i in items if i.get("id") in failed_ids]
+
+    # Get project from settings
+    settings = get_settings()
+    project_key = settings.jira_default_project
+    if not project_key:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="No default Jira project configured. Please set JIRA_DEFAULT_PROJECT.",
+        )
+        return
+
+    # Build lookup for successful results (for parent references)
+    success_lookup: dict[str, dict] = {
+        r["item_id"]: r for r in last_results if r.get("success")
+    }
+
+    # Create tickets with progress updates
+    retry_results: list[dict] = []
+    jira = JiraService(settings)
+
+    try:
+        for idx, item in enumerate(failed_items):
+            # Update preview with progress
+            progress_blocks = build_creation_progress_blocks(failed_items, retry_results, current_idx=idx)
+            client.chat_update(channel=channel_id, ts=message_ts, blocks=progress_blocks)
+
+            try:
+                # Resolve parent_id to Jira key if story has parent
+                parent_key = None
+                if item.get("parent_id"):
+                    # First check success_lookup from previous run
+                    parent_result = success_lookup.get(item["parent_id"])
+                    if parent_result:
+                        parent_key = parent_result.get("jira_key")
+                    else:
+                        # Check retry results
+                        parent_retry = next(
+                            (r for r in retry_results if r["item_id"] == item["parent_id"] and r["success"]),
+                            None,
+                        )
+                        if parent_retry:
+                            parent_key = parent_retry.get("jira_key")
+
+                # Create ticket
+                issue_type = JiraIssueType.EPIC if item.get("type") == "epic" else JiraIssueType.STORY
+
+                request = JiraCreateRequest(
+                    project_key=project_key,
+                    summary=item.get("title", "Untitled"),
+                    description=item.get("description", ""),
+                    issue_type=issue_type,
+                    priority=JiraPriority.MEDIUM,
+                    epic_key=parent_key,
+                )
+
+                jira_issue = await jira.create_issue(request)
+
+                retry_results.append({
+                    "item_id": item.get("id"),
+                    "jira_key": jira_issue.key,
+                    "jira_url": jira_issue.url,
+                    "title": item.get("title", "Untitled"),
+                    "type": item.get("type", "story"),
+                    "parent_id": item.get("parent_id"),
+                    "success": True,
+                })
+
+                logger.info(
+                    "Retry created ticket",
+                    extra={
+                        "item_id": item.get("id"),
+                        "jira_key": jira_issue.key,
+                        "type": item.get("type"),
+                    },
+                )
+
+            except Exception as e:
+                logger.error(f"Retry failed for item {item.get('id')}: {e}")
+                retry_results.append({
+                    "item_id": item.get("id"),
+                    "title": item.get("title", "Untitled"),
+                    "type": item.get("type", "story"),
+                    "parent_id": item.get("parent_id"),
+                    "success": False,
+                    "error": str(e),
+                })
+
+        # Final progress update
+        progress_blocks = build_creation_progress_blocks(failed_items, retry_results, current_idx=None)
+        client.chat_update(channel=channel_id, ts=message_ts, blocks=progress_blocks)
+
+        # Merge retry results into last_results
+        # Update entries that were retried
+        retry_lookup = {r["item_id"]: r for r in retry_results}
+        merged_results = []
+        for r in last_results:
+            if r["item_id"] in retry_lookup:
+                merged_results.append(retry_lookup[r["item_id"]])
+            else:
+                merged_results.append(r)
+
+        # Update state with merged results
+        multi_state["last_results"] = merged_results
+        await runner.update_state({"multi_ticket_state": multi_state})
+
+        # Post retry announcement
+        retry_success = sum(1 for r in retry_results if r.get("success"))
+        retry_fail = sum(1 for r in retry_results if not r.get("success"))
+
+        if retry_fail == 0:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":white_check_mark: Retry succeeded: {retry_success} tickets created.",
+            )
+        else:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":warning: Retry completed: {retry_success} created, {retry_fail} still failing.",
+            )
+
+        # Auto-track newly created tickets
+        await _track_created_tickets(retry_results, channel_id, user_id)
+
+    finally:
+        await jira.close()
 
 
 def handle_multi_ticket_cancel(ack, body: dict, client: WebClient) -> None:
@@ -260,30 +776,166 @@ def handle_multi_ticket_cancel(ack, body: dict, client: WebClient) -> None:
 
 
 async def _handle_multi_ticket_cancel_async(body: dict, client: WebClient) -> None:
-    """Async handler for multi-ticket cancel."""
-    channel = body.get("channel", {}).get("id")
-    message_ts = body.get("message", {}).get("ts")
-    user_id = body.get("user", {}).get("id")
+    """Cancel multi-ticket creation.
 
-    if not channel or not message_ts:
-        logger.warning("Missing channel or message_ts in cancel body")
+    If user has made edits, show confirmation modal before cancelling.
+    Otherwise, proceed with direct cancel.
+    """
+    channel_id = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+    team_id = body.get("team", {}).get("id", "unknown")
+    user_id = body.get("user", {}).get("id")
+    trigger_id = body.get("trigger_id")
+
+    if not channel_id or not message_ts:
+        logger.warning("Missing channel_id or message_ts in cancel body")
         return
 
     logger.info(
-        "Multi-ticket creation cancelled",
+        "Multi-ticket cancel requested",
         extra={
-            "channel": channel,
+            "channel": channel_id,
             "message_ts": message_ts,
             "user_id": user_id,
         },
     )
 
-    client.chat_update(
-        channel=channel,
-        ts=message_ts,
+    # Check if any edits were made
+    identity = SessionIdentity(team_id=team_id, channel_id=channel_id, thread_ts=thread_ts)
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for cancel: {e}", exc_info=True)
+        # Proceed with cancel anyway
+        await _do_cancel(client, channel_id, message_ts, thread_ts, None)
+        return
+
+    multi_state = state.get("multi_ticket_state", {})
+    has_edits = multi_state.get("has_edits", False)
+
+    if has_edits and trigger_id:
+        # Show confirmation modal
+        client.views_open(
+            trigger_id=trigger_id,
+            view={
+                "type": "modal",
+                "callback_id": "multi_ticket_cancel_confirm",
+                "title": {"type": "plain_text", "text": "Discard Changes?"},
+                "submit": {"type": "plain_text", "text": "Discard"},
+                "close": {"type": "plain_text", "text": "Keep Editing"},
+                "private_metadata": json.dumps({
+                    "message_ts": message_ts,
+                    "thread_ts": thread_ts,
+                    "channel_id": channel_id,
+                }),
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "You've made changes to the items. Are you sure you want to discard them?",
+                        },
+                    },
+                ],
+            },
+        )
+    else:
+        # Direct cancel
+        await _do_cancel(client, channel_id, message_ts, thread_ts, runner)
+
+
+async def _do_cancel(
+    client: WebClient,
+    channel_id: str,
+    message_ts: str,
+    thread_ts: str,
+    runner,
+) -> None:
+    """Execute the cancel action.
+
+    Args:
+        client: Slack WebClient
+        channel_id: Channel ID
+        message_ts: Preview message timestamp to delete
+        thread_ts: Thread timestamp for reply
+        runner: Graph runner (optional) to clear state
+    """
+    # Delete preview message
+    try:
+        client.chat_delete(channel=channel_id, ts=message_ts)
+    except Exception as e:
+        logger.warning(f"Failed to delete preview message: {e}")
+        # Fall back to updating the message
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="Multi-ticket creation cancelled.",
+            blocks=[],
+        )
+
+    # Post dismissal
+    client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
         text="Multi-ticket creation cancelled.",
-        blocks=[],
     )
+
+    # Clear state
+    if runner:
+        try:
+            await runner.update_state({"multi_ticket_state": None})
+        except Exception as e:
+            logger.warning(f"Failed to clear multi_ticket_state: {e}")
+
+    logger.info(
+        "Multi-ticket creation cancelled",
+        extra={"channel_id": channel_id},
+    )
+
+
+def handle_multi_ticket_cancel_confirm(ack, body, client: WebClient, view) -> None:
+    """Handle cancel confirmation modal submission.
+
+    Args:
+        ack: Slack ack function
+        body: Slack view submission body
+        client: Slack WebClient
+        view: Slack view object
+    """
+    ack()
+    _run_async(_handle_multi_ticket_cancel_confirm_async(body, client, view))
+
+
+async def _handle_multi_ticket_cancel_confirm_async(body, client: WebClient, view) -> None:
+    """Execute cancel after confirmation."""
+    private_metadata_raw = view.get("private_metadata", "{}")
+    try:
+        private_metadata = json.loads(private_metadata_raw)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
+        return
+
+    message_ts = private_metadata.get("message_ts", "")
+    thread_ts = private_metadata.get("thread_ts", "")
+    channel_id = private_metadata.get("channel_id", "")
+
+    if not channel_id or not message_ts:
+        logger.warning("Missing channel_id or message_ts in cancel confirm")
+        return
+
+    # Get runner to clear state
+    team_id = body.get("team", {}).get("id", "unknown")
+    identity = SessionIdentity(team_id=team_id, channel_id=channel_id, thread_ts=thread_ts)
+
+    runner = None
+    try:
+        runner = get_runner(identity)
+    except Exception as e:
+        logger.warning(f"Failed to get runner for cancel confirm: {e}")
+
+    await _do_cancel(client, channel_id, message_ts, thread_ts, runner)
 
 
 def _extract_item_id(body: dict) -> Optional[str]:
@@ -569,8 +1221,9 @@ async def _handle_multi_ticket_edit_submit_async(body, client: WebClient, view) 
         logger.warning(f"Item {item_id} not found during edit submit")
         return
 
-    # Update state with modified items
+    # Update state with modified items and mark as edited
     multi_ticket_state["items"] = items
+    multi_ticket_state["has_edits"] = True
     ui_version = state.get("ui_version", 0) + 1
 
     await runner.update_state({
