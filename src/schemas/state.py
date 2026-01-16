@@ -77,6 +77,33 @@ class PendingAction(str, Enum):
     WAITING_SIZE_CONFIRM = "waiting_size_confirm"   # Multi-ticket large batch, confirm split
 
 
+# Safety latch thresholds for multi-ticket flow
+MULTI_TICKET_QUANTITY_THRESHOLD = 3  # >3 items requires confirmation
+MULTI_TICKET_SIZE_THRESHOLD = 10000  # >10k chars requires confirmation
+
+
+class MultiTicketItem(TypedDict):
+    """Single item in multi-ticket batch (epic or story)."""
+    id: str  # Unique ID within batch
+    type: Literal["epic", "story"]
+    title: str
+    description: str
+    parent_id: Optional[str]  # For stories, points to epic ID
+
+
+class MultiTicketState(TypedDict):
+    """State for multi-ticket creation flow.
+
+    Supports Epic + linked stories (not subtasks by default).
+    """
+    items: list[MultiTicketItem]  # All items in batch
+    epic_id: Optional[str]  # ID of epic item (if present)
+    total_chars: int  # Total size for size latch
+    confirmed_quantity: bool  # User confirmed >3 items
+    confirmed_size: bool  # User confirmed large batch
+    created_keys: list[str]  # Jira keys after creation
+
+
 class WorkflowStep(str, Enum):
     """Typed workflow positions for event validation.
 
@@ -224,6 +251,9 @@ class AgentState(TypedDict):
     # - Expires after 2h inactivity
     # - OR when workflow_step leaves {REVIEW_ACTIVE, REVIEW_FROZEN}
     # - OR explicit `/maro forget` command
+
+    # Multi-ticket state (Phase 20)
+    multi_ticket_state: Optional[MultiTicketState]  # Epic + linked stories batch
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
