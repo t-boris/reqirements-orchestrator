@@ -50,6 +50,8 @@ from src.slack.handlers import (
     handle_multi_ticket_remove_item,
     handle_multi_ticket_approve,
     handle_multi_ticket_cancel,
+    handle_multi_ticket_retry_failed,
+    handle_multi_ticket_cancel_confirm,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -181,10 +183,13 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^multi_ticket_edit_item:.*"))(handle_multi_ticket_edit_item)
     # Remove item
     app.action(re.compile(r"^multi_ticket_remove_item:.*"))(handle_multi_ticket_remove_item)
-    app.action("multi_ticket_approve")(handle_multi_ticket_approve)
-    app.action("multi_ticket_cancel")(handle_multi_ticket_cancel)
+    app.action(re.compile(r"^multi_ticket_approve(?::\d+)?$"))(handle_multi_ticket_approve)
+    app.action(re.compile(r"^multi_ticket_cancel(?::\d+)?$"))(handle_multi_ticket_cancel)
+    app.action(re.compile(r"^multi_ticket_retry_failed(?::\d+)?$"))(handle_multi_ticket_retry_failed)
+    app.action(re.compile(r"^multi_ticket_add_item(?::\d+)?$"))(handle_multi_ticket_approve)  # Add item shows full preview
 
     # Multi-ticket view submissions (Phase 22)
     app.view("multi_ticket_edit_submit")(handle_multi_ticket_edit_submit)
+    app.view("multi_ticket_cancel_confirm")(handle_multi_ticket_cancel_confirm)
 
     logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket")

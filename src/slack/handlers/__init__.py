@@ -119,6 +119,8 @@ from src.slack.handlers.multi_ticket import (
     handle_multi_ticket_remove_item,
     handle_multi_ticket_approve,
     handle_multi_ticket_cancel,
+    handle_multi_ticket_retry_failed,
+    handle_multi_ticket_cancel_confirm,
 )
 
 __all__ = [
@@ -191,4 +193,6 @@ __all__ = [
     "handle_multi_ticket_remove_item",
     "handle_multi_ticket_approve",
     "handle_multi_ticket_cancel",
+    "handle_multi_ticket_retry_failed",
+    "handle_multi_ticket_cancel_confirm",
 ]
