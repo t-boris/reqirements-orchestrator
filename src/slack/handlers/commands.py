@@ -207,6 +207,8 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro track SCRUM-123 [SCRUM-124 ...] - Track issues in channel
     - /maro untrack SCRUM-123 - Remove issue from tracked list
     - /maro tracked - List all tracked issues for this channel
+    - /maro board - Post/update pinned board with tracked issues
+    - /maro board hide - Remove the pinned board
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -243,6 +245,13 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
         await _handle_maro_untrack(channel, args, say)
     elif subcommand == "tracked":
         await _handle_maro_tracked(channel, say)
+    elif subcommand == "board":
+        # /maro board or /maro board hide
+        board_action = args[0].lower() if args else "show"
+        if board_action == "hide":
+            await _handle_maro_board_hide(channel, client, say)
+        else:
+            await _handle_maro_board_show(channel, client, say)
     else:
         # Default to help for empty or unknown
         await _handle_maro_help(channel, client)
@@ -580,5 +589,92 @@ async def _handle_maro_tracked(
         logger.error(f"Failed to list tracked issues: {e}", exc_info=True)
         say(
             text="Sorry, I couldn't retrieve tracked issues. Please try again.",
+            channel=channel_id,
+        )
+
+
+# --- Pinned Board Commands (Phase 21-02) ---
+
+async def _handle_maro_board_show(
+    channel_id: str,
+    client: WebClient,
+    say,
+):
+    """Handle /maro board - post or update the pinned board."""
+    from src.db import get_connection
+    from src.slack.channel_tracker import ChannelIssueTracker
+    from src.slack.pinned_board import PinnedBoardManager
+    from src.config.settings import get_settings
+
+    try:
+        settings = get_settings()
+        jira_url = settings.jira_url.rstrip("/")
+
+        async with get_connection() as conn:
+            tracker = ChannelIssueTracker(conn)
+            issues = await tracker.get_tracked_issues(channel_id)
+
+            if not issues:
+                say(
+                    text="No issues tracked. Use `/maro track SCRUM-123` first.",
+                    channel=channel_id,
+                )
+                return
+
+            manager = PinnedBoardManager(jira_base_url=jira_url)
+            message_ts = await manager.post_or_update(client, channel_id, conn)
+
+        if message_ts:
+            say(
+                text="Board updated in this channel.",
+                channel=channel_id,
+            )
+        else:
+            say(
+                text="Sorry, I couldn't create the board. Please try again.",
+                channel=channel_id,
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to show board: {e}", exc_info=True)
+        say(
+            text="Sorry, I couldn't create the board. Please try again.",
+            channel=channel_id,
+        )
+
+
+async def _handle_maro_board_hide(
+    channel_id: str,
+    client: WebClient,
+    say,
+):
+    """Handle /maro board hide - remove the pinned board."""
+    from src.db import get_connection
+    from src.slack.pinned_board import PinnedBoardManager
+    from src.config.settings import get_settings
+
+    try:
+        settings = get_settings()
+        jira_url = settings.jira_url.rstrip("/")
+
+        async with get_connection() as conn:
+            manager = PinnedBoardManager(jira_base_url=jira_url)
+            removed = await manager.unpin(client, channel_id, conn)
+
+        if removed:
+            say(
+                text="Board removed from this channel.",
+                channel=channel_id,
+            )
+        else:
+            say(
+                text="No board found in this channel.",
+                channel=channel_id,
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to hide board: {e}", exc_info=True)
+        say(
+            text="Sorry, I couldn't remove the board. Please try again.",
             channel=channel_id,
         )
