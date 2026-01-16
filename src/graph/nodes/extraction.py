@@ -7,6 +7,7 @@ Uses answer matcher for responses to pending questions.
 import json
 import logging
 import re
+import uuid
 from typing import Any
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -91,6 +92,129 @@ Return empty object {{}} if no new information to extract.
 IMPORTANT: Only extract factual information stated in the message, thread context, or architecture review. Do not invent or assume.
 
 JSON response:'''
+
+
+MULTI_ITEM_EXTRACTION_PROMPT = '''Analyze this review and extract ALL proposed work items.
+
+Review text:
+{review_text}
+
+Topic: {topic}
+Scope: {scope}
+
+Extract every proposed Epic, Story, or Task. Return a JSON array of items:
+[
+  {{"type": "epic", "title": "...", "description": "..."}},
+  {{"type": "story", "title": "...", "description": "...", "parent_index": 0}}
+]
+
+Rules:
+- "N epics" = N separate Epic items with no parent
+- "epic with N stories" = 1 Epic at index 0, N Stories with parent_index: 0
+- Stories/Tasks without explicit epic = type "story" with no parent
+- If only 1 item proposed, return array with 1 item
+- parent_index is the array index of the Epic this Story belongs to
+
+Be thorough - extract EVERY item mentioned, not just the first.
+'''
+
+
+async def extract_multi_items_from_review(review_text: str, scope: str, topic: str) -> list[dict]:
+    """Extract multiple work items from review text.
+
+    Returns list of items with:
+    - id: UUID for internal tracking
+    - type: "epic" or "story"
+    - title: Item title
+    - description: Item description
+    - parent_id: For stories, references epic's item ID (not Jira key)
+
+    Args:
+        review_text: The review content to analyze
+        scope: User-selected scope (decision, full, custom)
+        topic: Topic of the review
+
+    Returns:
+        List of extracted items with UUIDs assigned
+    """
+    llm = get_llm()
+
+    prompt = MULTI_ITEM_EXTRACTION_PROMPT.format(
+        review_text=review_text[:3000],  # Limit to prevent token overflow
+        topic=topic,
+        scope=scope,
+    )
+
+    try:
+        response_text = await llm.chat(prompt)
+        response_text = response_text.strip()
+
+        # Handle markdown code blocks
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+        raw_items = json.loads(response_text) if response_text else []
+
+        if not isinstance(raw_items, list):
+            logger.warning(f"Expected list from multi-item extraction, got {type(raw_items)}")
+            return []
+
+        # Assign UUIDs and convert parent_index to parent_id
+        items_with_ids = []
+        for idx, item in enumerate(raw_items):
+            if not isinstance(item, dict):
+                continue
+
+            item_id = str(uuid.uuid4())
+            item_type = item.get("type", "story").lower()
+            if item_type not in ("epic", "story"):
+                item_type = "story"
+
+            items_with_ids.append({
+                "id": item_id,
+                "type": item_type,
+                "title": item.get("title", "Untitled"),
+                "description": item.get("description", ""),
+                "parent_index": item.get("parent_index"),  # Keep for resolution
+            })
+
+        # Resolve parent_index to parent_id
+        for item in items_with_ids:
+            parent_index = item.pop("parent_index", None)
+            if parent_index is not None and isinstance(parent_index, int):
+                if 0 <= parent_index < len(items_with_ids):
+                    parent_item = items_with_ids[parent_index]
+                    # Only link to epics
+                    if parent_item["type"] == "epic":
+                        item["parent_id"] = parent_item["id"]
+                    else:
+                        item["parent_id"] = None
+                else:
+                    item["parent_id"] = None
+            else:
+                item["parent_id"] = None
+
+        logger.info(
+            "Extracted multi-items from review",
+            extra={
+                "item_count": len(items_with_ids),
+                "epics": sum(1 for i in items_with_ids if i["type"] == "epic"),
+                "stories": sum(1 for i in items_with_ids if i["type"] == "story"),
+                "topic": topic,
+            }
+        )
+
+        return items_with_ids
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse multi-item extraction response: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Multi-item extraction failed: {e}")
+        return []
 
 
 def _detect_reference_to_prior_content(message: str) -> bool:
