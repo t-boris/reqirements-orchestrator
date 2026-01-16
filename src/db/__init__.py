@@ -54,6 +54,7 @@ from src.db.jira_operations import JiraOperationStore, JiraOperationRecord
 from src.db.channel_context_store import ChannelContextStore
 from src.db.root_index_store import RootIndexStore
 from src.db.listening_store import ListeningStore
+from src.db.event_store import EventStore, make_button_event_id
 
 __all__ = [
     # Connection (02-01)
@@ -85,4 +86,7 @@ __all__ = [
     # Listening Store (11-02)
     "ListeningStore",
     "ChannelListeningState",
+    # Event Store (20-02)
+    "EventStore",
+    "make_button_event_id",
 ]
