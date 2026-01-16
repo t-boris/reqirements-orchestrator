@@ -175,9 +175,18 @@ async def _process_mention(
     thread_ts: str,
     channel: str,
 ):
-    """Async processing for @mention - runs graph and dispatches to skills."""
+    """Process app mention with event-first routing.
+
+    Routing priority (from 20-CONTEXT.md):
+    1. WorkflowEvent - handled before graph (event_router)
+    2. PendingAction - handled before graph (event_router)
+    3. Thread default intent - check and use
+    4. Classified intent - route to flow
+    """
     from src.slack.progress import ProgressTracker
     from src.slack.handlers.dispatch import _dispatch_result
+    from src.slack.event_router import route_event, RouteResult
+    from src.db import get_connection, EventStore
 
     # Create progress tracker for timing-based status feedback
     tracker = ProgressTracker(client, channel, thread_ts)
@@ -187,6 +196,45 @@ async def _process_mention(
 
         runner = get_runner(identity)
 
+        # Get current state for event routing
+        state = await runner._get_current_state()
+
+        # Event routing (for button clicks, slash commands)
+        # For @mentions, this checks pending_action and thread_default
+        async with get_connection() as conn:
+            event_store = EventStore(conn)
+            await event_store.ensure_table()
+
+            routing = await route_event(
+                body={"type": "message", "text": text},  # Simplified for mentions
+                team_id=identity.team_id,
+                state=state,
+                event_store=event_store,
+            )
+
+        # Handle routing result
+        if routing.result == RouteResult.DUPLICATE:
+            logger.info("Duplicate event, skipping")
+            await tracker.complete()
+            return
+
+        if routing.result == RouteResult.STALE_UI:
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=routing.error_message or "This action is no longer available.",
+            )
+            await tracker.complete()
+            return
+
+        if routing.result == RouteResult.CONTINUATION:
+            # Handle pending action continuation
+            await _handle_continuation(
+                identity, routing.pending_action, state, client, thread_ts, channel, tracker
+            )
+            return
+
+        # Default: run graph with intent classification (RouteResult.INTENT_CLASSIFY)
         # Build conversation context BEFORE running graph (Phase 11)
         conversation_context = await _build_conversation_context(
             client=client,
@@ -213,6 +261,59 @@ async def _process_mention(
         )
     finally:
         await tracker.complete()
+
+
+async def _handle_continuation(
+    identity: SessionIdentity,
+    pending_action,
+    state: dict,
+    client: WebClient,
+    thread_ts: str,
+    channel: str,
+    tracker,
+):
+    """Handle pending action continuation.
+
+    Called when event_router returns RouteResult.CONTINUATION.
+    Routes to appropriate continuation handler based on pending_action type.
+    """
+    from src.schemas.state import PendingAction
+
+    logger.info(
+        f"Handling continuation for pending_action={pending_action}",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+        },
+    )
+
+    # For now, log and continue to graph
+    # Full continuation handling will be implemented in subsequent plans
+    # (This is the integration point - handlers exist but routing is being wired)
+
+    # Get runner to continue processing
+    runner = get_runner(identity)
+
+    # Build conversation context
+    from src.slack.handlers.core import _build_conversation_context
+    conversation_context = await _build_conversation_context(
+        client=client,
+        team_id=identity.team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+        message_ts=thread_ts,
+    )
+
+    # Run graph (continuation logic handled by graph routing)
+    result = await runner.run_with_message(
+        state.get("user_message", ""),
+        state.get("user", ""),
+        conversation_context=conversation_context,
+    )
+
+    # Dispatch result
+    from src.slack.handlers.dispatch import _dispatch_result
+    await _dispatch_result(result, identity, client, runner, tracker)
 
 
 async def _check_persona_switch(
