@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 Phase: 21 of 21 (Jira Sync & Management)
 Plan: 5 of 5 in current phase
 Status: Phase complete
-Last activity: 2026-01-16 — Completed 21-05-PLAN.md (Decision-to-Jira Linking)
+Last activity: 2026-01-16 — Completed 21-04-PLAN.md (Smart Sync Engine)
 
 Progress: ████████████████████ 100% (Phase 21)
 
@@ -163,6 +163,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-05 | Single vs multiple match logic | Single match auto-updates, multiple prompts user |
 | 21-05 | Button on decision posts | Allows retroactive linking of already-posted decisions |
 | 21-05 | channel_decisions tracking | Integrates with sync engine for bidirectional sync |
+| 21-04 | Confidence threshold 0.8 for auto-apply | High confidence prevents unintended Jira changes |
+| 21-04 | Decisions as comments not description updates | Safest approach, doesn't modify existing content |
+| 21-04 | SYNC_REQUEST as separate intent | Bulk sync distinct from single-ticket JIRA_COMMAND |
+| 21-04 | Record unlinked decisions | Enables later linking via /maro sync |
 
 ### Roadmap Evolution
 
@@ -191,9 +195,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 21-05-PLAN.md (Decision-to-Jira Linking)
+Stopped at: Completed 21-04-PLAN.md (Smart Sync Engine)
 Resume file: None
-Next action: Run /gsd:verify-work 21 for Phase 21 UAT
+Next action: Continue Phase 21 execution or run /gsd:verify-work 21
 
 ## Phase 11 Summary (Complete)
 
