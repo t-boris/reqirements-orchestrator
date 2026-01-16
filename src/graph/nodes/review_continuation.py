@@ -81,6 +81,48 @@ Format for Slack:
 '''
 
 
+# Single prompt that handles both intent detection and response generation
+SMART_CONTINUATION_PROMPT = '''You are continuing an architecture discussion as {persona}.
+
+Topic: {topic}
+
+Previous architecture review:
+{previous_summary}
+
+User's latest message:
+{user_message}
+
+First, determine what the user wants:
+- If they're asking for a FINAL/COMPLETE/FULL architecture summary, provide a comprehensive document
+- If they're providing answers, feedback, or incremental input, provide a PATCH update
+
+For FULL SYNTHESIS (user wants complete summary):
+Provide a complete architecture document covering:
+1. High-level approach
+2. Key components and interactions
+3. Technical decisions made
+4. Implementation considerations
+5. Risks and mitigations
+6. Remaining open questions (if any)
+
+For PATCH UPDATE (user providing incremental input):
+Provide exactly these 4 sections (max 12 bullets total):
+## New Decisions
+[Decisions made based on user's input - max 3 bullets]
+## New Risks
+[New risks identified - max 3 bullets, or "None identified"]
+## New Open Questions
+[Any new questions - max 3 bullets, or "None"]
+## Changes Since v{version}
+[What changed - max 3 bullets]
+
+Format for Slack:
+- Bold: *text* (single asterisks)
+- Lists: Use bullet • or dash -
+- NO ### headers (use *Bold Title:* instead)
+'''
+
+
 async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     """Continue review conversation after user provides answers.
 
@@ -144,31 +186,32 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         0
     ) + 1
 
-    # Get previous summary for patch generation
+    # Get previous summary
     previous_summary = (
         review_context.get("updated_recommendation") or
         review_context.get("review_summary", "")
     )
 
-    # Use PATCH mode by default (efficient, 4 sections, max 12 bullets)
-    prompt = PATCH_REVIEW_PROMPT.format(
-        version=current_version - 1,
+    # Single smart prompt - LLM decides if user wants full synthesis or patch
+    prompt = SMART_CONTINUATION_PROMPT.format(
+        persona=persona,
+        topic=topic,
         previous_summary=previous_summary,
-        user_answers=user_answers,
+        user_message=user_answers,
+        version=current_version - 1,
     )
 
-    # Call LLM
     llm = get_llm()
     try:
-        patch_content = await llm.chat(prompt)
+        response_content = await llm.chat(prompt)
 
         logger.info(
-            "Review continuation generated (patch mode)",
+            "Review continuation generated",
             extra={
                 "topic": topic,
                 "persona": persona,
                 "version": current_version,
-                "patch_length": len(patch_content),
+                "response_length": len(response_content),
             },
         )
 
@@ -177,13 +220,13 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
             **review_context,
             "version": current_version,
             "answers_received": True,
-            "updated_recommendation": patch_content,
+            "updated_recommendation": response_content,
         }
 
         return {
             "decision_result": {
                 "action": "review_continuation",
-                "message": patch_content,
+                "message": response_content,
                 "persona": persona,
                 "topic": topic,
                 "version": current_version,
