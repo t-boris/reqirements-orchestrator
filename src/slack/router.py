@@ -40,6 +40,7 @@ from src.slack.handlers import (
     # Decision linking (Phase 21-05)
     handle_link_decision,
     handle_skip_decision_link,
+    handle_decision_link_prompt,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -148,6 +149,7 @@ def register_handlers(app: App) -> None:
     # Pattern matches: link_decision_PROJ-123
     app.action(re.compile(r"^link_decision_.*"))(handle_link_decision)
     app.action("skip_decision_link")(handle_skip_decision_link)
+    app.action("decision_link_prompt")(handle_decision_link_prompt)
 
     # Sync actions (Phase 21-04)
     app.action("sync_apply_all")(handle_sync_apply_all)

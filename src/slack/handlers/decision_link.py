@@ -139,3 +139,158 @@ def handle_skip_decision_link(ack, body, client: WebClient):
     )
 
     logger.info("Decision link skipped")
+
+
+def handle_decision_link_prompt(ack, body, client: WebClient):
+    """Handle "Link to Jira Ticket" button on posted decisions.
+
+    Shows issue selection UI for retroactive linking.
+    Pattern: Sync wrapper with immediate ack, delegates to async.
+    """
+    ack()
+    _run_async(_handle_decision_link_prompt_async(body, client))
+
+
+async def _handle_decision_link_prompt_async(body, client: WebClient):
+    """Async handler for decision link prompt."""
+    from src.slack.decision_linker import DecisionLinker
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+
+    # Extract data from button
+    action = body["actions"][0]
+    button_value = action.get("value", "{}")
+
+    try:
+        data = json.loads(button_value)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse decision_link_prompt button value: {button_value}")
+        return
+
+    topic = data.get("topic", "")
+    decision = data.get("decision", "")
+    channel_id = data.get("channel_id", body["channel"]["id"])
+    thread_ts = data.get("thread_ts", "")
+    user_id = data.get("user_id", body["user"]["id"])
+
+    message = body.get("message", {})
+    msg_ts = message.get("ts")
+
+    logger.info(
+        "Decision link prompt button clicked",
+        extra={
+            "channel_id": channel_id,
+            "topic": topic,
+        }
+    )
+
+    try:
+        linker = DecisionLinker()
+
+        # Find related issues
+        related_issues = await linker.find_related_issues(
+            decision_topic=topic,
+            decision_text=decision,
+            channel_id=channel_id,
+        )
+
+        await linker.close()
+
+        if not related_issues:
+            # No related issues - show manual input prompt
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=msg_ts,
+                text="No related Jira tickets found. You can link manually by mentioning the ticket key (e.g., SCRUM-123) in a reply to this decision.",
+            )
+            return
+
+        # Build selection UI similar to _prompt_decision_link
+        blocks = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Link to Jira ticket:*\n_{topic}_"}
+            },
+            {"type": "divider"},
+        ]
+
+        # Fetch issue summaries for context
+        try:
+            settings = get_settings()
+            jira = JiraService(settings)
+
+            for key in related_issues[:5]:
+                try:
+                    issue = await jira.get_issue(key)
+                    summary = issue.summary[:60] + "..." if len(issue.summary) > 60 else issue.summary
+                except Exception:
+                    summary = "(Could not fetch summary)"
+
+                button_value = json.dumps({
+                    "key": key,
+                    "topic": topic[:100],
+                    "decision": decision[:500],
+                    "user_id": user_id,
+                })
+
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*{key}*: {summary}"},
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Link"},
+                        "action_id": f"link_decision_{key}",
+                        "value": button_value,
+                    }
+                })
+
+            await jira.close()
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch issue summaries: {e}")
+            # Show keys without summaries
+            for key in related_issues[:5]:
+                button_value = json.dumps({
+                    "key": key,
+                    "topic": topic[:100],
+                    "decision": decision[:500],
+                    "user_id": user_id,
+                })
+                blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*{key}*"},
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Link"},
+                        "action_id": f"link_decision_{key}",
+                        "value": button_value,
+                    }
+                })
+
+        # Add cancel button
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "action_id": "skip_decision_link"
+                }
+            ]
+        })
+
+        # Post as reply in thread (if decision was in channel, this creates thread)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=msg_ts,
+            blocks=blocks,
+            text="Link to Jira ticket?",
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to show decision link prompt: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=msg_ts,
+            text="Failed to load related Jira tickets. Please try again.",
+        )

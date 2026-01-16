@@ -95,6 +95,7 @@ from src.slack.handlers.jira_commands import (
 from src.slack.handlers.decision_link import (
     handle_link_decision,
     handle_skip_decision_link,
+    handle_decision_link_prompt,
 )
 
 # Sync handlers (Phase 21-04)
@@ -158,6 +159,7 @@ __all__ = [
     # Decision linking (Phase 21-05)
     "handle_link_decision",
     "handle_skip_decision_link",
+    "handle_decision_link_prompt",
     # Sync handlers (Phase 21-04)
     "handle_sync_apply_all",
     "handle_sync_use_slack",
