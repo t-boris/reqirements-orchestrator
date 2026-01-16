@@ -316,13 +316,15 @@ async def intent_router_node(state: dict) -> dict:
     """
     from langchain_core.messages import HumanMessage
 
-    # Check if intent is already forced (e.g., from scope_gate selection)
-    # If so, skip classification to avoid infinite loops
+    # Check if intent is already forced (e.g., from scope_gate selection or continuation detection)
+    # If so, skip classification to avoid overwriting the forced intent
     existing_intent = state.get("intent_result")
     if existing_intent:
         reasons = existing_intent.get("reasons", [])
-        if any("scope_gate" in r for r in reasons):
-            logger.info(f"Skipping intent classification - already forced via scope_gate: {existing_intent.get('intent')}")
+        # Skip if any forced reason pattern is present
+        forced_patterns = ["scope_gate", "event_router", "continuation"]
+        if any(pattern in r for r in reasons for pattern in forced_patterns):
+            logger.info(f"Skipping intent classification - already forced: {existing_intent.get('intent')}, reasons={reasons}")
             return {"intent_result": existing_intent}
 
     # Get latest human message
