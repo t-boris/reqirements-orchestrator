@@ -255,8 +255,8 @@ Plans:
 - [x] 20-01: State Types (Wave 1) — completed 2026-01-16
 - [x] 20-02: Event Store (Wave 1) — completed 2026-01-16
 - [x] 20-03: Event Validation (Wave 1) — completed 2026-01-16
-- [ ] 20-04: Idempotency Integration (Wave 1)
-- [ ] 20-05: Event Router Skeleton (Wave 2)
+- [x] 20-04: Idempotency Integration (Wave 1) — completed 2026-01-16
+- [x] 20-05: Event Router (Wave 2) — completed 2026-01-16
 - [ ] 20-06: PendingAction Flow (Wave 2)
 - [ ] 20-07: Scope Gate (Wave 3)
 - [ ] 20-08: Thread Default Intent (Wave 3)
@@ -274,7 +274,7 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 - [x] WorkflowStep enum with allowed events per step
 - [x] EventStore for idempotency tracking
 - [x] Event validation for stale UI prevention
-- [ ] Event-first routing (WorkflowEvent → PendingAction → UserIntent)
+- [x] Event-first routing (WorkflowEvent → PendingAction → UserIntent)
 - [ ] AMBIGUOUS triggers 3-button scope gate
 - [ ] "Remember for this thread" option
 - [ ] Resumable graph via pending_action + pending_payload
@@ -306,4 +306,4 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 | 15. Review Conversation Flow | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
-| 20. Brain Refactor | v1.1 | 3/12 | In progress | - |
+| 20. Brain Refactor | v1.1 | 5/12 | In progress | - |

@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 3 of 12 in current phase
+Plan: 5 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-03-PLAN.md (Event Validation)
+Last activity: 2026-01-16 — Completed 20-05-PLAN.md (Event Router)
 
-Progress: ███░░░░░░░░░░░░░░░░░ 25% (Phase 20)
+Progress: ████░░░░░░░░░░░░░░░░ 42% (Phase 20)
 
 ## v1.0 Summary
 
@@ -118,6 +118,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-03 | WorkflowStep -> set[str] mapping | Each step has explicit allowed event actions |
 | 20-03 | Separate ui_version check | Validates stale preview clicks within same step |
 | 20-03 | Predefined error messages | STALE_EVENT_MESSAGE, STALE_VERSION_MESSAGE for consistent UX |
+| 20-05 | RouteResult as Enum for typed routing outcomes | Type safety and JSON serialization support |
+| 20-05 | RoutingDecision dataclass with Optional fields | Structured routing decisions for different outcomes |
+| 20-05 | UI version parsed from button value suffix | Format: value:version for stale preview detection |
+| 20-05 | Thread default expiry via ISO timestamp | Timezone-aware comparison for 2h expiry |
 
 ### Roadmap Evolution
 
@@ -143,9 +147,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-03-PLAN.md (Event Validation)
+Stopped at: Completed 20-05-PLAN.md (Event Router)
 Resume file: None
-Next action: Execute 20-04-PLAN.md
+Next action: Execute 20-06-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
