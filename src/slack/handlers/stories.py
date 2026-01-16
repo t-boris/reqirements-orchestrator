@@ -99,10 +99,41 @@ async def _handle_create_stories_confirm_async(body, client: WebClient, action):
             success_msg = f":white_check_mark: Created {len(created_keys)} stories under *{epic_key}*:\n"
             success_msg += "\n".join(f"• {link}" for link in story_links)
 
+            # Post to thread
             client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
                 text=success_msg,
+            )
+
+            # Post announcement to main channel
+            epic_url = f"{jira_url}/browse/{epic_key}"
+            announcement_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":sparkles: *{len(created_keys)} User Stories Created*\nLinked to epic <{epic_url}|{epic_key}>",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "\n".join(f"• <{jira_url}/browse/{key}|{key}>" for key in created_keys),
+                    },
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {"type": "mrkdwn", "text": f"Created by <@{user_id}>"},
+                    ],
+                },
+            ]
+            client.chat_postMessage(
+                channel=channel,
+                blocks=announcement_blocks,
+                text=f"Created {len(created_keys)} stories under {epic_key}",
             )
 
         if errors:
