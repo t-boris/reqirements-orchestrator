@@ -615,3 +615,184 @@ async def _handle_multi_ticket_edit_submit_async(body, client: WebClient, view) 
             logger.error(f"Failed to update preview message: {e}", exc_info=True)
     else:
         logger.warning("No message_ts available to update preview")
+
+
+def handle_multi_ticket_remove_item(ack, body: dict, client: WebClient) -> None:
+    """Handle remove item button click.
+
+    Remove item from state and refresh preview.
+
+    Args:
+        ack: Slack ack function
+        body: Slack action body
+        client: Slack WebClient for API calls
+    """
+    ack()
+    _run_async(_handle_multi_ticket_remove_item_async(body, client))
+
+
+async def _handle_multi_ticket_remove_item_async(body: dict, client: WebClient) -> None:
+    """Remove item from state and refresh preview.
+
+    1. Parse item_id from action_id
+    2. Remove item from multi_ticket_state.items
+    3. If item was Epic with child Stories, also remove children (or orphan them)
+    4. Rebuild and update preview
+    5. If only 1 item remains, show message asking about single-ticket flow
+    """
+    channel_id = body.get("channel", {}).get("id")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+
+    if not channel_id or not message_ts:
+        logger.warning("Missing channel_id or message_ts in remove_item body")
+        return
+
+    item_id = _extract_item_id(body)
+    ui_version = _extract_ui_version(body)
+
+    logger.info(
+        "Multi-ticket remove item requested",
+        extra={"item_id": item_id, "channel_id": channel_id},
+    )
+
+    # Get runner and current state
+    team_id = body.get("team", {}).get("id", "unknown")
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+
+    try:
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+    except Exception as e:
+        logger.error(f"Failed to get state for remove_item: {e}", exc_info=True)
+        return
+
+    multi_ticket_state = state.get("multi_ticket_state")
+    if not multi_ticket_state:
+        logger.warning("No multi_ticket_state found during remove")
+        return
+
+    items = multi_ticket_state.get("items", [])
+
+    # Find the item to remove
+    item_to_remove = None
+    for item in items:
+        if item.get("id") == item_id:
+            item_to_remove = item
+            break
+
+    if not item_to_remove:
+        logger.warning(f"Item {item_id} not found during remove")
+        return
+
+    # Track IDs to remove (item itself and potentially children)
+    ids_to_remove = {item_id}
+
+    # If removing an Epic, also remove its child Stories (or orphan them)
+    # For now, we orphan them (clear parent_id) rather than delete
+    if item_to_remove.get("type") == "epic":
+        for item in items:
+            if item.get("parent_id") == item_id:
+                # Orphan the story by clearing parent_id
+                item["parent_id"] = None
+                logger.info(f"Orphaned story {item.get('id')} after epic removal")
+
+    # Remove the item(s)
+    updated_items = [item for item in items if item.get("id") not in ids_to_remove]
+
+    # Update state
+    multi_ticket_state["items"] = updated_items
+    new_ui_version = state.get("ui_version", 0) + 1
+
+    await runner.update_state({
+        "multi_ticket_state": multi_ticket_state,
+        "ui_version": new_ui_version,
+    })
+
+    # Handle edge case: only 1 item remains
+    if len(updated_items) == 1:
+        # Show message suggesting single-ticket flow
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="Only 1 item remains. Would you like to switch to the single-ticket editing experience for more detailed editing?",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Only *1 item* remains:\n\n*{updated_items[0].get('title', 'Untitled')}*\n\nWould you like to switch to single-ticket editing for a richer editing experience?",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Switch to Single-Ticket"},
+                            "action_id": "multi_ticket_switch_to_single",
+                            "style": "primary",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Keep Multi-Ticket View"},
+                            "action_id": f"multi_ticket_keep_multi:{new_ui_version}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Cancel"},
+                            "action_id": "multi_ticket_cancel",
+                            "style": "danger",
+                        },
+                    ],
+                },
+            ],
+        )
+        return
+
+    # Handle edge case: no items remain
+    if len(updated_items) == 0:
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="All items removed. Multi-ticket creation cancelled.",
+            blocks=[],
+        )
+        return
+
+    # Rebuild and update preview with remaining items
+    from src.slack.blocks.multi_ticket import build_multi_ticket_preview_blocks
+
+    # Get source context from review_artifact if available
+    review_artifact = state.get("review_artifact", {})
+    source_persona = review_artifact.get("persona", "")
+    source_date = ""
+    if review_artifact.get("frozen_at"):
+        frozen_at = review_artifact.get("frozen_at", "")
+        if frozen_at:
+            source_date = frozen_at.split("T")[0] if "T" in frozen_at else frozen_at
+
+    preview_blocks = build_multi_ticket_preview_blocks(
+        items=updated_items,
+        ui_version=new_ui_version,
+        source_persona=source_persona,
+        source_date=source_date,
+    )
+
+    try:
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=f"Create {len(updated_items)} Jira Tickets",
+            blocks=preview_blocks,
+        )
+        logger.info(
+            "Preview updated after remove",
+            extra={"removed_item_id": item_id, "remaining_count": len(updated_items)},
+        )
+    except Exception as e:
+        logger.error(f"Failed to update preview after remove: {e}", exc_info=True)
