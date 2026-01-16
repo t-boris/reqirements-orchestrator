@@ -25,6 +25,11 @@ from src.slack.blocks.ui import (
     build_hint_with_buttons,
     build_welcome_blocks,
 )
+from src.slack.blocks.scope_gate import (
+    build_scope_gate_blocks,
+    build_scope_gate_dismissed_blocks,
+    build_scope_gate_remembered_blocks,
+)
 
 __all__ = [
     # Draft
@@ -43,4 +48,8 @@ __all__ = [
     "build_persona_indicator",
     "build_hint_with_buttons",
     "build_welcome_blocks",
+    # Scope Gate
+    "build_scope_gate_blocks",
+    "build_scope_gate_dismissed_blocks",
+    "build_scope_gate_remembered_blocks",
 ]
