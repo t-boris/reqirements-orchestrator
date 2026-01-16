@@ -1,16 +1,29 @@
 """Custom LangGraph for PM-machine workflow.
 
 Graph structure:
-  START -> intent_router -> {ticket_flow | review_flow | discussion_flow}
+  START -> intent_router -> {ticket_flow | review_flow | discussion_flow | scope_gate_flow}
 
   ticket_flow: extraction -> should_continue -> validation -> decision -> END
   review_flow: review -> END (persona-based architectural analysis)
   discussion_flow: discussion -> END (brief conversational response)
+  scope_gate_flow: scope_gate -> END (3-button choice for AMBIGUOUS intent)
 
-Intent classification:
+Intent classification (pure user intents):
   - TICKET: User wants Jira ticket created
   - REVIEW: User wants analysis/review without Jira
   - DISCUSSION: Casual conversation, single response
+  - META: Questions about bot capabilities (routes to discussion)
+  - AMBIGUOUS: Intent unclear - triggers scope gate
+
+Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION are now
+PendingAction values handled by event_router BEFORE graph execution.
+They're kept as routes for backward compatibility during migration.
+
+Routing priority:
+1. WorkflowEvent (button/slash) - handled before graph (event_router)
+2. PendingAction - handled before graph (event_router)
+3. Thread default intent - overrides AMBIGUOUS if set
+4. Classified intent - route to appropriate flow
 
 Guardrails:
   - ReviewFlow and DiscussionFlow do NOT access Jira
@@ -42,6 +55,7 @@ from src.graph.nodes.review import review_node
 from src.graph.nodes.review_continuation import review_continuation_node
 from src.graph.nodes.ticket_action import ticket_action_node
 from src.graph.nodes.decision_approval import decision_approval_node
+from src.graph.nodes.scope_gate import scope_gate_node
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +102,18 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow"]:
     """Route based on classified intent.
+
+    Priority (from 20-CONTEXT.md):
+    1. WorkflowEvent - handled before graph (event_router)
+    2. PendingAction - handled before graph (event_router)
+    3. Thread default intent - check and use for AMBIGUOUS
+    4. Classified intent - route to flow
+
+    Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
+    are now PendingAction values, handled before this router runs.
+    They're kept as routes for backward compatibility during migration.
 
     Used as conditional edge from intent_router node.
     Routes to appropriate flow based on intent classification.
@@ -97,22 +121,40 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     intent_result = state.get("intent_result", {})
     intent = intent_result.get("intent", "TICKET")
 
+    # Check for thread default (set by "Remember for this thread")
+    thread_default = state.get("thread_default_intent")
+    if thread_default and intent == "AMBIGUOUS":
+        logger.info(f"Intent router: AMBIGUOUS overridden by thread_default={thread_default}")
+        intent = thread_default
+
     if intent == "REVIEW":
         logger.info("Intent router: routing to review_flow")
         return "review_flow"
     elif intent == "DISCUSSION":
         logger.info("Intent router: routing to discussion_flow")
         return "discussion_flow"
+    elif intent == "META":
+        # META questions get brief responses like discussion
+        logger.info("Intent router: routing META to discussion_flow")
+        return "discussion_flow"
+    elif intent == "AMBIGUOUS":
+        # Show scope gate - let user decide
+        logger.info("Intent router: routing AMBIGUOUS to scope_gate_flow")
+        return "scope_gate_flow"
     elif intent == "TICKET_ACTION":
+        # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
         return "ticket_action_flow"
     elif intent == "DECISION_APPROVAL":
+        # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to decision_approval_flow")
         return "decision_approval_flow"
     elif intent == "REVIEW_CONTINUATION":
+        # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to review_continuation_flow")
         return "review_continuation_flow"
     else:
+        # Default to ticket flow for TICKET intent
         logger.info("Intent router: routing to ticket_flow")
         return "ticket_flow"
 
@@ -152,6 +194,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("review_continuation", review_continuation_node)
     workflow.add_node("ticket_action", ticket_action_node)
     workflow.add_node("decision_approval", decision_approval_node)
+    workflow.add_node("scope_gate", scope_gate_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -167,6 +210,7 @@ def create_graph() -> StateGraph:
             "ticket_action_flow": "ticket_action",  # Work with existing ticket
             "decision_approval_flow": "decision_approval",  # User approved a review (Phase 14)
             "review_continuation_flow": "review_continuation",  # User answered review questions (Phase 15)
+            "scope_gate_flow": "scope_gate",  # AMBIGUOUS intent - show scope gate
         }
     )
 
@@ -184,6 +228,9 @@ def create_graph() -> StateGraph:
 
     # Decision approval goes directly to END after packaging for handler
     workflow.add_edge("decision_approval", END)
+
+    # Scope gate goes directly to END (shows UI and waits for button click)
+    workflow.add_edge("scope_gate", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
