@@ -545,6 +545,11 @@ async def _track_created_tickets(
                 },
             )
 
+            # Trigger board refresh if board exists
+            from src.slack.channel_tracker import trigger_board_refresh
+            from src.config.settings import settings
+            await trigger_board_refresh(channel_id, settings.jira_url)
+
     except Exception as e:
         # Non-blocking - log but don't fail the operation
         logger.warning(f"Failed to auto-track tickets: {e}")
