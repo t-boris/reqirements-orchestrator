@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 20 of 20 (Brain Refactor)
-Plan: 7 of 12 in current phase
+Plan: 8 of 12 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 20-07-PLAN.md (ReviewArtifact with Freeze Semantics)
+Last activity: 2026-01-16 — Completed 20-08-PLAN.md (Patch Mode for Reviews)
 
-Progress: ██████░░░░░░░░░░░░░░ 58% (Phase 20)
+Progress: ███████░░░░░░░░░░░░░ 67% (Phase 20)
 
 ## v1.0 Summary
 
@@ -132,6 +132,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 20-07 | ReviewArtifact TypedDict structure | Explicit 6-field structure: summary, kind, version, topic, frozen_at, thread_ts |
 | 20-07 | freeze_review() clears review_context | Stops continuation triggers when review is frozen |
 | 20-07 | Check both enum and string states | Support ReviewState.POSTED and "POSTED" for flexibility |
+| 20-08 | Patch mode as default for review continuations | Reduces expensive full regeneration on every user answer |
+| 20-08 | 4-section patch structure | New Decisions, New Risks, New Open Questions, Changes Since (max 12 bullets) |
+| 20-08 | Full synthesis via explicit button | "Show Full Architecture" triggers complete document generation |
 
 ### Roadmap Evolution
 
@@ -157,9 +160,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 20-07-PLAN.md (ReviewArtifact with Freeze Semantics)
+Stopped at: Completed 20-08-PLAN.md (Patch Mode for Reviews)
 Resume file: None
-Next action: Execute 20-08-PLAN.md
+Next action: Execute 20-09-PLAN.md
 
 ## Phase 11 Summary (Complete)
 
