@@ -292,20 +292,20 @@ Plans:
 - [x] 21-01: Channel Issue Tracker (Wave 1) — PostgreSQL store, /maro track commands, auto-tracking — completed 2026-01-16
 - [x] 21-02: Pinned Board Dashboard (Wave 1) — /maro board command, auto-refresh on changes — completed 2026-01-16
 - [x] 21-03: Natural Language Commands (Wave 2) — "change priority to high", contextual target resolution — completed 2026-01-16
-- [ ] 21-04: Smart Sync Engine (Wave 3) — @Maro update Jira, conflict resolution, auto-apply obvious
-- [ ] 21-05: Decision Auto-Update (Wave 3) — Auto-link architecture decisions to Jira tickets
+- [x] 21-04: Smart Sync Engine (Wave 3) — @Maro update Jira, conflict resolution, auto-apply obvious — completed 2026-01-16
+- [x] 21-05: Decision Auto-Update (Wave 3) — Auto-link architecture decisions to Jira tickets — completed 2026-01-16
 
 **Vision (from 21-CONTEXT.md):**
 MARO becomes the single interface for Jira in Slack. The channel is the source of truth, Jira stays in sync.
 
 **Features:**
 - [x] Channel-level Jira issue tracking (not just per-thread) — 21-01
-- [ ] Pinned board dashboard showing tracked issues with status
-- [ ] Natural language commands: "change priority of that ticket to high"
-- [ ] Smart auto-sync: obvious updates automatic, conflicts require user input
-- [ ] Bidirectional awareness: changes from Slack or Jira are visible
-- [ ] Auto-update Jira when architecture decisions approved (Phase 14 integration)
-- [ ] Delete operations require confirmation even when explicitly requested
+- [x] Pinned board dashboard showing tracked issues with status — 21-02
+- [x] Natural language commands: "change priority of that ticket to high" — 21-03
+- [x] Smart auto-sync: obvious updates automatic, conflicts require user input — 21-04
+- [x] Bidirectional awareness: changes from Slack or Jira are visible — 21-04
+- [x] Auto-update Jira when architecture decisions approved (Phase 14 integration) — 21-05
+- [x] Delete operations require confirmation even when explicitly requested — 21-03
 
 **Key commands:**
 - `/maro track SCRUM-123` — Add issue to channel's tracked list
@@ -340,4 +340,4 @@ MARO becomes the single interface for Jira in Slack. The channel is the source o
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
-| 21. Jira Sync & Management | v1.1 | 3/5 | In Progress | - |
+| 21. Jira Sync & Management | v1.1 | 5/5 | Complete | 2026-01-16 |
