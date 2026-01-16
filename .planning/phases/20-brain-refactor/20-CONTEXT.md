@@ -2,7 +2,7 @@
 
 **Gathered:** 2026-01-15
 **Status:** Ready for planning
-**Updated:** 2026-01-15 (v3: production-ready guardrails)
+**Updated:** 2026-01-15 (v4: HA-ready, UI versioning, eviction policies)
 
 <vision>
 ## How This Should Work
@@ -40,18 +40,24 @@ The key insight: **intent is what user wants, not what system is doing**.
    - Else if pending_action != None → continuation handler
    - Else → intent classifier
    - **Idempotency**: track processed event_ids, reject duplicates
+   - **HA-ready storage**: processed_event_ids in Postgres/Redis (24h TTL)
+   - **Key**: `(team_id, event_id)` — for button clicks fallback to `(action_id, message_ts, user_id)`
 
 3. **Remove "lean toward TICKET" bias**
    - AMBIGUOUS intent with scope gate (3 buttons)
    - "Review" / "Create ticket" / "Not now (dismiss)"
    - "Not now" clears pending_action and stops cycle
    - **"Remember for this thread"** option: stores thread_default_intent
+   - **Reset conditions**: expires after 2h inactivity OR workflow_step leaves {REVIEW_ACTIVE, REVIEW_FROZEN}
+   - **Clear command**: `/maro forget` or "Clear remembered mode" button
    - User decides, bot doesn't guess
 
 4. **Resumable graph**
    - pending_action + pending_payload in state tells where to continue AND with what context
    - No more "every interrupt goes to START"
    - Resumable must work BEFORE review lifecycle fixes (dependency)
+   - **pending_payload contract**: minimal identifiers only (story_id, draft_id), NOT full objects
+   - Large data stored in multi_ticket_state / draft_store, payload contains refs
 
 5. **Review lifecycle fixes**
    - REVIEW_COMPLETE patterns (thanks/ok/got it)
@@ -60,6 +66,11 @@ The key insight: **intent is what user wants, not what system is doing**.
    - TTL/cooldown for review_context
    - **Freeze semantics**: frozen review_context remains available for handoff but doesn't trigger continuation and doesn't affect next message's intent
    - **Frozen artifact**: explicit review_artifact_summary, review_artifact_kind, review_artifact_version
+   - **Patch structure** (fixed format, max 12 bullets):
+     - New decisions
+     - New risks
+     - New open questions
+     - Changes since vN
 
 6. **Decision approval flow**
    - Preview in thread → Edit → Post to channel
@@ -73,6 +84,8 @@ The key insight: **intent is what user wants, not what system is doing**.
    - Resume after edits
    - **Quantity safety latch**: >3 items requires explicit confirmation
    - **Size safety latch**: total draft > X chars → "Split into batches?"
+   - **Dry-run validation**: before create, validate all required fields, mappings, permissions
+   - Reduces "Approved → failed create" failures
 
 8. **Context persistence**
    - context_summary (not raw)
@@ -87,10 +100,16 @@ The key insight: **intent is what user wants, not what system is doing**.
          confidence: float  # 0.0 - 1.0
          canonical_id: str  # hash(text + scope + type) for dedup
      ```
+   - **Eviction policy**:
+     - Max facts per scope: thread=50, epic=200, channel=300
+     - Eviction by LRU or lowest confidence
+     - Merge by canonical_id (update instead of append)
 
 9. **Event validation per workflow step**
    - Each WorkflowStep has allowed_events list
    - Invalid events → "This action is no longer available" (stale UI)
+   - **UI versioning**: ui_version (int) in state, included in button values
+   - Validates "same step but old preview" (edit→old approve click)
 
 </essential>
 
@@ -156,7 +175,10 @@ class AgentState(TypedDict):
     # NEW: Event tracking for idempotency
     last_event_id: Optional[str]
     last_event_type: Optional[WorkflowEventType]
-    # processed_event_ids: stored in DB/memory (LRU)
+    # processed_event_ids: stored in Postgres/Redis (24h TTL, HA-ready)
+
+    # NEW: UI versioning (prevents stale button clicks within same step)
+    ui_version: int  # Incremented on each preview update
 
     # NEW: Thread-level preferences
     thread_default_intent: Optional[UserIntent]  # "Remember for this thread"
@@ -272,6 +294,9 @@ def validate_event(step: WorkflowStep, event_action: str) -> bool:
 9. **Duplicate Approve click** → second click returns "Already processed" (idempotent)
 10. **Stale button click** → click on old preview after edit returns "This preview is outdated"
 11. User selects "Remember: Review for this thread" → subsequent AMBIGUOUS messages auto-route to REVIEW
+12. **Remember expires** → after 2h inactivity, AMBIGUOUS shows scope gate again
+13. **UI version mismatch** → click Approve on preview v1 after edit created v2 → "Preview outdated"
+14. **Dry-run catches error** → missing required field detected before create, not after
 
 </specifics>
 
@@ -327,18 +352,24 @@ This is a **large** phase: 12-16 plans across 6 waves.
 
 1. **Event-first routing** — WorkflowEvent → PendingAction → UserIntent
 2. **Event idempotency** — track event_id, reject duplicates
-3. **Typed workflow_step** — Enum, not str
-4. **Allowed events per step** — validate or return "stale UI"
-5. **3-button scope gate** — Review / Ticket / Not now
-6. **"Remember for thread"** — reduces repeated scope gates
-7. **pending_payload** — context for pending action (not stringly typed)
-8. **Freeze semantics** — ReviewArtifact with summary/kind/version
-9. **Structured salient_facts** — type/scope/source_ts/text/confidence/canonical_id
-10. **Multi-ticket quantity latch** — >3 items requires confirmation
-11. **Multi-ticket size latch** — >X chars → "Split into batches?"
-12. **Stories linked to Epic** — not subtasks (configurable)
-13. **Decision source reference** — thread link + issue keys in channel post
-14. **Resume before review** — Wave 2 before Wave 4
+3. **HA-ready event storage** — Postgres/Redis with 24h TTL, key=(team_id, event_id)
+4. **Typed workflow_step** — Enum, not str
+5. **Allowed events per step** — validate or return "stale UI"
+6. **UI versioning** — ui_version in state + button values, prevents stale preview clicks
+7. **3-button scope gate** — Review / Ticket / Not now
+8. **"Remember for thread"** — reduces repeated scope gates
+9. **Remember reset conditions** — 2h inactivity or workflow exit, `/maro forget` command
+10. **pending_payload contract** — minimal refs only, large data in stores
+11. **Freeze semantics** — ReviewArtifact with summary/kind/version
+12. **Patch structure** — fixed format with 4 sections, max 12 bullets
+13. **Structured salient_facts** — type/scope/source_ts/text/confidence/canonical_id
+14. **Fact eviction policy** — max per scope (50/200/300), LRU by confidence
+15. **Multi-ticket quantity latch** — >3 items requires confirmation
+16. **Multi-ticket size latch** — >X chars → "Split into batches?"
+17. **Dry-run validation** — validate Jira fields/permissions before create
+18. **Stories linked to Epic** — not subtasks (configurable)
+19. **Decision source reference** — thread link + issue keys in channel post
+20. **Resume before review** — Wave 2 before Wave 4
 
 ## Out of Scope
 
