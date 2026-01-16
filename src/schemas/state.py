@@ -274,6 +274,9 @@ class AgentState(TypedDict):
     # - OR when workflow_step leaves {REVIEW_ACTIVE, REVIEW_FROZEN}
     # - OR explicit `/maro forget` command
 
+    # Scope gate re-routing (Phase 20)
+    user_message: Optional[str]  # Preserved original message for re-routing after scope gate selection
+
     # Multi-ticket state (Phase 20)
     multi_ticket_state: Optional[MultiTicketState]  # Epic + linked stories batch
 

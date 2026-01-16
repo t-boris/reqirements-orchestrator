@@ -135,6 +135,8 @@ class GraphRunner:
             "last_event_type": None,
             "thread_default_intent": None,
             "thread_default_expires_at": None,
+            # Scope gate re-routing
+            "user_message": None,
         }
 
     async def _run_until_interrupt(self, state: dict[str, Any]) -> dict[str, Any]:
