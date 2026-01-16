@@ -290,8 +290,8 @@ Intent classification is overloaded — handles both user intent AND workflow ev
 
 Plans:
 - [x] 21-01: Channel Issue Tracker (Wave 1) — PostgreSQL store, /maro track commands, auto-tracking — completed 2026-01-16
-- [ ] 21-02: Pinned Board Dashboard (Wave 1) — /maro board command, auto-refresh on changes
-- [ ] 21-03: Natural Language Commands (Wave 2) — "change priority to high", contextual target resolution
+- [x] 21-02: Pinned Board Dashboard (Wave 1) — /maro board command, auto-refresh on changes — completed 2026-01-16
+- [x] 21-03: Natural Language Commands (Wave 2) — "change priority to high", contextual target resolution — completed 2026-01-16
 - [ ] 21-04: Smart Sync Engine (Wave 3) — @Maro update Jira, conflict resolution, auto-apply obvious
 - [ ] 21-05: Decision Auto-Update (Wave 3) — Auto-link architecture decisions to Jira tickets
 
@@ -340,4 +340,4 @@ MARO becomes the single interface for Jira in Slack. The channel is the source o
 | 16. Ticket Operations | v1.1 | 1/1 | Complete | 2026-01-15 |
 | 18. Clean Code | v1.1 | 4/4 | Complete | 2026-01-15 |
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
-| 21. Jira Sync & Management | v1.1 | 1/5 | In Progress | - |
+| 21. Jira Sync & Management | v1.1 | 3/5 | In Progress | - |

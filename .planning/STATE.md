@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 21 of 21 (Jira Sync & Management)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-16 — Completed 21-02-PLAN.md (Pinned Board Dashboard)
+Last activity: 2026-01-16 — Completed 21-03-PLAN.md (Natural Language Commands)
 
-Progress: ██░░░░░░░░░░░░░░░░░░ 40% (Phase 21)
+Progress: ███░░░░░░░░░░░░░░░░░ 60% (Phase 21)
 
 ## v1.0 Summary
 
@@ -155,6 +155,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 21-02 | Status categories: open/in_progress/done | Mapped from Jira statuses for dashboard display |
 | 21-02 | Board auto-pinned on post | Visibility as persistent dashboard |
 | 21-02 | Non-blocking refresh failures | Log but don't interrupt user operations |
+| 21-03 | JIRA_COMMAND vs TICKET_ACTION | Modify fields vs create items - clear separation |
+| 21-03 | Contextual resolution priority | Thread binding > single tracked > most recent in conversation |
+| 21-03 | Delete requires danger confirmation | Red button + warning for destructive operations |
 
 ### Roadmap Evolution
 
@@ -183,9 +186,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-16
-Stopped at: Completed 21-02-PLAN.md (Pinned Board Dashboard)
+Stopped at: Completed 21-03-PLAN.md (Natural Language Commands)
 Resume file: None
-Next action: Execute 21-03-PLAN.md (Status Sync Worker)
+Next action: Execute 21-04-PLAN.md (Smart Sync Engine)
 
 ## Phase 11 Summary (Complete)
 
