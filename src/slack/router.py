@@ -45,6 +45,9 @@ from src.slack.handlers import (
     handle_multi_ticket_confirm_quantity,
     handle_multi_ticket_split,
     handle_multi_ticket_edit_story,
+    handle_multi_ticket_edit_item,
+    handle_multi_ticket_edit_submit,
+    handle_multi_ticket_remove_item,
     handle_multi_ticket_approve,
     handle_multi_ticket_cancel,
 )
@@ -173,8 +176,15 @@ def register_handlers(app: App) -> None:
     # Multi-ticket actions (Phase 22)
     app.action("multi_ticket_confirm_quantity")(handle_multi_ticket_confirm_quantity)
     app.action("multi_ticket_split")(handle_multi_ticket_split)
+    # Edit item - matches both old (edit_story) and new (edit_item) patterns
     app.action(re.compile(r"^multi_ticket_edit_story:.*"))(handle_multi_ticket_edit_story)
+    app.action(re.compile(r"^multi_ticket_edit_item:.*"))(handle_multi_ticket_edit_item)
+    # Remove item
+    app.action(re.compile(r"^multi_ticket_remove_item:.*"))(handle_multi_ticket_remove_item)
     app.action("multi_ticket_approve")(handle_multi_ticket_approve)
     app.action("multi_ticket_cancel")(handle_multi_ticket_cancel)
+
+    # Multi-ticket view submissions (Phase 22)
+    app.view("multi_ticket_edit_submit")(handle_multi_ticket_edit_submit)
 
     logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket")

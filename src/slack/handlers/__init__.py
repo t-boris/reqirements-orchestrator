@@ -114,6 +114,9 @@ from src.slack.handlers.multi_ticket import (
     handle_multi_ticket_confirm_quantity,
     handle_multi_ticket_split,
     handle_multi_ticket_edit_story,
+    handle_multi_ticket_edit_item,
+    handle_multi_ticket_edit_submit,
+    handle_multi_ticket_remove_item,
     handle_multi_ticket_approve,
     handle_multi_ticket_cancel,
 )
@@ -183,6 +186,9 @@ __all__ = [
     "handle_multi_ticket_confirm_quantity",
     "handle_multi_ticket_split",
     "handle_multi_ticket_edit_story",
+    "handle_multi_ticket_edit_item",
+    "handle_multi_ticket_edit_submit",
+    "handle_multi_ticket_remove_item",
     "handle_multi_ticket_approve",
     "handle_multi_ticket_cancel",
 ]
