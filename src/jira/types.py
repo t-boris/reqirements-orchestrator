@@ -44,6 +44,7 @@ class JiraIssue(BaseModel):
     status: str = Field(..., description="Issue status (e.g., Open, In Progress)")
     assignee: Optional[str] = Field(None, description="Assignee display name")
     updated: Optional[str] = Field(None, description="Last updated timestamp (ISO format or relative)")
+    description: Optional[str] = Field(None, description="Issue description (plain text)")
     base_url: str = Field(..., description="Jira base URL for computing issue URL")
 
     @computed_field

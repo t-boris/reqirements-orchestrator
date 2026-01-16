@@ -130,6 +130,45 @@ class JiraService:
             await self._session.close()
             self._session = None
 
+    def _adf_to_text(self, adf: dict) -> str:
+        """Convert Atlassian Document Format (ADF) to plain text.
+
+        ADF is a JSON format used by Jira for rich text content.
+        This extracts plain text recursively from the document tree.
+
+        Args:
+            adf: ADF document dict
+
+        Returns:
+            Plain text representation
+        """
+        if not adf or not isinstance(adf, dict):
+            return ""
+
+        text_parts = []
+
+        def extract_text(node):
+            if not isinstance(node, dict):
+                return
+
+            # Text node
+            if node.get("type") == "text":
+                text_parts.append(node.get("text", ""))
+                return
+
+            # Recursively process content
+            content = node.get("content", [])
+            for child in content:
+                extract_text(child)
+
+            # Add newlines for block elements
+            node_type = node.get("type", "")
+            if node_type in ("paragraph", "heading", "bulletList", "orderedList", "listItem"):
+                text_parts.append("\n")
+
+        extract_text(adf)
+        return "".join(text_parts).strip()
+
     async def _request(
         self,
         method: str,
@@ -488,7 +527,7 @@ class JiraService:
         response = await self._request(
             "GET",
             f"/rest/api/3/issue/{key}",
-            params={"fields": "key,summary,status,assignee"},
+            params={"fields": "key,summary,status,assignee,description"},
         )
 
         try:
@@ -501,11 +540,16 @@ class JiraService:
                 assignee_name = None
             status = fields.get("status", {}).get("name", "Unknown")
 
+            # Parse description from ADF to plain text
+            description_adf = fields.get("description")
+            description_text = self._adf_to_text(description_adf) if description_adf else None
+
             issue = JiraIssue(
                 key=response.get("key", key),
                 summary=fields.get("summary", ""),
                 status=status,
                 assignee=assignee_name,
+                description=description_text,
                 base_url=self.base_url,
             )
             logger.info(f"Built JiraIssue: key={issue.key}, url={issue.url}")
