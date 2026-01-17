@@ -74,3 +74,29 @@ def cleanup_session_lock(session_id: str) -> None:
     if session_id in _session_locks:
         del _session_locks[session_id]
         logger.debug(f"Cleaned up lock for session {session_id}")
+
+
+def get_identity_from_body(body: dict) -> SessionIdentity:
+    """Extract SessionIdentity from Slack action body (button clicks, etc).
+
+    Args:
+        body: Slack action body dict
+
+    Returns:
+        SessionIdentity with team_id, channel_id, thread_ts
+
+    Note:
+        For button clicks, thread_ts comes from message.thread_ts or message.ts
+    """
+    team_id = body.get("team", {}).get("id", "")
+    channel_id = body.get("channel", {}).get("id", "")
+
+    # For button clicks, thread_ts is in message
+    message = body.get("message", {})
+    thread_ts = message.get("thread_ts") or message.get("ts", "")
+
+    return SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
