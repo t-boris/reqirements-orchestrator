@@ -525,9 +525,11 @@ async def _handle_ticket_action(
         )
 
     elif action_type == "update":
-        # Update ticket with extracted content (append to existing description)
+        # Show update preview with confirmation flow (conversational)
         from src.jira.client import JiraService
         from src.config.settings import get_settings
+        from src.slack.blocks.update_preview import build_update_preview_blocks
+        from src.schemas.state import PendingAction, WorkflowStep
 
         try:
             settings = get_settings()
@@ -536,53 +538,84 @@ async def _handle_ticket_action(
             # Fetch existing issue to get current description
             existing_issue = await jira_service.get_issue(ticket_key)
             existing_description = existing_issue.description or ""
+            ticket_url = existing_issue.url
 
-            # Extract update content from thread conversation
+            # Extract proposed update content from thread conversation
             update_content = await _extract_update_content(
                 result, client, identity.channel_id, identity.thread_ts
             )
+            await jira_service.close()
 
             if not update_content or update_content.strip() == "":
                 client.chat_postMessage(
                     channel=identity.channel_id,
                     thread_ts=identity.thread_ts,
-                    text=f"No content to add to *{ticket_key}*. Try being more specific about what details to add.",
+                    text=f"I couldn't find specific content to add to *{ticket_key}*. What details would you like to add?",
                 )
-                await jira_service.close()
                 return
 
-            # Append new content to existing description
-            separator = "\n\n---\n\n" if existing_description else ""
-            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            new_description = f"{existing_description}{separator}h3. Update from Slack ({timestamp})\n\n{update_content}"
+            # Get runner to store pending update state
+            runner = get_runner(identity)
+            state = await runner._get_current_state()
 
-            # Update the ticket with appended description
-            await jira_service.update_issue(
-                ticket_key,
-                {"description": new_description},
+            # Build preview blocks
+            ui_version = state.get("ui_version", 0) + 1
+            preview_blocks = build_update_preview_blocks(
+                ticket_key=ticket_key,
+                ticket_url=ticket_url,
+                current_description=existing_description,
+                proposed_content=update_content,
+                update_mode="append",
+                ui_version=ui_version,
             )
-            await jira_service.close()
+
+            # Add conversational hint
+            preview_blocks.insert(1, {
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "You can click the buttons below, or just reply to refine the update."
+                }]
+            })
+
+            # Post preview
+            result_msg = client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                blocks=preview_blocks,
+                text=f"Preview update for {ticket_key}",
+            )
+
+            # Store pending update in state
+            pending_update = {
+                "ticket_key": ticket_key,
+                "ticket_url": ticket_url,
+                "current_description": existing_description,
+                "proposed_content": update_content,
+                "update_mode": "append",
+                "preview_message_ts": result_msg["ts"],
+            }
+
+            state["pending_update"] = pending_update
+            state["pending_action"] = PendingAction.WAITING_UPDATE_CONFIRM
+            state["workflow_step"] = WorkflowStep.UPDATE_PREVIEW
+            state["ui_version"] = ui_version
+            await runner.update_state(state)
 
             logger.info(
-                "Ticket description updated",
+                "Update preview shown",
                 extra={
                     "ticket_key": ticket_key,
-                    "added_content_length": len(update_content),
-                    "total_description_length": len(new_description),
+                    "proposed_content_length": len(update_content),
                 }
             )
 
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                text=f"Updated *{ticket_key}* with the latest context from this thread.",
-            )
         except Exception as e:
-            logger.error(f"Failed to update ticket: {e}", exc_info=True)
+            logger.error(f"Failed to show update preview: {e}", exc_info=True)
             client.chat_postMessage(
                 channel=identity.channel_id,
                 thread_ts=identity.thread_ts,
-                text=f"Failed to update *{ticket_key}*: {str(e)}",
+                text=f"Failed to prepare update for *{ticket_key}*: {str(e)}",
             )
 
     elif action_type == "add_comment":

@@ -123,6 +123,14 @@ from src.slack.handlers.multi_ticket import (
     handle_multi_ticket_cancel_confirm,
 )
 
+# Update preview handlers (conversational update flow)
+from src.slack.handlers.update import (
+    handle_update_preview_apply,
+    handle_update_preview_edit,
+    handle_update_preview_cancel,
+    handle_update_edit_modal_submit,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -195,4 +203,9 @@ __all__ = [
     "handle_multi_ticket_cancel",
     "handle_multi_ticket_retry_failed",
     "handle_multi_ticket_cancel_confirm",
+    # Update preview handlers (conversational update flow)
+    "handle_update_preview_apply",
+    "handle_update_preview_edit",
+    "handle_update_preview_cancel",
+    "handle_update_edit_modal_submit",
 ]

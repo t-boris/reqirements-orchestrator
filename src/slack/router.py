@@ -52,6 +52,11 @@ from src.slack.handlers import (
     handle_multi_ticket_cancel,
     handle_multi_ticket_retry_failed,
     handle_multi_ticket_cancel_confirm,
+    # Update preview handlers (conversational update flow)
+    handle_update_preview_apply,
+    handle_update_preview_edit,
+    handle_update_preview_cancel,
+    handle_update_edit_modal_submit,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -192,4 +197,10 @@ def register_handlers(app: App) -> None:
     app.view("multi_ticket_edit_submit")(handle_multi_ticket_edit_submit)
     app.view("multi_ticket_cancel_confirm")(handle_multi_ticket_cancel_confirm)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket")
+    # Update preview actions (conversational update flow)
+    app.action(re.compile(r"^update_preview_apply(?::\d+)?$"))(handle_update_preview_apply)
+    app.action(re.compile(r"^update_preview_edit(?::\d+)?$"))(handle_update_preview_edit)
+    app.action(re.compile(r"^update_preview_cancel(?::\d+)?$"))(handle_update_preview_cancel)
+    app.view("update_edit_modal")(handle_update_edit_modal_submit)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview")

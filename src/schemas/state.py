@@ -102,11 +102,26 @@ class PendingAction(str, Enum):
     WAITING_DECISION_EDIT = "waiting_decision_edit" # Decision preview, waiting edit
     WAITING_QUANTITY_CONFIRM = "waiting_quantity_confirm"  # Multi-ticket >3 items, confirm
     WAITING_SIZE_CONFIRM = "waiting_size_confirm"   # Multi-ticket large batch, confirm split
+    WAITING_UPDATE_CONFIRM = "waiting_update_confirm"  # Update preview shown, waiting confirm/edit
 
 
 # Safety latch thresholds for multi-ticket flow
 MULTI_TICKET_QUANTITY_THRESHOLD = 3  # >3 items requires confirmation
 MULTI_TICKET_SIZE_THRESHOLD = 10000  # >10k chars requires confirmation
+
+
+class PendingUpdate(TypedDict):
+    """State for pending ticket update awaiting confirmation.
+
+    Enables conversational refinement of updates before applying to Jira.
+    User can provide feedback via text replies to adjust the proposed content.
+    """
+    ticket_key: str  # Jira ticket key (e.g., "SCRUM-136")
+    ticket_url: str  # Full URL to the ticket
+    current_description: str  # Current ticket description from Jira
+    proposed_content: str  # Content to add/replace
+    update_mode: Literal["append", "replace"]  # How to apply the update
+    preview_message_ts: Optional[str]  # Slack ts of preview message (for updates)
 
 
 class MultiTicketItem(TypedDict):
@@ -144,6 +159,7 @@ class WorkflowStep(str, Enum):
     REVIEW_ACTIVE = "review_active"             # Review in progress, awaiting response
     REVIEW_FROZEN = "review_frozen"             # Review complete, context preserved for handoff
     SCOPE_GATE = "scope_gate"                   # Ambiguous intent, showing 3-button choice
+    UPDATE_PREVIEW = "update_preview"           # Ticket update preview, awaiting confirm/edit
 
 
 class WorkflowEventType(str, Enum):
@@ -284,6 +300,9 @@ class AgentState(TypedDict):
 
     # Multi-ticket state (Phase 20)
     multi_ticket_state: Optional[MultiTicketState]  # Epic + linked stories batch
+
+    # Pending update state (conversational update flow)
+    pending_update: Optional[PendingUpdate]  # Ticket update awaiting confirmation
 
     # Context persistence (Phase 20)
     salient_facts: list[Fact]  # Structured facts with confidence + canonical_id

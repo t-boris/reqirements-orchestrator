@@ -304,6 +304,16 @@ async def _handle_continuation(
     # Get runner to continue processing
     runner = get_runner(identity)
 
+    # Special handling for WAITING_UPDATE_CONFIRM - conversational update refinement
+    if pending_action == PendingAction.WAITING_UPDATE_CONFIRM:
+        from src.slack.handlers.update import refine_update_from_feedback
+
+        processed = await refine_update_from_feedback(identity, client, text)
+        if processed:
+            await tracker.complete()
+            return
+        # If not processed (no pending_update), fall through to normal flow
+
     # Force REVIEW_CONTINUATION intent if we have review_context
     # This ensures the graph routes to review_continuation_flow
     review_context = state.get("review_context")

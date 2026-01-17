@@ -48,6 +48,18 @@
 **Root cause:** `_track_created_tickets` didn't call `trigger_board_refresh()`
 **Fix:** Added board refresh call after auto-tracking
 
+### UAT-005: Update ticket replaces description instead of appending (FIXED)
+**Resolved:** 2026-01-16 - Fixed in bce0137
+**Severity:** Major
+**Description:** "@Maro Update SCRUM-136 with details" doesn't visibly update the ticket
+**Root cause:** Two issues:
+1. Update handler replaced entire description instead of appending
+2. Content extraction only used user message, not thread conversation context
+**Fix:**
+- Fetch existing description and append new content with timestamp header
+- Enhanced `_extract_update_content` to fetch thread history for context
+- Added empty content check with user feedback
+
 ---
 
 *Phase: 22-multi-ticket-from-review*

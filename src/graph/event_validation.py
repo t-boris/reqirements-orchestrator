@@ -11,15 +11,17 @@ from src.schemas.state import WorkflowStep
 logger = logging.getLogger(__name__)
 
 
-# Allowed event actions per workflow step
+# Allowed event action prefixes per workflow step
 # Empty set = no workflow actions allowed
+# NOTE: Uses prefix matching - action_id must START with one of these prefixes
 ALLOWED_EVENTS: dict[WorkflowStep, set[str]] = {
     WorkflowStep.DRAFT_PREVIEW: {"approve", "reject", "edit"},
-    WorkflowStep.MULTI_TICKET_PREVIEW: {"approve", "edit_story", "cancel", "confirm_quantity"},
+    WorkflowStep.MULTI_TICKET_PREVIEW: {"approve", "edit_story", "cancel", "confirm_quantity", "multi_ticket_"},
     WorkflowStep.DECISION_PREVIEW: {"approve", "edit", "cancel"},
     WorkflowStep.REVIEW_ACTIVE: {"show_full", "approve_decision", "turn_into_ticket"},
     WorkflowStep.REVIEW_FROZEN: set(),  # No workflow actions on frozen review
     WorkflowStep.SCOPE_GATE: {"select_review", "select_ticket", "dismiss", "remember"},
+    WorkflowStep.UPDATE_PREVIEW: {"update_preview_apply", "update_preview_edit", "update_preview_cancel"},
 }
 
 
@@ -29,9 +31,12 @@ def validate_event(
 ) -> bool:
     """Check if event action is allowed for current workflow step.
 
+    Uses prefix matching - action_id must start with one of the allowed prefixes.
+    This handles action_ids with version suffixes like "update_preview_apply:1".
+
     Args:
         step: Current workflow step (None if no active workflow)
-        event_action: The action being attempted (e.g., "approve", "edit")
+        event_action: The action being attempted (e.g., "update_preview_apply:1")
 
     Returns:
         True if event is allowed, False for stale/invalid events
@@ -46,11 +51,12 @@ def validate_event(
         logger.warning(f"Unknown workflow step: {step}")
         return False
 
-    allowed = event_action in ALLOWED_EVENTS[step]
+    # Use prefix matching to handle action_ids with version suffixes
+    allowed = any(event_action.startswith(prefix) for prefix in ALLOWED_EVENTS[step])
     if not allowed:
         logger.info(
             f"Stale event detected: '{event_action}' not allowed in step {step.value}. "
-            f"Allowed: {ALLOWED_EVENTS[step]}"
+            f"Allowed prefixes: {ALLOWED_EVENTS[step]}"
         )
 
     return allowed
