@@ -6,6 +6,7 @@ content for ticket updates and comments.
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from slack_sdk.web import WebClient
@@ -65,21 +66,48 @@ async def _extract_update_content(
     channel_id: str,
     thread_ts: str,
 ) -> str:
-    """Extract update content from conversation context using LLM."""
+    """Extract update content from conversation context using LLM.
+
+    Fetches thread history to provide actual context for the update.
+    """
     from src.llm import get_llm
+    from src.slack.history import fetch_thread_history, format_messages_for_context
 
     # Get user message and review context
     user_message = result.get("user_message", "")
     review_context = result.get("review_context", {})
     review_summary = review_context.get("review_summary", "") if review_context else ""
 
-    llm = get_llm()
-    prompt = UPDATE_EXTRACTION_PROMPT.format(
-        user_message=user_message,
-        review_context=review_summary or "No review context available",
-    )
+    # Fetch thread history for actual context
+    thread_context = ""
+    if thread_ts:
+        thread_messages = fetch_thread_history(client, channel_id, thread_ts)
+        if thread_messages:
+            thread_context = format_messages_for_context(thread_messages)
 
-    return await llm.chat(prompt)
+    llm = get_llm()
+
+    # Enhanced prompt with thread context
+    enhanced_prompt = f'''Based on this conversation, extract what should be added to the Jira ticket description.
+
+User request: {user_message}
+
+Thread conversation:
+{thread_context if thread_context else "No thread context available"}
+
+Review context (if available):
+{review_summary or "No review context available"}
+
+Return the content to add to the ticket description.
+Be concise and structured. Use Jira formatting:
+- h3. for headers
+- * for bullet points
+- Keep it factual and actionable
+
+Focus on extracting key requirements, decisions, and technical details from the conversation.
+'''
+
+    return await llm.chat(enhanced_prompt)
 
 
 async def _extract_comment_content(
@@ -497,7 +525,7 @@ async def _handle_ticket_action(
         )
 
     elif action_type == "update":
-        # Update ticket with extracted content
+        # Update ticket with extracted content (append to existing description)
         from src.jira.client import JiraService
         from src.config.settings import get_settings
 
@@ -505,22 +533,49 @@ async def _handle_ticket_action(
             settings = get_settings()
             jira_service = JiraService(settings)
 
-            # Extract update content
+            # Fetch existing issue to get current description
+            existing_issue = await jira_service.get_issue(ticket_key)
+            existing_description = existing_issue.description or ""
+
+            # Extract update content from thread conversation
             update_content = await _extract_update_content(
                 result, client, identity.channel_id, identity.thread_ts
             )
 
-            # Update the ticket (append to description)
+            if not update_content or update_content.strip() == "":
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    text=f"No content to add to *{ticket_key}*. Try being more specific about what details to add.",
+                )
+                await jira_service.close()
+                return
+
+            # Append new content to existing description
+            separator = "\n\n---\n\n" if existing_description else ""
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            new_description = f"{existing_description}{separator}h3. Update from Slack ({timestamp})\n\n{update_content}"
+
+            # Update the ticket with appended description
             await jira_service.update_issue(
                 ticket_key,
-                {"description": update_content},
+                {"description": new_description},
             )
             await jira_service.close()
+
+            logger.info(
+                "Ticket description updated",
+                extra={
+                    "ticket_key": ticket_key,
+                    "added_content_length": len(update_content),
+                    "total_description_length": len(new_description),
+                }
+            )
 
             client.chat_postMessage(
                 channel=identity.channel_id,
                 thread_ts=identity.thread_ts,
-                text=f"Updated *{ticket_key}* with the latest context.",
+                text=f"Updated *{ticket_key}* with the latest context from this thread.",
             )
         except Exception as e:
             logger.error(f"Failed to update ticket: {e}", exc_info=True)
