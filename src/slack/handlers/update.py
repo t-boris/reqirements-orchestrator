@@ -11,9 +11,9 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from slack_bolt import Ack, Respond
 from slack_sdk.web import WebClient
 
+from src.slack.handlers.core import _run_async
 from src.slack.session import SessionIdentity, get_identity_from_body
 from src.slack.blocks.update_preview import (
     build_update_preview_blocks,
@@ -26,14 +26,14 @@ from src.schemas.state import PendingAction, WorkflowStep
 logger = logging.getLogger(__name__)
 
 
-async def handle_update_preview_apply(
-    ack: Ack,
-    body: dict,
-    client: WebClient,
-    respond: Respond,
-):
+def handle_update_preview_apply(ack, body: dict, client: WebClient) -> None:
     """Handle Apply Changes button click - apply the update to Jira."""
-    await ack()
+    ack()
+    _run_async(_handle_update_preview_apply_async(body, client))
+
+
+async def _handle_update_preview_apply_async(body: dict, client: WebClient) -> None:
+    """Async handler for Apply Changes button."""
 
     try:
         action = body["actions"][0]
@@ -139,14 +139,14 @@ async def handle_update_preview_apply(
         )
 
 
-async def handle_update_preview_edit(
-    ack: Ack,
-    body: dict,
-    client: WebClient,
-):
+def handle_update_preview_edit(ack, body: dict, client: WebClient) -> None:
     """Handle Edit button click - open modal to edit proposed content."""
-    await ack()
+    ack()
+    _run_async(_handle_update_preview_edit_async(body, client))
 
+
+async def _handle_update_preview_edit_async(body: dict, client: WebClient) -> None:
+    """Async handler for Edit button."""
     try:
         action = body["actions"][0]
         button_data = json.loads(action.get("value", "{}"))
@@ -177,6 +177,7 @@ async def handle_update_preview_edit(
 
         # Add thread context to metadata for post-submit routing
         metadata = json.loads(modal.get("private_metadata", "{}"))
+        metadata["team_id"] = identity.team_id
         metadata["thread_ts"] = identity.thread_ts
         metadata["channel_id"] = identity.channel_id
         modal["private_metadata"] = json.dumps(metadata)
@@ -190,14 +191,14 @@ async def handle_update_preview_edit(
         logger.error(f"Failed to open edit modal: {e}", exc_info=True)
 
 
-async def handle_update_preview_cancel(
-    ack: Ack,
-    body: dict,
-    client: WebClient,
-):
+def handle_update_preview_cancel(ack, body: dict, client: WebClient) -> None:
     """Handle Cancel button click - cancel the update."""
-    await ack()
+    ack()
+    _run_async(_handle_update_preview_cancel_async(body, client))
 
+
+async def _handle_update_preview_cancel_async(body: dict, client: WebClient) -> None:
+    """Async handler for Cancel button."""
     try:
         action = body["actions"][0]
         button_data = json.loads(action.get("value", "{}"))
@@ -241,15 +242,14 @@ async def handle_update_preview_cancel(
         logger.error(f"Failed to cancel update: {e}", exc_info=True)
 
 
-async def handle_update_edit_modal_submit(
-    ack: Ack,
-    body: dict,
-    client: WebClient,
-    view: dict,
-):
+def handle_update_edit_modal_submit(ack, body: dict, client: WebClient, view: dict) -> None:
     """Handle edit modal submission - update proposed content and re-show preview."""
-    await ack()
+    ack()
+    _run_async(_handle_update_edit_modal_submit_async(body, client, view))
 
+
+async def _handle_update_edit_modal_submit_async(body: dict, client: WebClient, view: dict) -> None:
+    """Async handler for modal submission."""
     try:
         # Extract values from modal
         values = view.get("state", {}).get("values", {})
@@ -267,6 +267,7 @@ async def handle_update_edit_modal_submit(
             return
 
         identity = SessionIdentity(
+            team_id=metadata.get("team_id", ""),
             channel_id=channel_id,
             thread_ts=thread_ts,
         )
