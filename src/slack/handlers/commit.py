@@ -15,6 +15,7 @@ from src.db import get_connection
 from src.db.commit_store import CommitStore
 from src.db.models import CommitType
 from src.slack.blocks.commit import build_commit_success_blocks
+from src.slack.channel_work_board import ChannelWorkBoardManager
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,9 @@ async def _handle_approve_commit_async(
                 }
             )
 
-            # TODO: Update channel work board (23.3-03)
-            # ChannelWorkBoardManager will be added in plan 23.3-03
-            # For now, we skip board update until that component exists
+            # Update the channel work board
+            board_manager = ChannelWorkBoardManager()
+            await board_manager.post_or_update(client, channel_id, conn)
 
         # Replace preview with success message
         success_blocks = build_commit_success_blocks(

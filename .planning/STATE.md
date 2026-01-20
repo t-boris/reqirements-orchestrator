@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.3 (Commit Semantics)
-Plan: 2 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 23.3-02-PLAN.md (Commit Preview Blocks)
+Last activity: 2026-01-20 — Completed 23.3-04-PLAN.md (Commit Approval Handlers)
 
-Progress: ██░░░ 40% (Phase 23.3)
+Progress: ████░ 80% (Phase 23.3)
 
 ## v1.0 Summary
 
@@ -194,6 +194,12 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.2-03 | Resolution returns (mode, source) tuple | Transparency for debugging mode resolution |
 | 23.2-04 | Transaction rollback for test isolation | Each test runs in transaction that rolls back for clean state |
 | 23.2-04 | Shared db_connection fixture in conftest | Enables consistent DB access pattern across all tests/db/* tests |
+| 23.3-03 | Git-log style commit display | Time + type + summary + thread link format for readability |
+| 23.3-03 | list_by_channel accepts status list | Enables filtering DRAFT+ACTIVE items together for board display |
+| 23.3-03 | Board message cached in-memory | Persistence deferred for simplicity, can add BoardStore later |
+| 23.3-04 | _run_async pattern for commit handlers | Same pattern as other handlers for sync-to-async execution |
+| 23.3-04 | Board integration via ChannelWorkBoardManager | Updates work board after commit creation |
+| 23.3-04 | Edit button shows stub message | Full editing will be implemented later |
 
 ### Roadmap Evolution
 
@@ -222,9 +228,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.3-02-PLAN.md (Commit Preview Blocks)
+Stopped at: Completed 23.3-04-PLAN.md (Commit Approval Handlers)
 Resume file: None
-Next action: Execute 23.3-03-PLAN.md (Channel Work Board)
+Next action: Execute 23.3-05-PLAN.md or complete phase
 
 ## Phase 11 Summary (Complete)
 
