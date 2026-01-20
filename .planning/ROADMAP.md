@@ -403,7 +403,7 @@ Plans:
 
 Plans:
 - [ ] 23.3-01: CommitEntry Model + CommitStore (Wave 1)
-- [ ] 23.3-02: Commit Preview Blocks (Wave 1)
+- [x] 23.3-02: Commit Preview Blocks (Wave 1) — completed 2026-01-20
 - [ ] 23.3-03: Channel Work Board (Wave 2)
 - [ ] 23.3-04: Commit Handlers (Wave 2)
 - [ ] 23.3-05: Tests (Wave 3)
@@ -467,6 +467,6 @@ Plans:
 | 23. Communication as Source of Truth | v1.1 | - | In progress | - |
 | 23.1 WorkItem Registry | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 23.2 Channel Mode | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 23.3 Commit Semantics | v1.1 | 0/5 | Planned | - |
+| 23.3 Commit Semantics | v1.1 | 1/5 | In progress | - |
 | 23.4 Jira Sync Engine | v1.1 | TBD | Planned | - |
 | 23.5 Integration | v1.1 | TBD | Planned | - |

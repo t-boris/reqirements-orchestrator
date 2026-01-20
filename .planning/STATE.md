@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 23.2 (Channel Mode)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 23.2-04-PLAN.md (ChannelModeStore tests)
+Phase: 23.3 (Commit Semantics)
+Plan: 2 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 23.3-02-PLAN.md (Commit Preview Blocks)
 
-Progress: ████ 100% (Phase 23.2)
+Progress: ██░░░ 40% (Phase 23.3)
 
 ## v1.0 Summary
 
@@ -222,9 +222,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Phase 23.2 complete (ChannelModeStore tests)
+Stopped at: Completed 23.3-02-PLAN.md (Commit Preview Blocks)
 Resume file: None
-Next action: Plan Phase 23.3 (Commit Semantics)
+Next action: Execute 23.3-03-PLAN.md (Channel Work Board)
 
 ## Phase 11 Summary (Complete)
 
