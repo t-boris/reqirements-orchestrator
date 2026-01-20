@@ -382,6 +382,62 @@ class WorkItemStore:
 
         return [self._row_to_workitem(row) for row in rows]
 
+    def calculate_readiness(self, item: WorkItem) -> float:
+        """Calculate readiness score for a work item.
+
+        Scoring (0.0 to 1.0):
+        - 0.2: Has summary (always true if item exists)
+        - 0.3: Has description
+        - 0.2: Has facts/constraints captured
+        - 0.2: Has parent_id OR is Epic type
+        - 0.1: Has source_thread_ts (provenance)
+
+        Returns:
+            float: Score from 0.0 to 1.0 indicating draft completeness.
+        """
+        score = 0.0
+
+        # Summary is required, so always present
+        if item.summary:
+            score += 0.2
+
+        # Description adds significant value
+        if item.description:
+            score += 0.3
+
+        # Facts/constraints captured
+        if item.facts and len(item.facts) > 0:
+            score += 0.2
+
+        # Hierarchy established (parent set or is top-level Epic)
+        if item.parent_id or item.item_type == WorkItemType.EPIC:
+            score += 0.2
+
+        # Provenance tracked
+        if item.source_thread_ts:
+            score += 0.1
+
+        return min(score, 1.0)
+
+    async def refresh_readiness(self, item_id: str) -> WorkItem:
+        """Recalculate and persist readiness score for a work item.
+
+        Args:
+            item_id: UUID of the work item.
+
+        Returns:
+            WorkItem: Updated work item with new readiness score.
+
+        Raises:
+            ValueError: If work item not found.
+        """
+        item = await self.get(item_id)
+        if not item:
+            raise ValueError(f"WorkItem not found: {item_id}")
+
+        new_score = self.calculate_readiness(item)
+        return await self.update(item_id, readiness_score=new_score)
+
     def _row_to_workitem(self, row: tuple) -> WorkItem:
         """Convert database row to WorkItem model.
 
