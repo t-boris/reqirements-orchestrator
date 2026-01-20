@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 23.1 (WorkItem Registry)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 23.1-04-PLAN.md (Readiness Calculation)
+Phase: 23.2 (Channel Mode)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 23.2-01-PLAN.md (ChannelMode Model + Store)
 
-Progress: ████ 100% (Phase 23.1)
+Progress: █░░░ 25% (Phase 23.2)
 
 ## v1.0 Summary
 
@@ -184,6 +184,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.1-02 | WorkItemStore exported from db module | Follows existing pattern for store exports |
 | 23.1-04 | Readiness scoring weights | summary 0.2, description 0.3, facts 0.2, hierarchy 0.2, provenance 0.1 |
 | 23.1-04 | Epics get hierarchy bonus | Top-level Epics don't need parent_id for hierarchy points |
+| 23.2-01 | ChannelMode (str, Enum) pattern | Serialization compatibility with existing enum conventions |
+| 23.2-01 | Suggestion state in ChannelModeConfig | Supports first-time setup flow with confirmation |
+| 23.2-01 | UPSERT in set_mode | Handles create/update in single operation |
 
 ### Roadmap Evolution
 
@@ -212,9 +215,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.1-04-PLAN.md (Readiness Calculation) — Phase 23.1 complete
+Stopped at: Completed 23.2-01-PLAN.md (ChannelMode Model + Store)
 Resume file: None
-Next action: Plan Phase 23.2 (Channel Mode)
+Next action: Execute 23.2-02-PLAN.md (/maro mode command)
 
 ## Phase 11 Summary (Complete)
 
