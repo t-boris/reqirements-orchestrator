@@ -40,6 +40,10 @@ from src.slack.blocks.multi_ticket import (
     build_size_confirm_blocks,
     build_multi_ticket_preview_blocks,
 )
+from src.slack.blocks.commit import (
+    build_commit_preview_blocks,
+    build_commit_success_blocks,
+)
 
 __all__ = [
     # Draft
@@ -69,4 +73,7 @@ __all__ = [
     "build_quantity_confirm_blocks",
     "build_size_confirm_blocks",
     "build_multi_ticket_preview_blocks",
+    # Commit
+    "build_commit_preview_blocks",
+    "build_commit_success_blocks",
 ]
