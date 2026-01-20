@@ -211,6 +211,11 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro board hide - Remove the pinned board
     - /maro sync - Show pending changes between Slack and Jira
     - /maro sync --auto - Apply obvious changes automatically
+    - /maro mode - Show current channel mode
+    - /maro mode project - Set mode to project (full work item types)
+    - /maro mode feature --primary-epic PROJ-50 - Set mode focused on one epic
+    - /maro mode bugs - Set mode to bugs/tasks only
+    - /maro mode ops - Set mode to ops (incidents, runbooks)
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -258,6 +263,9 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
         # /maro sync or /maro sync --auto
         auto_mode = "--auto" in args or "-a" in args
         await _handle_maro_sync(channel, client, user_id, auto_mode)
+    elif subcommand == "mode":
+        # /maro mode [project|feature|bugs|ops] [--primary-epic PROJ-50]
+        await _handle_maro_mode(channel, user_id, args, say)
     else:
         # Default to help for empty or unknown
         await _handle_maro_help(channel, client)
