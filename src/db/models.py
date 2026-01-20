@@ -178,6 +178,29 @@ class ChannelModeConfig(BaseModel):
     updated_at: datetime
 
 
+class ThreadModeOverride(BaseModel):
+    """Per-thread mode override.
+
+    Allows a specific thread to operate in a different mode than the channel default.
+    Example: bug thread in a project channel.
+
+    Resolution order: thread override > channel mode > PROJECT default
+    """
+
+    id: str = Field(description="UUID for the override record")
+    channel_id: str = Field(description="Slack channel ID")
+    thread_ts: str = Field(description="Slack thread timestamp")
+
+    # Override configuration
+    mode: ChannelMode = Field(description="Override mode for this thread")
+    reason: str | None = Field(default=None, description="Why this override was set")
+
+    # Metadata
+    set_by: str = Field(description="User ID who set the override")
+    set_at: datetime
+    expires_at: datetime | None = Field(default=None, description="Optional expiry time")
+
+
 class WorkItemType(str, Enum):
     """Types of work items in the registry."""
 
