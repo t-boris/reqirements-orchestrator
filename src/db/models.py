@@ -3,7 +3,8 @@
 These are data transfer objects, not ORM models. SQL operations are in session_store.py.
 """
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from enum import Enum
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -124,3 +125,65 @@ class ChannelListeningState(BaseModel):
     summary: str | None = Field(default=None, description="Rolling conversation summary")
     raw_buffer: list[dict] = Field(default_factory=list, description="Last N messages as JSON")
     last_summary_at: datetime | None = Field(default=None, description="When summary was last updated")
+
+
+class WorkItemType(str, Enum):
+    """Types of work items in the registry."""
+
+    EPIC = "epic"
+    STORY = "story"
+    BUG = "bug"
+    TASK = "task"
+    SPIKE = "spike"
+
+
+class WorkItemStatus(str, Enum):
+    """Lifecycle status of a work item."""
+
+    DRAFT = "draft"  # Not yet committed to channel
+    ACTIVE = "active"  # Committed, work in progress
+    DONE = "done"  # Completed
+
+
+class WorkItem(BaseModel):
+    """A work item in the channel registry.
+
+    WorkItems are the source of truth for work tracked in a channel.
+    They may or may not have a corresponding Jira issue (jira_key).
+    Drafts are first-class citizens that live in the registry before Jira creation.
+    """
+
+    id: str = Field(description="UUID for the work item")
+    channel_id: str = Field(description="Slack channel this belongs to")
+    item_type: WorkItemType = Field(description="Type of work item")
+    status: WorkItemStatus = Field(default=WorkItemStatus.DRAFT)
+
+    # Content
+    summary: str = Field(description="Title/summary of the work item")
+    description: str | None = Field(default=None, description="Full description")
+    facts: dict[str, Any] = Field(default_factory=dict, description="Extracted facts/constraints")
+
+    # Jira linkage (nullable - drafts don't have Jira keys)
+    jira_key: str | None = Field(default=None, description="Jira issue key if synced")
+    jira_sync_at: datetime | None = Field(default=None, description="Last sync timestamp")
+    jira_fingerprint: dict[str, str] | None = Field(
+        default=None, description="Section hashes for conflict detection"
+    )
+
+    # Hierarchy
+    parent_id: str | None = Field(
+        default=None, description="Parent WorkItem UUID (for stories under epics)"
+    )
+
+    # Provenance
+    source_thread_ts: str | None = Field(
+        default=None, description="Thread that created this item"
+    )
+    created_by: str = Field(description="User ID who created")
+    created_at: datetime
+    updated_at: datetime
+
+    # Readiness (for drafts)
+    readiness_score: float = Field(
+        default=0.0, description="0.0-1.0 score for draft completeness"
+    )
