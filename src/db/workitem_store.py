@@ -205,18 +205,20 @@ class WorkItemStore:
         self,
         channel_id: str,
         *,
-        status: WorkItemStatus | None = None,
+        status: list[WorkItemStatus] | None = None,
         item_type: WorkItemType | None = None,
+        limit: int = 20,
     ) -> list[WorkItem]:
         """List work items for a channel with optional filters.
 
         Args:
             channel_id: Slack channel ID.
-            status: Optional status filter.
+            status: Optional list of statuses to filter by.
             item_type: Optional type filter.
+            limit: Maximum items to return.
 
         Returns:
-            List of WorkItem objects, ordered by created_at DESC.
+            List of WorkItem objects, ordered by updated_at DESC.
         """
         query = """
             SELECT id, channel_id, item_type, status, summary, description,
@@ -228,14 +230,17 @@ class WorkItemStore:
         params: list[Any] = [channel_id]
 
         if status is not None:
-            query += " AND status = %s"
-            params.append(status.value)
+            status_values = [s.value for s in status]
+            placeholders = ", ".join(["%s"] * len(status_values))
+            query += f" AND status IN ({placeholders})"
+            params.extend(status_values)
 
         if item_type is not None:
             query += " AND item_type = %s"
             params.append(item_type.value)
 
-        query += " ORDER BY created_at DESC"
+        query += " ORDER BY updated_at DESC LIMIT %s"
+        params.append(limit)
 
         async with self._conn.cursor() as cur:
             await cur.execute(query, params)
