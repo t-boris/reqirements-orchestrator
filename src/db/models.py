@@ -201,6 +201,44 @@ class ThreadModeOverride(BaseModel):
     expires_at: datetime | None = Field(default=None, description="Optional expiry time")
 
 
+class CommitType(str, Enum):
+    """Types of commits to the channel work log.
+
+    Commits track significant events that become channel truth.
+    """
+
+    DECISION = "decision"  # Architecture decision approved
+    WORKITEM_CREATED = "workitem_created"  # New work item committed
+    WORKITEM_UPDATED = "workitem_updated"  # Work item modified
+    CONSTRAINT_ADDED = "constraint_added"  # Constraint/requirement captured
+    JIRA_SYNCED = "jira_synced"  # Work item synced to Jira
+
+
+class CommitEntry(BaseModel):
+    """A commit entry in the channel work log.
+
+    Commits are immutable records of significant events that became
+    channel truth. Displayed in git-log style on the Channel Work Board.
+
+    Format in board: "14:32 Decision: Use background worker [thread]"
+    """
+
+    id: str = Field(description="UUID for the commit entry")
+    channel_id: str = Field(description="Channel this commit belongs to")
+
+    # Commit content
+    commit_type: CommitType = Field(description="Type of commit")
+    summary: str = Field(description="One-line summary of what was committed")
+
+    # Related entities
+    workitem_id: str | None = Field(default=None, description="Related WorkItem UUID if any")
+    thread_ts: str | None = Field(default=None, description="Source thread timestamp")
+
+    # Metadata
+    committed_by: str = Field(description="User ID who approved the commit")
+    committed_at: datetime
+
+
 class WorkItemType(str, Enum):
     """Types of work items in the registry."""
 
