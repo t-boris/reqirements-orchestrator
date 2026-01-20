@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.2 (Channel Mode)
-Plan: 2 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-20 — Completed 23.2-02-PLAN.md (/maro mode command)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-20 — Completed 23.2-04-PLAN.md (ChannelModeStore tests)
 
-Progress: ██░░ 50% (Phase 23.2)
+Progress: ████ 100% (Phase 23.2)
 
 ## v1.0 Summary
 
@@ -189,6 +189,11 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.2-01 | UPSERT in set_mode | Handles create/update in single operation |
 | 23.2-02 | Feature mode requires --primary-epic | Prevents useless configuration without epic focus |
 | 23.2-02 | Default mode "project (default)" display | Clear user feedback when no config exists |
+| 23.2-03 | Thread override UPSERT pattern | Re-setting override updates in place rather than fail |
+| 23.2-03 | Expire filtering at query time | Simpler than background cleanup job |
+| 23.2-03 | Resolution returns (mode, source) tuple | Transparency for debugging mode resolution |
+| 23.2-04 | Transaction rollback for test isolation | Each test runs in transaction that rolls back for clean state |
+| 23.2-04 | Shared db_connection fixture in conftest | Enables consistent DB access pattern across all tests/db/* tests |
 
 ### Roadmap Evolution
 
@@ -217,9 +222,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.2-02-PLAN.md (/maro mode command)
+Stopped at: Phase 23.2 complete (ChannelModeStore tests)
 Resume file: None
-Next action: Execute 23.2-03-PLAN.md (Mode suggestion flow)
+Next action: Plan Phase 23.3 (Commit Semantics)
 
 ## Phase 11 Summary (Complete)
 
