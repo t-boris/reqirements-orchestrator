@@ -4,32 +4,37 @@ Captured from codebase during Phase 18 (Clean Code).
 
 ## Open Issues
 
-### Session/Epic Features (Deferred)
+### Feature Group: Epic/Session Management — Phase 23
 
-| ID | Source | Description | Status |
-|----|--------|-------------|--------|
-| ISS-001 | commands.py:63 | Route to session creation in 04-04 | Deferred |
-| ISS-002 | commands.py:70 | Implement Jira search in Phase 7 | Completed (Phase 7) |
-| ISS-003 | commands.py:74 | Query session status in 04-04 | Deferred |
-| ISS-004 | duplicates.py:524 | Update session card with linked thread reference | Deferred |
-| ISS-005 | duplicates.py:525 | Update Epic summary with cross-reference | Deferred |
-| ISS-006 | binding.py:61,148 | Fetch epic_summary from Jira | Deferred |
+**Status:** Promoted to Phase 23 (2026-01-20)
 
-### Constraint/Contradiction Features (Deferred)
+Relates to the original v1.0 design of "Session → Epic" workflow. Infrastructure exists but was never wired up. Phase 23 will complete these features.
 
-| ID | Source | Description | Status |
-|----|--------|-------------|--------|
-| ISS-007 | misc.py:312 | Update constraint status to 'conflicted' in KG | Deferred |
-| ISS-008 | misc.py:313 | Add to Epic summary as unresolved conflict | Deferred |
-| ISS-009 | misc.py:338 | Mark old constraint as 'deprecated' | Deferred |
-| ISS-010 | misc.py:339 | Mark new constraint as 'accepted' | Deferred |
-| ISS-011 | misc.py:364 | Mark both as 'accepted' with note | Deferred |
+| ID | Source | Description | Notes |
+|----|--------|-------------|-------|
+| ISS-001 | commands.py:63 | Route to session creation in /jira create | Stub responds but doesn't create session |
+| ISS-003 | commands.py:74 | Query session status in /jira status | Stub always says "No active session" |
+| ISS-004 | duplicates.py:592 | Update session card with linked thread reference | Part of thread-to-Epic linking |
+| ISS-005 | duplicates.py:592 | Update Epic summary with cross-reference | Part of thread-to-Epic linking |
+| ISS-006 | binding.py:61,148 | Fetch epic_summary from Jira | Currently passes None to build_session_card |
+
+### Feature Group: Knowledge Graph / Constraints
+
+Relates to constraint tracking and contradiction resolution. Handlers exist and post acknowledgment messages, but don't persist state to a Knowledge Graph. Would require dedicated phase to implement.
+
+| ID | Source | Description | Notes |
+|----|--------|-------------|-------|
+| ISS-007 | misc.py:326 | Update constraint status to 'conflicted' in KG | Conflict handler posts message only |
+| ISS-008 | misc.py:326 | Add to Epic summary as unresolved conflict | Part of conflict handling |
+| ISS-009 | misc.py:351 | Mark old constraint as 'deprecated' | Override handler posts message only |
+| ISS-010 | misc.py:351 | Mark new constraint as 'accepted' | Part of override handling |
+| ISS-011 | misc.py:376 | Mark both as 'accepted' with note | Keep-both handler posts message only |
 
 ## Resolved Issues
 
 | ID | Description | Resolution | Phase |
 |----|-------------|------------|-------|
-| - | Jira search implementation | Implemented | Phase 7 |
+| ISS-002 | Implement Jira search in Phase 7 | Implemented | Phase 7 |
 | - | Intent detection for review vs ticket | Implemented | Phase 13 |
 
 ## Accepted Complexity (Long Functions)
@@ -87,4 +92,4 @@ The following functions exceed 100 lines but are considered acceptable complexit
 
 ---
 
-*Last updated: 2026-01-15 (Phase 18-04)*
+*Last updated: 2026-01-20 (Issue review)*

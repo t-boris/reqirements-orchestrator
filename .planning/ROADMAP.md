@@ -342,6 +342,83 @@ When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "T
 - [x] Partial failure handling with retry — 22-04
 - [x] Cancel with edit confirmation — 22-04
 
+### Phase 23: Communication as Source of Truth
+**Goal**: Transform MARO from "Jira bot" to "collective thinking system" where communication is source of truth
+**Depends on**: Phase 22
+**Research**: Complete (23-CONTEXT.md with full vision)
+**Architecture**: Channel = Source of Truth, Thread = Working Branch, Jira = Execution Replica
+
+**Issues addressed:** ISS-001, ISS-003, ISS-004, ISS-005, ISS-006 (absorbed into larger vision)
+
+**Sub-phases:**
+- 23.1 WorkItem Registry — WorkItem model, store, readiness calculation
+- 23.2 Channel Mode — Manual config, suggested defaults, thread override
+- 23.3 Commit Semantics — Explicit approval, Channel Work Board, git-log style
+- 23.4 Jira Sync Engine — Bidirectional sync, section-level fingerprints, conflict resolution
+- 23.5 Integration — Wire all components, migrate from Session model
+
+### Phase 23.1: WorkItem Registry
+**Goal**: Create WorkItem model and store as foundation for new architecture
+**Depends on**: Phase 22
+**Plans**: 4 plans in 3 waves
+
+Plans:
+- [ ] 23.1-01: WorkItem Model + Store (Wave 1)
+- [ ] 23.1-02: Database Integration (Wave 2)
+- [ ] 23.1-03: WorkItemStore Tests (Wave 2)
+- [ ] 23.1-04: Readiness Calculation (Wave 3)
+
+**Features:**
+- [ ] WorkItem model (Epic/Story/Bug/Task/Spike types) — 23.1-01
+- [ ] WorkItemStatus (Draft/Active/Done) with drafts as first-class citizens — 23.1-01
+- [ ] WorkItemStore with full CRUD operations — 23.1-01
+- [ ] Database schema with indexes for channel, jira_key, parent — 23.1-02
+- [ ] Readiness scoring (0.0-1.0) for draft completeness — 23.1-04
+- [ ] Comprehensive test coverage — 23.1-03
+
+### Phase 23.2: Channel Mode (Planned)
+**Goal**: Implement channel mode system (project/feature/bugs/ops)
+**Depends on**: Phase 23.1
+**Plans**: TBD
+
+**Features (from 23-CONTEXT.md):**
+- [ ] Manual mode config via `/maro mode project`
+- [ ] Suggested mode with one-time confirmation
+- [ ] Per-thread mode override
+- [ ] Mode affects: intent routing, scope gates, work item preferences, Jira sync strictness
+
+### Phase 23.3: Commit Semantics (Planned)
+**Goal**: Implement explicit approval and Channel Work Board
+**Depends on**: Phase 23.2
+**Plans**: TBD
+
+**Features (from 23-CONTEXT.md):**
+- [ ] Commit preview for significant events
+- [ ] Explicit "Approve & Commit" button
+- [ ] Channel Work Board (git-log style, pinned)
+- [ ] No time-based batching or silent auto-commits
+
+### Phase 23.4: Jira Sync Engine (Planned)
+**Goal**: Bidirectional sync with conflict detection
+**Depends on**: Phase 23.3
+**Plans**: TBD
+
+**Features (from 23-CONTEXT.md):**
+- [ ] Offer-on-ready, create-on-explicit workflow
+- [ ] Field classification (Jira-owned, Slack-owned, Shared)
+- [ ] Section-level sync with fingerprints
+- [ ] Conflict detection and manual resolution UI
+
+### Phase 23.5: Integration (Planned)
+**Goal**: Wire all components and migrate from Session model
+**Depends on**: Phase 23.4
+**Plans**: TBD
+
+**Features:**
+- [ ] Migrate existing ThreadSession data to WorkItems
+- [ ] Update all handlers to use WorkItem registry
+- [ ] End-to-end flow testing
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -369,3 +446,9 @@ When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "T
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
 | 21. Jira Sync & Management | v1.1 | 5/5 | Complete | 2026-01-16 |
 | 22. Multi-Ticket from Review | v1.1 | 4/4 | Complete | 2026-01-16 |
+| 23. Communication as Source of Truth | v1.1 | - | Planned | - |
+| 23.1 WorkItem Registry | v1.1 | 0/4 | Planned | - |
+| 23.2 Channel Mode | v1.1 | TBD | Planned | - |
+| 23.3 Commit Semantics | v1.1 | TBD | Planned | - |
+| 23.4 Jira Sync Engine | v1.1 | TBD | Planned | - |
+| 23.5 Integration | v1.1 | TBD | Planned | - |
