@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.1 (WorkItem Registry)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-20 — Completed 23.1-02-PLAN.md (parallel with 23.1-03)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-20 — Completed 23.1-04-PLAN.md (Readiness Calculation)
 
-Progress: ███░ 75% (Phase 23.1)
+Progress: ████ 100% (Phase 23.1)
 
 ## v1.0 Summary
 
@@ -182,6 +182,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.1-01 | JSONB for facts/fingerprint | Flexible schema for extracted facts and conflict detection |
 | 23.1-02 | work_items DDL in SessionStore | Ensures table created at startup with existing startup flow |
 | 23.1-02 | WorkItemStore exported from db module | Follows existing pattern for store exports |
+| 23.1-04 | Readiness scoring weights | summary 0.2, description 0.3, facts 0.2, hierarchy 0.2, provenance 0.1 |
+| 23.1-04 | Epics get hierarchy bonus | Top-level Epics don't need parent_id for hierarchy points |
 
 ### Roadmap Evolution
 
@@ -210,9 +212,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.1-02-PLAN.md (Database Integration) and 23.1-03-PLAN.md (parallel)
+Stopped at: Completed 23.1-04-PLAN.md (Readiness Calculation) — Phase 23.1 complete
 Resume file: None
-Next action: Execute 23.1-04-PLAN.md (Readiness Calculation)
+Next action: Plan Phase 23.2 (Channel Mode)
 
 ## Phase 11 Summary (Complete)
 
