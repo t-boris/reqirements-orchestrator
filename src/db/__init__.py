@@ -47,6 +47,9 @@ from src.db.models import (
     ChannelListeningState,
     RootIndex,
     ThreadSession,
+    WorkItem,
+    WorkItemStatus,
+    WorkItemType,
 )
 from src.db.session_store import SessionStore
 from src.db.approval_store import ApprovalStore, ApprovalRecord
@@ -57,6 +60,7 @@ from src.db.listening_store import ListeningStore
 from src.db.event_store import EventStore, make_button_event_id
 from src.db.fact_store import FactStore, compute_canonical_id
 from src.db.board_store import BoardStore, BoardState
+from src.db.workitem_store import WorkItemStore
 
 __all__ = [
     # Connection (02-01)
@@ -97,4 +101,9 @@ __all__ = [
     # Board Store (21-02)
     "BoardStore",
     "BoardState",
+    # WorkItem Store (23.1-02)
+    "WorkItemStore",
+    "WorkItem",
+    "WorkItemStatus",
+    "WorkItemType",
 ]
