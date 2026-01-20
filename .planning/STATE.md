@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 23 (Epic/Session Management)
-Plan: 0 of 3 in current phase
-Status: Planned (context gathered, ready to plan)
-Last activity: 2026-01-20 — Created Phase 23 from ISS-001, ISS-003, ISS-004, ISS-005, ISS-006
+Phase: 23.1 (WorkItem Registry)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 23.1-01-PLAN.md
 
-Progress: ░░░░ 0% (Phase 23)
+Progress: █░░░ 25% (Phase 23.1)
 
 ## v1.0 Summary
 
@@ -176,6 +176,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 22-04 | Store last_results for retry | Keep state with results when failures exist for retry handler |
 | 22-04 | Non-blocking auto-tracking | Log failures but don't interrupt user operation |
 | 22-04 | has_edits flag triggers cancel confirmation | Only show modal when user made changes |
+| 23.1-01 | WorkItemType enum with 5 types | EPIC, STORY, BUG, TASK, SPIKE cover all work item categories |
+| 23.1-01 | WorkItemStatus enum with 3 states | DRAFT/ACTIVE/DONE lifecycle with drafts as first-class |
+| 23.1-01 | Nullable Jira fields | Drafts exist without Jira backing; jira_key set on sync |
+| 23.1-01 | JSONB for facts/fingerprint | Flexible schema for extracted facts and conflict detection |
 
 ### Roadmap Evolution
 
@@ -204,9 +208,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Created Phase 23 (Epic/Session Management) from 5 deferred issues
+Stopped at: Completed 23.1-01-PLAN.md (WorkItem Model + Store)
 Resume file: None
-Next action: Plan Phase 23 (/gsd:plan-phase 23) or discuss approach (/gsd:discuss-phase 23)
+Next action: Execute 23.1-02-PLAN.md (Database Integration)
 
 ## Phase 11 Summary (Complete)
 

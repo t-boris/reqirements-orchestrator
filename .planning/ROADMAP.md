@@ -363,15 +363,15 @@ When a review proposes multiple items ("4 epics" or "1 epic with 3 stories"), "T
 **Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 23.1-01: WorkItem Model + Store (Wave 1)
+- [x] 23.1-01: WorkItem Model + Store (Wave 1) — completed 2026-01-20
 - [ ] 23.1-02: Database Integration (Wave 2)
 - [ ] 23.1-03: WorkItemStore Tests (Wave 2)
 - [ ] 23.1-04: Readiness Calculation (Wave 3)
 
 **Features:**
-- [ ] WorkItem model (Epic/Story/Bug/Task/Spike types) — 23.1-01
-- [ ] WorkItemStatus (Draft/Active/Done) with drafts as first-class citizens — 23.1-01
-- [ ] WorkItemStore with full CRUD operations — 23.1-01
+- [x] WorkItem model (Epic/Story/Bug/Task/Spike types) — 23.1-01
+- [x] WorkItemStatus (Draft/Active/Done) with drafts as first-class citizens — 23.1-01
+- [x] WorkItemStore with full CRUD operations — 23.1-01
 - [ ] Database schema with indexes for channel, jira_key, parent — 23.1-02
 - [ ] Readiness scoring (0.0-1.0) for draft completeness — 23.1-04
 - [ ] Comprehensive test coverage — 23.1-03
@@ -446,8 +446,8 @@ Plans:
 | 20. Brain Refactor | v1.1 | 12/12 | Complete | 2026-01-15 |
 | 21. Jira Sync & Management | v1.1 | 5/5 | Complete | 2026-01-16 |
 | 22. Multi-Ticket from Review | v1.1 | 4/4 | Complete | 2026-01-16 |
-| 23. Communication as Source of Truth | v1.1 | - | Planned | - |
-| 23.1 WorkItem Registry | v1.1 | 0/4 | Planned | - |
+| 23. Communication as Source of Truth | v1.1 | - | In progress | - |
+| 23.1 WorkItem Registry | v1.1 | 1/4 | In progress | - |
 | 23.2 Channel Mode | v1.1 | TBD | Planned | - |
 | 23.3 Commit Semantics | v1.1 | TBD | Planned | - |
 | 23.4 Jira Sync Engine | v1.1 | TBD | Planned | - |
