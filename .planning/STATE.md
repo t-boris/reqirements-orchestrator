@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.2 (Channel Mode)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 23.2-01-PLAN.md (ChannelMode Model + Store)
+Last activity: 2026-01-20 — Completed 23.2-02-PLAN.md (/maro mode command)
 
-Progress: █░░░ 25% (Phase 23.2)
+Progress: ██░░ 50% (Phase 23.2)
 
 ## v1.0 Summary
 
@@ -187,6 +187,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.2-01 | ChannelMode (str, Enum) pattern | Serialization compatibility with existing enum conventions |
 | 23.2-01 | Suggestion state in ChannelModeConfig | Supports first-time setup flow with confirmation |
 | 23.2-01 | UPSERT in set_mode | Handles create/update in single operation |
+| 23.2-02 | Feature mode requires --primary-epic | Prevents useless configuration without epic focus |
+| 23.2-02 | Default mode "project (default)" display | Clear user feedback when no config exists |
 
 ### Roadmap Evolution
 
@@ -215,9 +217,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.2-01-PLAN.md (ChannelMode Model + Store)
+Stopped at: Completed 23.2-02-PLAN.md (/maro mode command)
 Resume file: None
-Next action: Execute 23.2-02-PLAN.md (/maro mode command)
+Next action: Execute 23.2-03-PLAN.md (Mode suggestion flow)
 
 ## Phase 11 Summary (Complete)
 
