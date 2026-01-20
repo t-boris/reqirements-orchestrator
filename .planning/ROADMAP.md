@@ -399,13 +399,22 @@ Plans:
 ### Phase 23.3: Commit Semantics (Planned)
 **Goal**: Implement explicit approval and Channel Work Board
 **Depends on**: Phase 23.2
-**Plans**: TBD
+**Plans**: 5 plans in 3 waves
+
+Plans:
+- [ ] 23.3-01: CommitEntry Model + CommitStore (Wave 1)
+- [ ] 23.3-02: Commit Preview Blocks (Wave 1)
+- [ ] 23.3-03: Channel Work Board (Wave 2)
+- [ ] 23.3-04: Commit Handlers (Wave 2)
+- [ ] 23.3-05: Tests (Wave 3)
 
 **Features (from 23-CONTEXT.md):**
-- [ ] Commit preview for significant events
-- [ ] Explicit "Approve & Commit" button
-- [ ] Channel Work Board (git-log style, pinned)
-- [ ] No time-based batching or silent auto-commits
+- [ ] CommitType enum (DECISION/WORKITEM_CREATED/UPDATED/CONSTRAINT_ADDED/JIRA_SYNCED) — 23.3-01
+- [ ] CommitEntry model and CommitStore with CRUD — 23.3-01
+- [ ] Commit preview with Approve & Commit / Edit / Not now buttons — 23.3-02
+- [ ] Channel Work Board (git-log style, pinned) — 23.3-03
+- [ ] approve_commit handler creates entry and updates board — 23.3-04
+- [ ] Comprehensive test coverage — 23.3-05
 
 ### Phase 23.4: Jira Sync Engine (Planned)
 **Goal**: Bidirectional sync with conflict detection
@@ -458,6 +467,6 @@ Plans:
 | 23. Communication as Source of Truth | v1.1 | - | In progress | - |
 | 23.1 WorkItem Registry | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 23.2 Channel Mode | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 23.3 Commit Semantics | v1.1 | TBD | Planned | - |
+| 23.3 Commit Semantics | v1.1 | 0/5 | Planned | - |
 | 23.4 Jira Sync Engine | v1.1 | TBD | Planned | - |
 | 23.5 Integration | v1.1 | TBD | Planned | - |
