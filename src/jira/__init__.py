@@ -20,6 +20,7 @@ from src.jira.sync_config import (
     can_push_field,
     requires_conflict_check,
 )
+from src.jira.sync_service import JiraSyncService
 
 __all__ = [
     "JiraService",
@@ -36,4 +37,5 @@ __all__ = [
     "FIELD_CLASSIFICATIONS",
     "can_push_field",
     "requires_conflict_check",
+    "JiraSyncService",
 ]
