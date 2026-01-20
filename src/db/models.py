@@ -127,6 +127,57 @@ class ChannelListeningState(BaseModel):
     last_summary_at: datetime | None = Field(default=None, description="When summary was last updated")
 
 
+class ChannelMode(str, Enum):
+    """Channel operating mode that affects default behaviors.
+
+    Modes affect:
+    - Intent routing defaults (ticket vs review)
+    - Scope gate options
+    - Work item type preferences
+    - Jira sync strictness
+    """
+
+    PROJECT = "project"  # Full work item types, all features enabled
+    FEATURE = "feature"  # Focused on one epic, stories preferred
+    BUGS = "bugs"  # Bug/task focused, epic suppressed
+    OPS = "ops"  # Incidents, runbooks, stricter Jira writes
+
+
+class ChannelModeConfig(BaseModel):
+    """Channel mode configuration.
+
+    Three-layer approach:
+    1. Manual config = source of truth (/maro mode project)
+    2. Suggested + confirm = one-time convenience for first setup
+    3. Per-thread override = handles messy reality (bug thread in project channel)
+    """
+
+    id: str = Field(description="UUID for the config record")
+    channel_id: str = Field(description="Slack channel ID (unique)")
+
+    # Mode configuration
+    mode: ChannelMode = Field(default=ChannelMode.PROJECT)
+    primary_epic: str | None = Field(
+        default=None, description="For FEATURE mode: the primary epic key"
+    )
+
+    # Configuration metadata
+    set_by: str = Field(description="User ID who set the mode")
+    set_at: datetime
+
+    # Suggestion state (for first-time setup flow)
+    suggestion_shown: bool = Field(
+        default=False, description="Whether mode suggestion was shown"
+    )
+    suggestion_accepted: bool | None = Field(
+        default=None,
+        description="True if accepted, False if rejected, None if pending",
+    )
+
+    created_at: datetime
+    updated_at: datetime
+
+
 class WorkItemType(str, Enum):
     """Types of work items in the registry."""
 
