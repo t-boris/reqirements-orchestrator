@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 Phase: 23.1 (WorkItem Registry)
 Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 23.1-03-PLAN.md
+Last activity: 2026-01-20 — Completed 23.1-02-PLAN.md (parallel with 23.1-03)
 
 Progress: ███░ 75% (Phase 23.1)
 
@@ -180,6 +180,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.1-01 | WorkItemStatus enum with 3 states | DRAFT/ACTIVE/DONE lifecycle with drafts as first-class |
 | 23.1-01 | Nullable Jira fields | Drafts exist without Jira backing; jira_key set on sync |
 | 23.1-01 | JSONB for facts/fingerprint | Flexible schema for extracted facts and conflict detection |
+| 23.1-02 | work_items DDL in SessionStore | Ensures table created at startup with existing startup flow |
+| 23.1-02 | WorkItemStore exported from db module | Follows existing pattern for store exports |
 
 ### Roadmap Evolution
 
@@ -208,9 +210,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.1-03-PLAN.md (WorkItemStore Tests)
+Stopped at: Completed 23.1-02-PLAN.md (Database Integration) and 23.1-03-PLAN.md (parallel)
 Resume file: None
-Next action: Execute 23.1-04-PLAN.md
+Next action: Execute 23.1-04-PLAN.md (Readiness Calculation)
 
 ## Phase 11 Summary (Complete)
 
