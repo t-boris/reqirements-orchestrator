@@ -1,0 +1,222 @@
+"""Readiness CTA blocks for "Ready to create in Jira" flow (Phase 23.4).
+
+Shows when a WorkItem's readiness_score crosses the ready threshold.
+Workflow: Offer-on-ready, create-on-explicit.
+
+UX from 23-CONTEXT.md:
+- MARO calculates readiness_score for drafts
+- When ready: shows CTA (Create in Jira / Keep local / Edit)
+- Creation only on explicit action with idempotency key
+"""
+import json
+from typing import Any
+
+from src.db.models import WorkItem, WorkItemType
+
+# Readiness threshold - items above this are "ready"
+READINESS_THRESHOLD = 0.7
+
+
+def is_ready_for_jira(workitem: WorkItem) -> bool:
+    """Check if a WorkItem is ready to be created in Jira.
+
+    Args:
+        workitem: WorkItem to check
+
+    Returns:
+        True if readiness_score >= threshold and no jira_key yet
+    """
+    return (
+        workitem.jira_key is None
+        and workitem.readiness_score >= READINESS_THRESHOLD
+    )
+
+
+def build_readiness_cta_blocks(
+    workitem: WorkItem,
+    *,
+    channel_id: str,
+    thread_ts: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build Slack blocks for readiness CTA.
+
+    Shows:
+    - Header: "Draft ready for Jira"
+    - WorkItem summary and type
+    - Readiness indicator
+    - Buttons: Create in Jira / Keep local / Edit
+
+    Args:
+        workitem: WorkItem to show CTA for
+        channel_id: Channel ID for context
+        thread_ts: Optional thread timestamp
+
+    Returns:
+        List of Slack blocks
+    """
+    type_emoji = _get_type_emoji(workitem.item_type)
+    type_display = workitem.item_type.value.upper()
+    score_display = f"{int(workitem.readiness_score * 100)}%"
+
+    blocks = []
+
+    # Header
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": "Draft ready for Jira",
+            "emoji": True,
+        }
+    })
+
+    # WorkItem info
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": (
+                f"{type_emoji} *{type_display}*\n"
+                f"*{workitem.summary}*\n\n"
+                f"Readiness: {score_display}"
+            ),
+        }
+    })
+
+    # Description preview (truncated)
+    if workitem.description:
+        preview = workitem.description[:200]
+        if len(workitem.description) > 200:
+            preview += "..."
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"_{preview}_"}
+        })
+
+    blocks.append({"type": "divider"})
+
+    # Action buttons
+    # Encode workitem data in button value
+    action_value = json.dumps({
+        "workitem_id": workitem.id,
+        "channel_id": channel_id,
+        "thread_ts": thread_ts,
+    })
+
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Create in Jira", "emoji": True},
+                "style": "primary",
+                "action_id": "create_workitem_in_jira",
+                "value": action_value,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Keep local", "emoji": True},
+                "action_id": "keep_workitem_local",
+                "value": action_value,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Edit", "emoji": True},
+                "action_id": "edit_workitem",
+                "value": action_value,
+            },
+        ]
+    })
+
+    return blocks
+
+
+def build_jira_created_blocks(
+    workitem: WorkItem,
+    jira_key: str,
+    jira_url: str,
+) -> list[dict[str, Any]]:
+    """Build blocks shown after WorkItem is created in Jira.
+
+    Args:
+        workitem: The WorkItem that was created
+        jira_key: Created Jira issue key
+        jira_url: URL to the Jira issue
+
+    Returns:
+        List of Slack blocks
+    """
+    type_emoji = _get_type_emoji(workitem.item_type)
+    type_display = workitem.item_type.value.upper()
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{type_emoji} *{type_display}* created in Jira\n\n"
+                    f"*<{jira_url}|{jira_key}>*: {workitem.summary}"
+                ),
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Synced to Jira. Changes in Slack will sync automatically.",
+                }
+            ]
+        }
+    ]
+
+    return blocks
+
+
+def build_kept_local_blocks(workitem: WorkItem) -> list[dict[str, Any]]:
+    """Build blocks shown when user chooses to keep WorkItem local.
+
+    Args:
+        workitem: The WorkItem being kept local
+
+    Returns:
+        List of Slack blocks
+    """
+    type_emoji = _get_type_emoji(workitem.item_type)
+    type_display = workitem.item_type.value.upper()
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{type_emoji} *{type_display}* kept local\n\n"
+                    f"*{workitem.summary}*\n\n"
+                    "_You can create it in Jira later from the Channel Work Board._"
+                ),
+            }
+        }
+    ]
+
+    return blocks
+
+
+def _get_type_emoji(item_type: WorkItemType) -> str:
+    """Get emoji for WorkItem type.
+
+    Args:
+        item_type: WorkItemType enum
+
+    Returns:
+        Emoji string
+    """
+    emoji_map = {
+        WorkItemType.EPIC: ":large_purple_circle:",
+        WorkItemType.STORY: ":large_green_circle:",
+        WorkItemType.BUG: ":red_circle:",
+        WorkItemType.TASK: ":large_blue_circle:",
+        WorkItemType.SPIKE: ":mag:",
+    }
+    return emoji_map.get(item_type, ":white_circle:")
