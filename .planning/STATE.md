@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.4 (Jira Sync Engine)
-Plan: 2 of 6 in current phase
+Plan: 4 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 23.4-02-PLAN.md (Section Fingerprinting)
+Last activity: 2026-01-20 — Completed 23.4-04-PLAN.md (Readiness CTA Blocks)
 
-Progress: ██ 33% (Phase 23.4)
+Progress: ████ 67% (Phase 23.4)
 
 ## v1.0 Summary
 
@@ -204,6 +204,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.4-01 | Sprint is pure Jira (allow_suggest=False) | Sprint assignment managed entirely in Jira planning |
 | 23.4-02 | SHA-256 truncated to 16 chars for storage | Balance of collision resistance vs storage efficiency |
 | 23.4-02 | Three-way merge for conflict detection | Slack-only changes auto-merge Slack, Jira-only auto-merge Jira, both changed = conflict |
+| 23.4-04 | READINESS_THRESHOLD = 0.7 (70%) | Drafts at 70%+ readiness are "ready for Jira" |
+| 23.4-04 | Three-button CTA for ready drafts | Create in Jira / Keep local / Edit covers all user choices |
 
 ### Roadmap Evolution
 
@@ -232,9 +234,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.4-02-PLAN.md (Section Fingerprinting)
+Stopped at: Completed 23.4-04-PLAN.md (Readiness CTA Blocks)
 Resume file: None
-Next action: Execute 23.4-03-PLAN.md (JiraSyncService)
+Next action: Execute 23.4-05-PLAN.md (Readiness Handlers)
 
 ## Phase 11 Summary (Complete)
 
