@@ -285,3 +285,71 @@ class TestWorkItemStore:
         updated = await store.update(item.id, facts=facts)
 
         assert updated.facts == facts
+
+    @pytest.mark.asyncio
+    async def test_calculate_readiness_minimal(self, store):
+        """Minimal item has low readiness."""
+        item = await store.create(
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            summary="Just a title",
+            created_by="U456",
+        )
+
+        score = store.calculate_readiness(item)
+
+        assert score == 0.2  # Only summary
+
+    @pytest.mark.asyncio
+    async def test_calculate_readiness_complete(self, store):
+        """Fully populated item has high readiness."""
+        epic = await store.create(
+            channel_id="C123",
+            item_type=WorkItemType.EPIC,
+            summary="Parent",
+            created_by="U456",
+        )
+        item = await store.create(
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            summary="Complete story",
+            created_by="U456",
+            description="Full description here",
+            parent_id=epic.id,
+            source_thread_ts="1234567890.123456",
+        )
+        await store.update(item.id, facts={"constraint": "must use auth"})
+        item = await store.get(item.id)
+
+        score = store.calculate_readiness(item)
+
+        assert score == 1.0  # All components present
+
+    @pytest.mark.asyncio
+    async def test_refresh_readiness(self, store):
+        """Refresh readiness persists new score."""
+        item = await store.create(
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            summary="Test",
+            created_by="U456",
+        )
+        assert item.readiness_score == 0.0
+
+        updated = await store.refresh_readiness(item.id)
+
+        assert updated.readiness_score == 0.2  # Just summary
+
+    @pytest.mark.asyncio
+    async def test_readiness_epic_gets_hierarchy_points(self, store):
+        """Epics get hierarchy points without parent."""
+        item = await store.create(
+            channel_id="C123",
+            item_type=WorkItemType.EPIC,
+            summary="Top-level Epic",
+            created_by="U456",
+        )
+
+        score = store.calculate_readiness(item)
+
+        assert score >= 0.4  # summary + hierarchy
