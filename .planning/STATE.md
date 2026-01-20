@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 23.3 (Commit Semantics)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 23.3-05-PLAN.md (CommitStore Tests)
+Phase: 23.4 (Jira Sync Engine)
+Plan: 2 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 23.4-02-PLAN.md (Section Fingerprinting)
 
-Progress: █████ 100% (Phase 23.3)
+Progress: ██ 33% (Phase 23.4)
 
 ## v1.0 Summary
 
@@ -200,6 +200,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.3-04 | _run_async pattern for commit handlers | Same pattern as other handlers for sync-to-async execution |
 | 23.3-04 | Board integration via ChannelWorkBoardManager | Updates work board after commit creation |
 | 23.3-04 | Edit button shows stub message | Full editing will be implemented later |
+| 23.4-01 | 9 fields classified into 3 ownership categories | status/assignee/story_points/sprint=JIRA_OWNED, summary/description/labels=SLACK_OWNED, priority/due_date=SHARED |
+| 23.4-01 | Sprint is pure Jira (allow_suggest=False) | Sprint assignment managed entirely in Jira planning |
 
 ### Roadmap Evolution
 
@@ -228,9 +230,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.3-05-PLAN.md (CommitStore Tests) - Phase 23.3 complete
+Stopped at: Completed 23.4-02-PLAN.md (Section Fingerprinting)
 Resume file: None
-Next action: Phase 23.3 complete, ready for next phase or milestone completion
+Next action: Execute 23.4-03-PLAN.md (JiraSyncService)
 
 ## Phase 11 Summary (Complete)
 
