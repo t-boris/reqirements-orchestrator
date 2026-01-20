@@ -11,6 +11,15 @@ from src.jira.types import (
     JiraCreateRequest,
 )
 from src.jira.client import JiraService, JiraAPIError
+from src.jira.sync_config import (
+    FieldOwnership,
+    SyncField,
+    SyncDirection,
+    SyncResult,
+    FIELD_CLASSIFICATIONS,
+    can_push_field,
+    requires_conflict_check,
+)
 
 __all__ = [
     "JiraService",
@@ -20,4 +29,11 @@ __all__ = [
     "PRIORITY_MAP",
     "JiraIssue",
     "JiraCreateRequest",
+    "FieldOwnership",
+    "SyncField",
+    "SyncDirection",
+    "SyncResult",
+    "FIELD_CLASSIFICATIONS",
+    "can_push_field",
+    "requires_conflict_check",
 ]
