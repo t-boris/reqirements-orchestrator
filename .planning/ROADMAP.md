@@ -423,7 +423,7 @@ Plans:
 
 Plans:
 - [x] 23.4-01: FieldClassification Model + SyncConfig (Wave 1) — completed 2026-01-20
-- [ ] 23.4-02: SectionFingerprint Model + Hashing (Wave 1)
+- [x] 23.4-02: SectionFingerprint Model + Hashing (Wave 1) — completed 2026-01-20
 - [ ] 23.4-03: JiraSyncService (Wave 2)
 - [ ] 23.4-04: Readiness CTA Blocks (Wave 2)
 - [ ] 23.4-05: Conflict Resolution UI + Handlers (Wave 3)
@@ -431,7 +431,7 @@ Plans:
 
 **Features (from 23-CONTEXT.md):**
 - [x] Field classification (Jira-owned, Slack-owned, Shared) — 23.4-01
-- [ ] Section-level sync with fingerprints — 23.4-02
+- [x] Section-level sync with fingerprints — 23.4-02
 - [ ] JiraSyncService with bidirectional sync and conflict detection — 23.4-03
 - [ ] Readiness CTA (Create in Jira / Keep local / Edit) — 23.4-04
 - [ ] Conflict resolution UI and handlers — 23.4-05
@@ -478,5 +478,5 @@ Plans:
 | 23.1 WorkItem Registry | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 23.2 Channel Mode | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 23.3 Commit Semantics | v1.1 | 5/5 | Complete | 2026-01-20 |
-| 23.4 Jira Sync Engine | v1.1 | 1/6 | In progress | - |
+| 23.4 Jira Sync Engine | v1.1 | 2/6 | In progress | - |
 | 23.5 Integration | v1.1 | TBD | Planned | - |

@@ -202,6 +202,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.3-04 | Edit button shows stub message | Full editing will be implemented later |
 | 23.4-01 | 9 fields classified into 3 ownership categories | status/assignee/story_points/sprint=JIRA_OWNED, summary/description/labels=SLACK_OWNED, priority/due_date=SHARED |
 | 23.4-01 | Sprint is pure Jira (allow_suggest=False) | Sprint assignment managed entirely in Jira planning |
+| 23.4-02 | SHA-256 truncated to 16 chars for storage | Balance of collision resistance vs storage efficiency |
+| 23.4-02 | Three-way merge for conflict detection | Slack-only changes auto-merge Slack, Jira-only auto-merge Jira, both changed = conflict |
 
 ### Roadmap Evolution
 
