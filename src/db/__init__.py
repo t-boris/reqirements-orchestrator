@@ -45,6 +45,8 @@ from src.db.models import (
     ChannelContext,
     ChannelKnowledge,
     ChannelListeningState,
+    ChannelMode,
+    ChannelModeConfig,
     RootIndex,
     ThreadSession,
     WorkItem,
@@ -61,6 +63,7 @@ from src.db.event_store import EventStore, make_button_event_id
 from src.db.fact_store import FactStore, compute_canonical_id
 from src.db.board_store import BoardStore, BoardState
 from src.db.workitem_store import WorkItemStore
+from src.db.channel_mode_store import ChannelModeStore
 
 __all__ = [
     # Connection (02-01)
@@ -106,4 +109,8 @@ __all__ = [
     "WorkItem",
     "WorkItemStatus",
     "WorkItemType",
+    # ChannelMode Store (23.2-01)
+    "ChannelModeStore",
+    "ChannelMode",
+    "ChannelModeConfig",
 ]
