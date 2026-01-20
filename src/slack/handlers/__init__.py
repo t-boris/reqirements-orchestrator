@@ -131,6 +131,9 @@ from src.slack.handlers.update import (
     handle_update_edit_modal_submit,
 )
 
+# Commit approval handlers (Phase 23.3)
+from src.slack.handlers.commit import register_commit_handlers
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -208,4 +211,6 @@ __all__ = [
     "handle_update_preview_edit",
     "handle_update_preview_cancel",
     "handle_update_edit_modal_submit",
+    # Commit approval handlers (Phase 23.3)
+    "register_commit_handlers",
 ]
