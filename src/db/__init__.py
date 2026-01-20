@@ -47,6 +47,8 @@ from src.db.models import (
     ChannelListeningState,
     ChannelMode,
     ChannelModeConfig,
+    CommitEntry,
+    CommitType,
     RootIndex,
     ThreadModeOverride,
     ThreadSession,
@@ -65,6 +67,7 @@ from src.db.fact_store import FactStore, compute_canonical_id
 from src.db.board_store import BoardStore, BoardState
 from src.db.workitem_store import WorkItemStore
 from src.db.channel_mode_store import ChannelModeStore
+from src.db.commit_store import CommitStore
 
 __all__ = [
     # Connection (02-01)
@@ -116,4 +119,8 @@ __all__ = [
     "ChannelModeConfig",
     # ThreadModeOverride (23.2-03)
     "ThreadModeOverride",
+    # CommitStore (23.3-01)
+    "CommitStore",
+    "CommitType",
+    "CommitEntry",
 ]
