@@ -376,16 +376,25 @@ Plans:
 - [x] Readiness scoring (0.0-1.0) for draft completeness — 23.1-04
 - [x] Comprehensive test coverage (18 test cases) — 23.1-03, 23.1-04
 
-### Phase 23.2: Channel Mode (Planned)
+### Phase 23.2: Channel Mode
 **Goal**: Implement channel mode system (project/feature/bugs/ops)
 **Depends on**: Phase 23.1
-**Plans**: TBD
+**Plans**: 4 plans in 2 waves
 
-**Features (from 23-CONTEXT.md):**
-- [ ] Manual mode config via `/maro mode project`
-- [ ] Suggested mode with one-time confirmation
-- [ ] Per-thread mode override
-- [ ] Mode affects: intent routing, scope gates, work item preferences, Jira sync strictness
+Plans:
+- [ ] 23.2-01: ChannelMode Model + Store (Wave 1)
+- [ ] 23.2-02: /maro mode Command (Wave 1)
+- [ ] 23.2-03: Thread Mode Override (Wave 2)
+- [ ] 23.2-04: ChannelModeStore Tests (Wave 2)
+
+**Features:**
+- [ ] ChannelMode enum (PROJECT/FEATURE/BUGS/OPS) — 23.2-01
+- [ ] ChannelModeConfig model with suggestion tracking — 23.2-01
+- [ ] `/maro mode` command for viewing/setting mode — 23.2-02
+- [ ] Feature mode with --primary-epic flag — 23.2-02
+- [ ] Per-thread mode override with expiry — 23.2-03
+- [ ] get_effective_mode() resolver (thread > channel > default) — 23.2-03
+- [ ] Comprehensive test coverage (17 tests) — 23.2-04
 
 ### Phase 23.3: Commit Semantics (Planned)
 **Goal**: Implement explicit approval and Channel Work Board
@@ -448,7 +457,7 @@ Plans:
 | 22. Multi-Ticket from Review | v1.1 | 4/4 | Complete | 2026-01-16 |
 | 23. Communication as Source of Truth | v1.1 | - | In progress | - |
 | 23.1 WorkItem Registry | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 23.2 Channel Mode | v1.1 | TBD | Planned | - |
+| 23.2 Channel Mode | v1.1 | 0/4 | Planned | - |
 | 23.3 Commit Semantics | v1.1 | TBD | Planned | - |
 | 23.4 Jira Sync Engine | v1.1 | TBD | Planned | - |
 | 23.5 Integration | v1.1 | TBD | Planned | - |
