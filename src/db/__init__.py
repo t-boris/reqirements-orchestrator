@@ -48,6 +48,7 @@ from src.db.models import (
     ChannelMode,
     ChannelModeConfig,
     RootIndex,
+    ThreadModeOverride,
     ThreadSession,
     WorkItem,
     WorkItemStatus,
@@ -113,4 +114,6 @@ __all__ = [
     "ChannelModeStore",
     "ChannelMode",
     "ChannelModeConfig",
+    # ThreadModeOverride (23.2-03)
+    "ThreadModeOverride",
 ]
