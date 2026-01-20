@@ -75,6 +75,46 @@ class SessionStore:
                 )
             """)
 
+            # Work items table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS work_items (
+                    id UUID PRIMARY KEY,
+                    channel_id TEXT NOT NULL,
+                    item_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    summary TEXT NOT NULL,
+                    description TEXT,
+                    facts JSONB DEFAULT '{}',
+                    jira_key TEXT,
+                    jira_sync_at TIMESTAMPTZ,
+                    jira_fingerprint JSONB,
+                    parent_id UUID REFERENCES work_items(id),
+                    source_thread_ts TEXT,
+                    created_by TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    readiness_score REAL DEFAULT 0.0
+                )
+            """)
+
+            # Index for channel queries
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_work_items_channel
+                ON work_items(channel_id)
+            """)
+
+            # Index for Jira sync lookups
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_work_items_jira_key
+                ON work_items(jira_key) WHERE jira_key IS NOT NULL
+            """)
+
+            # Index for parent lookups (hierarchy)
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_work_items_parent
+                ON work_items(parent_id) WHERE parent_id IS NOT NULL
+            """)
+
             await self._conn.commit()
 
     async def get_or_create_session(
