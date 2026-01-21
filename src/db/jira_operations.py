@@ -99,6 +99,8 @@ class JiraOperationStore:
         operation: str,
         created_by: str,
         approved_by: str,
+        *,
+        workitem_id: Optional[str] = None,
     ) -> bool:
         """Record the start of an operation. Returns True if new (first wins).
 
@@ -111,19 +113,20 @@ class JiraOperationStore:
             operation: Operation type (e.g., "jira_create")
             created_by: User who triggered the operation
             approved_by: User who approved (from approval record)
+            workitem_id: Optional WorkItem UUID to link this operation
 
         Returns:
             True if this is a new operation record (first wins)
             False if operation already exists (duplicate)
         """
         sql = """
-        INSERT INTO jira_operations (session_id, draft_hash, operation, created_by, approved_by, status)
-        VALUES (%s, %s, %s, %s, %s, 'pending')
+        INSERT INTO jira_operations (session_id, draft_hash, operation, created_by, approved_by, status, workitem_id)
+        VALUES (%s, %s, %s, %s, %s, 'pending', %s)
         ON CONFLICT (session_id, draft_hash, operation) DO NOTHING
         RETURNING id;
         """
         async with self.conn.cursor() as cur:
-            await cur.execute(sql, (session_id, draft_hash, operation, created_by, approved_by))
+            await cur.execute(sql, (session_id, draft_hash, operation, created_by, approved_by, workitem_id))
             result = await cur.fetchone()
         await self.conn.commit()
 
@@ -134,6 +137,7 @@ class JiraOperationStore:
                 "session_id": session_id,
                 "draft_hash": draft_hash,
                 "operation": operation,
+                "workitem_id": workitem_id,
                 "is_new": is_new,
             },
         )
