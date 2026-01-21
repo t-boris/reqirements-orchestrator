@@ -11,6 +11,8 @@ from src.db.session_store import SessionStore
 from src.db.channel_context_store import ChannelContextStore
 from src.db.listening_store import ListeningStore
 from src.db.workitem_store import WorkItemStore
+from src.db.channel_mode_store import ChannelModeStore
+from src.db.commit_store import CommitStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -34,10 +36,17 @@ async def init_database() -> None:
         session_store = SessionStore(conn)
         await session_store.create_tables()
 
-        # WorkItem registry (Phase 23)
+        # Phase 23: Communication as Source of Truth
         workitem_store = WorkItemStore(conn)
         await workitem_store.create_tables()
 
+        channel_mode_store = ChannelModeStore(conn)
+        await channel_mode_store.create_tables()
+
+        commit_store = CommitStore(conn)
+        await commit_store.create_tables()
+
+        # Existing stores
         context_store = ChannelContextStore(conn)
         await context_store.create_tables()
 
