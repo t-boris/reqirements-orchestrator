@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.5 (Integration)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-21 — Completed 23.5-03-PLAN.md (JiraOperationRecord WorkItem Link)
+Last activity: 2026-01-21 — Completed 23.5-04-PLAN.md (Sync Operation Integration)
 
-Progress: █████░ 85% (Phase 23.5)
+Progress: ██████░ 90% (Phase 23.5)
 
 ## v1.0 Summary
 
@@ -215,6 +215,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.5-03 | workitem_id optional for backward compatibility | Existing records without workitem_id continue to work |
 | 23.5-03 | Partial index on workitem_id WHERE NOT NULL | Efficient lookups without indexing NULL rows |
 | 23.5-03 | Migration DDL with DO $$ block | Safe idempotent column addition for existing tables |
+| 23.5-04 | SessionStore kept but deprecated | warnings.warn() on init, migration requires existing tables |
+| 23.5-04 | Phase 23 stores under common comment | Clear organization in init_database function |
+| 23.5-04 | JiraOperationStore last in startup | Ensures workitem_id migration runs after table exists |
 
 ### Roadmap Evolution
 
@@ -243,9 +246,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-21
-Stopped at: Completed 23.5-03-PLAN.md (JiraOperationRecord WorkItem Link)
+Stopped at: Completed 23.5-04-PLAN.md (Sync Operation Integration)
 Resume file: None
-Next action: Execute 23.5-04-PLAN.md (Sync Operation Integration)
+Next action: Execute 23.5-05-PLAN.md (End-to-End Integration Tests)
 
 ## Phase 11 Summary (Complete)
 
