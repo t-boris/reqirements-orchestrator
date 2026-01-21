@@ -193,3 +193,25 @@ async def bind_epic(
         text=f"Session linked to {epic_key}",
         blocks=blocks,
     )
+
+
+async def get_workitem_for_thread(
+    store: WorkItemStore,
+    channel_id: str,
+    thread_ts: str,
+) -> WorkItem | None:
+    """Find the WorkItem associated with a thread.
+
+    Args:
+        store: WorkItemStore instance.
+        channel_id: Slack channel ID.
+        thread_ts: Thread timestamp.
+
+    Returns:
+        WorkItem if found, None otherwise.
+    """
+    items = await store.list_by_channel(channel_id, limit=100)
+    return next(
+        (item for item in items if item.source_thread_ts == thread_ts),
+        None,
+    )
