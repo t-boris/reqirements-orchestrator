@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.4 (Jira Sync Engine)
-Plan: 6 of 6 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 23.4-06-PLAN.md (Jira Sync Tests)
+Plan: 5 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-21 — Completed 23.4-05-PLAN.md (Conflict Resolution UI & Sync Handlers)
 
-Progress: ██████ 100% (Phase 23.4)
+Progress: █████░ 83% (Phase 23.4)
 
 ## v1.0 Summary
 
@@ -206,6 +206,8 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.4-02 | Three-way merge for conflict detection | Slack-only changes auto-merge Slack, Jira-only auto-merge Jira, both changed = conflict |
 | 23.4-04 | READINESS_THRESHOLD = 0.7 (70%) | Drafts at 70%+ readiness are "ready for Jira" |
 | 23.4-04 | Three-button CTA for ready drafts | Create in Jira / Keep local / Edit covers all user choices |
+| 23.4-05 | Named file jira_sync.py to avoid conflict | Existing sync.py (Phase 21-04) handles /maro sync command |
+| 23.4-05 | Regex action_id pattern for indexed buttons | resolve_conflict_slack_\\d+ matches per-conflict buttons |
 
 ### Roadmap Evolution
 
@@ -233,10 +235,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-20
-Stopped at: Completed 23.4-06-PLAN.md (Jira Sync Tests)
+Last session: 2026-01-21
+Stopped at: Completed 23.4-05-PLAN.md (Conflict Resolution UI & Sync Handlers)
 Resume file: None
-Next action: Phase 23.4 complete
+Next action: Execute 23.4-06-PLAN.md (Jira Sync Tests)
 
 ## Phase 11 Summary (Complete)
 
