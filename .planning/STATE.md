@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 
 ## Current Position
 
-Phase: 23.4 (Jira Sync Engine)
-Plan: 5 of 6 in current phase
+Phase: 23.5 (Integration)
+Plan: 1 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-21 — Completed 23.4-05-PLAN.md (Conflict Resolution UI & Sync Handlers)
+Last activity: 2026-01-20 — Completed 23.5-01-PLAN.md (Migrate binding.py to WorkItemStore)
 
-Progress: █████░ 83% (Phase 23.4)
+Progress: █████░ 85% (Phase 23.5)
 
 ## v1.0 Summary
 
@@ -208,6 +208,10 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.4-04 | Three-button CTA for ready drafts | Create in Jira / Keep local / Edit covers all user choices |
 | 23.4-05 | Named file jira_sync.py to avoid conflict | Existing sync.py (Phase 21-04) handles /maro sync command |
 | 23.4-05 | Regex action_id pattern for indexed buttons | resolve_conflict_slack_\\d+ matches per-conflict buttons |
+| 23.5-01 | WorkItem replaces ThreadSession for binding | WorkItem provides richer metadata and integrates with sync engine |
+| 23.5-01 | jira_key stores Epic link | Using jira_key (not separate epic_id) to link WorkItem to Epic |
+| 23.5-01 | source_thread_ts for lookup | Finding WorkItems by originating thread timestamp |
+| 23.5-01 | Default STORY type for new bindings | Thread bindings create STORY WorkItems under Epic |
 
 ### Roadmap Evolution
 
@@ -235,10 +239,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-21
-Stopped at: Completed 23.4-05-PLAN.md (Conflict Resolution UI & Sync Handlers)
+Last session: 2026-01-20
+Stopped at: Completed 23.5-01-PLAN.md (Migrate binding.py to WorkItemStore)
 Resume file: None
-Next action: Execute 23.4-06-PLAN.md (Jira Sync Tests)
+Next action: Execute 23.5-02-PLAN.md (Migrate handlers/misc.py to WorkItemStore)
 
 ## Phase 11 Summary (Complete)
 
