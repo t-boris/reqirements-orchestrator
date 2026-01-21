@@ -698,10 +698,10 @@ async def _handle_create_stories(
     from src.llm import get_llm
     import re
 
-    try:
-        settings = get_settings()
-        jira_service = JiraService(settings)
+    settings = get_settings()
+    jira_service = JiraService(settings)
 
+    try:
         # Fetch the epic from Jira
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -717,7 +717,6 @@ async def _handle_create_stories(
                 thread_ts=identity.thread_ts,
                 text=f"Could not find *{ticket_key}* in Jira. Please check the ticket key.",
             )
-            await jira_service.close()
             return
 
         logger.info(
@@ -752,7 +751,6 @@ async def _handle_create_stories(
                 thread_ts=identity.thread_ts,
                 text=f"Could not generate stories for *{ticket_key}*. The epic may need more detail.",
             )
-            await jira_service.close()
             return
 
         # Build preview of generated stories
@@ -818,8 +816,6 @@ async def _handle_create_stories(
             blocks=preview_blocks,
         )
 
-        await jira_service.close()
-
     except Exception as e:
         logger.error(f"Failed to generate stories: {e}", exc_info=True)
         client.chat_postMessage(
@@ -827,6 +823,8 @@ async def _handle_create_stories(
             thread_ts=identity.thread_ts,
             text=f"Failed to generate stories for *{ticket_key}*: {str(e)}",
         )
+    finally:
+        await jira_service.close()
 
 
 async def _handle_decision_approval(
