@@ -453,6 +453,10 @@ async def _dispatch_result(
         # Sync request - trigger Jira sync analysis (Phase 21-04)
         await _handle_sync_request(result, identity, client)
 
+    elif action == "jira_search":
+        # Jira search - search for existing issues
+        await _handle_jira_search(result, identity, client)
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -1155,3 +1159,105 @@ async def _handle_sync_request(
         user_id=user_id,
         auto_mode=False,  # Show summary for natural language trigger
     )
+
+
+async def _handle_jira_search(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle jira_search action - search Jira for existing issues.
+
+    Triggered by "check Jira for similar issues" or similar search phrases.
+    """
+    from src.skills.jira_search import jira_search
+    from src.jira.client import JiraService
+    from src.config import get_settings
+
+    search_query = result.get("search_query")
+    channel_id = result.get("channel_id") or identity.channel_id
+    thread_ts = result.get("thread_ts") or identity.thread_ts
+
+    if not search_query:
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="I couldn't determine what to search for. Please be more specific about what issues you're looking for.",
+        )
+        return
+
+    # Post searching status
+    client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        text=f":mag: Searching Jira for: *{search_query[:100]}*...",
+    )
+
+    settings = get_settings()
+    jira_service = JiraService(settings)
+
+    try:
+        search_result = await jira_search(
+            query=search_query,
+            jira_service=jira_service,
+            limit=10,
+        )
+
+        if not search_result.issues:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f"No existing issues found for: *{search_query[:100]}*\n\nYou can ask me to create a new ticket if needed.",
+            )
+            return
+
+        # Format results
+        issues = search_result.issues
+        jira_base_url = settings.jira_base_url.rstrip("/")
+
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":mag: Found *{len(issues)}* existing issue(s) for: *{search_query[:100]}*",
+                }
+            },
+            {"type": "divider"},
+        ]
+
+        for issue in issues[:10]:
+            issue_url = f"{jira_base_url}/browse/{issue.key}"
+            status = issue.status or "Unknown"
+            issue_type = issue.issue_type or "Issue"
+
+            # Build issue summary block
+            issue_text = f"<{issue_url}|*{issue.key}*> - {issue.summary}\n"
+            issue_text += f"Type: {issue_type} | Status: {status}"
+            if issue.assignee:
+                issue_text += f" | Assignee: {issue.assignee}"
+
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": issue_text,
+                }
+            })
+
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            blocks=blocks,
+            text=f"Found {len(issues)} existing issues",
+        )
+
+    except Exception as e:
+        logger.error(f"Jira search failed: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Sorry, I encountered an error searching Jira: {str(e)}",
+        )
+    finally:
+        await jira_service.close()

@@ -1,9 +1,10 @@
-"""Decision node - routes to ASK, PREVIEW, or READY_TO_CREATE.
+"""Decision node - routes to ASK, PREVIEW, PREFLIGHT_REQUIRED, or READY_TO_CREATE.
 
 Prioritizes most impactful issues first.
 Smart batching: immediate if urgent, else batch related questions.
 Re-ask logic: max 2 re-asks before proceeding with partial info.
 Duplicate detection: searches for similar tickets before preview.
+Preflight: blocks creation on EXACT_MATCH (>85% confidence) until user chooses.
 
 EXECUTE is deferred to Phase 7 - only sets state to READY_TO_CREATE.
 """
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from src.schemas.state import AgentState, AgentPhase
 from src.schemas.draft import TicketDraft
+from src.schemas.preflight import DuplicateMatch, PreflightResult
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +24,14 @@ MAX_REASK_COUNT = 2
 
 class DecisionResult(BaseModel):
     """Result of decision node processing."""
-    action: Literal["ask", "preview", "ready_to_create"]
+    action: Literal["ask", "preview", "ready_to_create", "preflight_required"]
     questions: list[str] = Field(default_factory=list)  # For ASK action
     reason: str = ""  # Why this decision
     is_reask: bool = False  # True if re-asking unanswered questions
     reask_count: int = 0  # How many times we've re-asked
     potential_duplicates: list[dict] = Field(default_factory=list)  # Similar tickets found
     bound_ticket: Optional[str] = None  # Existing ticket this thread is bound to
+    preflight_result: Optional[dict] = None  # PreflightResult dict for blocking duplicates
 
 
 def prioritize_issues(
@@ -129,15 +132,79 @@ If they don't seem related, respond with empty string."""
         return ""
 
 
-async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
-    """Search for potential duplicate tickets.
+def _compute_confidence_score(draft: TicketDraft, duplicate: dict) -> float:
+    """Compute confidence score for a duplicate match.
 
-    Returns list of {key, summary, url, status, assignee, updated, match_reason} dicts.
+    Uses multiple signals to determine confidence:
+    - Title similarity (word overlap)
+    - Problem description similarity
+    - Same status (lower confidence if already done)
+
+    Args:
+        draft: The draft ticket being created.
+        duplicate: Dict with key, summary, status, etc.
+
+    Returns:
+        Confidence score from 0.0 to 1.0.
+    """
+    score = 0.0
+
+    # Normalize strings for comparison
+    draft_title = (draft.title or "").lower().strip()
+    draft_problem = (draft.problem or "").lower().strip()
+    dup_summary = (duplicate.get("summary") or "").lower().strip()
+
+    if not draft_title or not dup_summary:
+        return 0.0
+
+    # Title word overlap (up to 0.5)
+    draft_words = set(draft_title.split())
+    dup_words = set(dup_summary.split())
+
+    # Remove common words
+    stop_words = {"the", "a", "an", "is", "are", "to", "for", "and", "or", "as", "in", "on", "at", "with"}
+    draft_words = draft_words - stop_words
+    dup_words = dup_words - stop_words
+
+    if draft_words and dup_words:
+        overlap = len(draft_words & dup_words)
+        max_possible = max(len(draft_words), len(dup_words))
+        title_score = (overlap / max_possible) * 0.5
+        score += title_score
+
+    # Problem description overlap (up to 0.3)
+    if draft_problem:
+        problem_words = set(draft_problem.split()) - stop_words
+        if problem_words:
+            dup_all_words = dup_words | set(duplicate.get("description", "").lower().split())
+            overlap = len(problem_words & dup_all_words)
+            max_possible = max(len(problem_words), len(dup_all_words)) if dup_all_words else len(problem_words)
+            problem_score = (overlap / max_possible) * 0.3 if max_possible > 0 else 0.0
+            score += problem_score
+
+    # Boost for active tickets (up to 0.2)
+    status = (duplicate.get("status") or "").lower()
+    if status in ("to do", "open", "new", "in progress", "in review"):
+        score += 0.2
+    elif status in ("done", "closed", "resolved"):
+        # Lower confidence for already done tickets
+        score += 0.05
+
+    return min(score, 1.0)
+
+
+async def _search_for_duplicates(draft: TicketDraft | None) -> tuple[list[dict], list[float]]:
+    """Search for potential duplicate tickets with confidence scores.
+
+    Returns tuple of:
+    - list of {key, summary, url, status, assignee, updated, match_reason} dicts
+    - list of confidence scores (0.0-1.0) for each duplicate
+
     For the best match (first), generates LLM explanation of why it matches.
-    Fails gracefully - returns empty list on any error.
+    Fails gracefully - returns empty lists on any error.
     """
     if not draft or not draft.title:
-        return []
+        return [], []
 
     try:
         from src.config.settings import get_settings
@@ -152,7 +219,9 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
 
             # Convert to display format with enhanced metadata
             duplicates = []
-            for i, issue in enumerate(result.issues[:5]):  # Keep up to 5 for "show more"
+            confidence_scores = []
+
+            for issue in result.issues[:5]:  # Keep up to 5 for "show more"
                 dup = {
                     "key": issue.key,
                     "summary": issue.summary,
@@ -163,6 +232,20 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
                     "match_reason": "",
                 }
                 duplicates.append(dup)
+
+                # Compute confidence score
+                confidence = _compute_confidence_score(draft, dup)
+                confidence_scores.append(confidence)
+
+            # Sort by confidence descending
+            if duplicates:
+                pairs = sorted(
+                    zip(duplicates, confidence_scores),
+                    key=lambda x: x[1],
+                    reverse=True
+                )
+                duplicates = [p[0] for p in pairs]
+                confidence_scores = [p[1] for p in pairs]
 
             # Generate match explanation for best match only
             if duplicates:
@@ -175,11 +258,12 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
                         "count": len(duplicates),
                         "draft_title": draft.title[:50],
                         "best_match": duplicates[0]["key"],
+                        "best_confidence": confidence_scores[0] if confidence_scores else 0.0,
                         "match_reason": match_reason,
                     },
                 )
 
-            return duplicates
+            return duplicates, confidence_scores
 
         finally:
             await jira_service.close()
@@ -190,15 +274,18 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> list[dict]:
             "Failed to search for duplicates",
             extra={"error": str(e)},
         )
-        return []
+        return [], []
 
 
 async def decision_node(state: AgentState) -> dict[str, Any]:
-    """Decide next action: ASK, PREVIEW, or READY_TO_CREATE.
+    """Decide next action: ASK, PREVIEW, PREFLIGHT_REQUIRED, or READY_TO_CREATE.
 
     Logic:
     0. If thread already bound to a ticket -> PREVIEW (skip duplicate detection)
-    1. If validation passed (is_valid=True) -> PREVIEW
+    1. If validation passed (is_valid=True) -> check duplicates
+       - EXACT_MATCH (>85%): PREFLIGHT_REQUIRED (block until user chooses)
+       - LIKELY_DUPLICATE (60-85%): PREVIEW with warning
+       - NO_MATCH (<60%): PREVIEW normally
     2. If conflicts exist -> ASK (prioritize conflicts)
     3. If missing fields -> ASK (batch questions)
     4. If approved -> READY_TO_CREATE
@@ -323,11 +410,48 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
         # Ready for preview - check for duplicates first
         logger.info("Draft valid, checking for potential duplicates before preview")
 
-        potential_duplicates = await _search_for_duplicates(draft)
+        potential_duplicates, confidence_scores = await _search_for_duplicates(draft)
 
+        # Build preflight result
+        preflight = PreflightResult.from_search_results(potential_duplicates, confidence_scores)
+
+        # Decision based on preflight result
+        if preflight.should_block_creation():
+            # EXACT_MATCH: Block creation until user explicitly chooses
+            logger.info(
+                "EXACT_MATCH found, blocking creation",
+                extra={
+                    "best_match": preflight.best_match.key if preflight.best_match else None,
+                    "confidence": preflight.best_match.confidence if preflight.best_match else 0,
+                },
+            )
+
+            # Add confidence to duplicates for display
+            for dup, conf in zip(potential_duplicates, confidence_scores):
+                dup["confidence"] = conf
+
+            return {
+                "step_count": step_count + 1,
+                "phase": AgentPhase.AWAITING_USER,
+                "pending_questions": None,
+                "decision_result": DecisionResult(
+                    action="preflight_required",
+                    reason=f"EXACT_MATCH found ({preflight.best_match.confidence*100:.0f}% confident). User must choose.",
+                    potential_duplicates=potential_duplicates,
+                    preflight_result=preflight.model_dump(),
+                ).model_dump(),
+            }
+
+        # LIKELY_DUPLICATE or NO_MATCH: Proceed to preview
         dup_reason = "Draft meets minimum requirements"
-        if potential_duplicates:
-            dup_reason = f"Draft meets requirements. Found {len(potential_duplicates)} potential duplicate(s)."
+        if preflight.should_warn():
+            dup_reason = f"Draft meets requirements. Found {len(potential_duplicates)} likely duplicate(s) - please review."
+        elif potential_duplicates:
+            dup_reason = f"Draft meets requirements. Found {len(potential_duplicates)} potential match(es)."
+
+        # Add confidence to duplicates for display
+        for dup, conf in zip(potential_duplicates, confidence_scores):
+            dup["confidence"] = conf
 
         return {
             "step_count": step_count + 1,
@@ -337,6 +461,7 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
                 action="preview",
                 reason=dup_reason,
                 potential_duplicates=potential_duplicates,
+                preflight_result=preflight.model_dump() if potential_duplicates else None,
             ).model_dump(),
         }
 
@@ -363,7 +488,7 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready"]:
+def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready", "preflight"]:
     """Get decision action from state for routing.
 
     Use in graph conditional edges.
@@ -372,4 +497,6 @@ def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready"]
     action = result.get("action", "ask")
     if action == "ready_to_create":
         return "ready"
+    if action == "preflight_required":
+        return "preflight"
     return action

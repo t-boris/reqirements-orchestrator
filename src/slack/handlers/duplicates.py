@@ -1,6 +1,7 @@
-"""Duplicate ticket handling - link, create anyway, show more.
+"""Duplicate ticket handling - link, update, create anyway, show more.
 
 Handles all actions related to duplicate ticket detection and resolution.
+Implements Rule 7: Explicit choice buttons with proper analytics.
 """
 
 import json
@@ -13,6 +14,35 @@ from src.graph.runner import get_runner
 from src.slack.handlers.core import _run_async
 
 logger = logging.getLogger(__name__)
+
+
+def _log_duplicate_choice(
+    action: str,
+    channel: str,
+    user_id: str,
+    issue_key: str | None = None,
+    confidence: float | None = None,
+) -> None:
+    """Log user's choice for duplicate handling analytics.
+
+    Args:
+        action: The action taken (link, update, create_anyway, show_more)
+        channel: Slack channel ID
+        user_id: User who made the choice
+        issue_key: The duplicate issue key if applicable
+        confidence: The confidence score of the match if applicable
+    """
+    logger.info(
+        "Duplicate handling choice",
+        extra={
+            "action": action,
+            "channel": channel,
+            "user_id": user_id,
+            "issue_key": issue_key,
+            "confidence": confidence,
+            "metric_type": "duplicate_choice",
+        }
+    )
 
 
 def handle_link_duplicate(ack, body, client: WebClient, action):
@@ -67,6 +97,9 @@ async def _handle_link_duplicate_async(body, client: WebClient, action):
             "user_id": user_id,
         }
     )
+
+    # Log analytics
+    _log_duplicate_choice("link", channel, user_id, issue_key)
 
     # Store thread binding
     from src.slack.thread_bindings import get_binding_store
@@ -141,6 +174,28 @@ async def _handle_link_duplicate_async(body, client: WebClient, action):
         logger.warning(f"Failed to auto-track linked ticket: {e}")
         # Non-blocking - link succeeded
 
+    # Register in channel Jira registry (Rule 8)
+    try:
+        from src.db import get_connection
+        from src.db.jira_registry import JiraRegistryStore
+
+        async with get_connection() as conn:
+            registry = JiraRegistryStore(conn)
+            await registry.create_tables()
+            await registry.register(
+                channel_id=channel,
+                jira_key=issue_key,
+                link_type="tracked",
+                linked_by=user_id,
+            )
+        logger.info(
+            "Registered linked ticket in channel registry",
+            extra={"jira_key": issue_key, "channel": channel},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to register ticket in registry: {e}")
+        # Non-blocking
+
 
 def handle_create_anyway(ack, body, client: WebClient, action):
     """Synchronous wrapper for create anyway action.
@@ -188,6 +243,9 @@ async def _handle_create_anyway_async(body, client: WebClient, action):
             "user_id": user_id,
         }
     )
+
+    # Log analytics
+    _log_duplicate_choice("create_anyway", channel, user_id)
 
     identity = SessionIdentity(
         team_id=team_id,
@@ -241,6 +299,388 @@ async def _handle_create_anyway_async(body, client: WebClient, action):
             text=f"Ticket preview for: {draft.title or 'Untitled'}",
             blocks=preview_blocks,
         )
+
+
+def handle_update_existing(ack, body, client: WebClient, action):
+    """Synchronous wrapper for update existing action.
+
+    User chose to update an existing ticket with new info from the draft.
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_update_existing_async(body, client, action))
+
+
+async def _handle_update_existing_async(body, client: WebClient, action):
+    """Handle 'Update existing' button click on duplicate display.
+
+    Adds information from the current draft to an existing Jira ticket.
+
+    Flow:
+    1. Parse button value: session_id:draft_hash:issue_key
+    2. Get current draft from session
+    3. Add draft info as a comment to the existing ticket
+    4. Optionally update ticket fields if user confirms
+    5. Bind thread to the existing ticket
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash:issue_key
+    button_value = action.get("value", "")
+    parts = button_value.split(":")
+
+    if len(parts) < 3:
+        logger.error(f"Invalid update_existing button value: {button_value}")
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not process update action. Please try again.",
+        )
+        return
+
+    # Last part is issue_key
+    issue_key = parts[-1]
+
+    logger.info(
+        "Updating existing ticket with draft info",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "issue_key": issue_key,
+            "user_id": user_id,
+        }
+    )
+
+    # Log analytics
+    _log_duplicate_choice("update", channel, user_id, issue_key)
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get current draft
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    draft = state.get("draft")
+
+    if not draft:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not find draft. Please start a new session.",
+        )
+        return
+
+    # Add draft information as a comment to the existing ticket
+    try:
+        from src.config.settings import get_settings
+        from src.jira.client import JiraService
+
+        settings = get_settings()
+        jira_service = JiraService(settings)
+
+        try:
+            # Build comment from draft
+            comment_parts = ["*Additional context from Slack discussion:*\n"]
+
+            if draft.problem:
+                comment_parts.append(f"*Problem:*\n{draft.problem}\n")
+
+            if draft.proposed_solution:
+                comment_parts.append(f"*Proposed Solution:*\n{draft.proposed_solution}\n")
+
+            if draft.acceptance_criteria:
+                comment_parts.append(f"*Acceptance Criteria:*\n{draft.acceptance_criteria}\n")
+
+            if draft.risks:
+                comment_parts.append(f"*Risks:*\n{draft.risks}\n")
+
+            if draft.constraints:
+                constraints_text = "\n".join(
+                    f"- {c.key}: {c.value}" for c in draft.constraints
+                )
+                comment_parts.append(f"*Constraints:*\n{constraints_text}\n")
+
+            # Get Slack permalink for reference
+            slack_permalink = ""
+            try:
+                result = client.chat_getPermalink(channel=channel, message_ts=thread_ts)
+                slack_permalink = result.get("permalink", "")
+            except Exception:
+                pass
+
+            if slack_permalink:
+                comment_parts.append(f"\n[View Slack discussion]({slack_permalink})")
+
+            comment_body = "\n".join(comment_parts)
+
+            # Add comment to Jira
+            await jira_service.add_comment(issue_key, comment_body)
+
+            # Get issue URL
+            issue_url = f"{settings.jira_url.rstrip('/')}/browse/{issue_key}"
+
+            # Update preview message to show updated confirmation
+            from src.slack.blocks import build_linked_confirmation_blocks
+
+            confirmation_blocks = build_linked_confirmation_blocks(issue_key, issue_url)
+
+            try:
+                client.chat_update(
+                    channel=channel,
+                    ts=message_ts,
+                    text=f"Updated {issue_key}",
+                    blocks=confirmation_blocks,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update preview message: {e}")
+
+            # Post confirmation in thread
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"Added discussion context to <{issue_url}|{issue_key}>. "
+                     f"The ticket has been updated with the new information.",
+            )
+
+            # Bind thread to the updated ticket
+            from src.slack.thread_bindings import get_binding_store
+
+            binding_store = get_binding_store()
+            await binding_store.bind(
+                channel_id=channel,
+                thread_ts=thread_ts,
+                issue_key=issue_key,
+                bound_by=user_id,
+            )
+
+            # Auto-track the ticket in the channel
+            try:
+                from src.db import get_connection
+                from src.slack.channel_tracker import ChannelIssueTracker
+
+                async with get_connection() as conn:
+                    tracker = ChannelIssueTracker(conn)
+                    await tracker.create_tables()
+                    await tracker.track(channel, issue_key, user_id)
+
+                    # Try to get current Jira status for sync
+                    issue = await jira_service.get_issue(issue_key)
+                    if issue:
+                        await tracker.update_sync_status(
+                            channel,
+                            issue_key,
+                            status=issue.status,
+                            summary=issue.summary,
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to auto-track updated ticket: {e}")
+
+            # Register in channel Jira registry (Rule 8)
+            try:
+                from src.db import get_connection
+                from src.db.jira_registry import JiraRegistryStore
+
+                async with get_connection() as conn:
+                    registry = JiraRegistryStore(conn)
+                    await registry.create_tables()
+                    await registry.register(
+                        channel_id=channel,
+                        jira_key=issue_key,
+                        link_type="tracked",
+                        linked_by=user_id,
+                    )
+                logger.info(
+                    "Registered updated ticket in channel registry",
+                    extra={"jira_key": issue_key, "channel": channel},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to register ticket in registry: {e}")
+
+        finally:
+            await jira_service.close()
+
+    except Exception as e:
+        logger.error(f"Failed to update existing ticket: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Sorry, I couldn't update {issue_key}. Error: {str(e)}",
+        )
+
+
+def handle_create_anyway_confirm(ack, body, client: WebClient, action):
+    """Synchronous wrapper for create anyway confirmation.
+
+    Shows a confirmation dialog for EXACT_MATCH before creating duplicate.
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_create_anyway_confirm_async(body, client, action))
+
+
+async def _handle_create_anyway_confirm_async(body, client: WebClient, action):
+    """Handle 'Create new anyway' button click on EXACT_MATCH.
+
+    Shows confirmation dialog before allowing duplicate creation.
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash
+    button_value = action.get("value", "")
+
+    if ":" in button_value:
+        parts = button_value.rsplit(":", 1)
+        session_id = parts[0]
+        draft_hash = parts[1] if len(parts) > 1 else ""
+    else:
+        session_id = button_value
+        draft_hash = ""
+
+    logger.info(
+        "Showing create anyway confirmation for EXACT_MATCH",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get preflight result from state for best match info
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    decision_result = state.get("decision_result", {})
+    preflight_result = decision_result.get("preflight_result", {})
+    best_match = preflight_result.get("best_match", {})
+
+    best_match_key = best_match.get("key", "existing ticket")
+    confidence = best_match.get("confidence", 0.85)
+
+    # Build confirmation blocks
+    from src.slack.blocks.duplicates import build_create_anyway_confirmation_blocks
+
+    confirmation_blocks = build_create_anyway_confirmation_blocks(
+        session_id=session_id,
+        draft_hash=draft_hash,
+        best_match_key=best_match_key,
+        confidence=confidence,
+    )
+
+    # Update message to show confirmation
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            text="Are you sure you want to create a new ticket?",
+            blocks=confirmation_blocks,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to show confirmation: {e}")
+        # Fall back to posting new message
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Are you sure you want to create a new ticket?",
+            blocks=confirmation_blocks,
+        )
+
+
+def handle_cancel_create_anyway(ack, body, client: WebClient, action):
+    """Synchronous wrapper for canceling create anyway.
+
+    Returns to the original preflight display.
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_cancel_create_anyway_async(body, client, action))
+
+
+async def _handle_cancel_create_anyway_async(body, client: WebClient, action):
+    """Handle 'Go back' button click on create anyway confirmation.
+
+    Returns to the original preflight display.
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    message_ts = body["message"]["ts"]
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button value: session_id:draft_hash
+    button_value = action.get("value", "")
+
+    if ":" in button_value:
+        parts = button_value.rsplit(":", 1)
+        session_id = parts[0]
+        draft_hash = parts[1] if len(parts) > 1 else ""
+    else:
+        session_id = button_value
+        draft_hash = ""
+
+    logger.info(
+        "User canceled create anyway, returning to preflight",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+        }
+    )
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Get preflight result from state
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    decision_result = state.get("decision_result", {})
+    preflight_result = decision_result.get("preflight_result", {})
+
+    if not preflight_result:
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Error: Could not retrieve duplicate information. Please start over.",
+        )
+        return
+
+    # Rebuild preflight blocks
+    from src.slack.blocks.duplicates import build_preflight_blocks
+
+    preflight_blocks = build_preflight_blocks(
+        preflight_result=preflight_result,
+        session_id=session_id,
+        draft_hash=draft_hash,
+    )
+
+    # Update message to show preflight again
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            text="Possible duplicate found",
+            blocks=preflight_blocks,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to restore preflight display: {e}")
 
 
 def handle_add_to_duplicate(ack, body, client: WebClient, action):

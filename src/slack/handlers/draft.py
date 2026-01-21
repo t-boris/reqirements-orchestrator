@@ -332,6 +332,27 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 logger.warning(f"Failed to bind thread to ticket: {e}")
                 # Non-blocking
 
+            # Register in channel Jira registry (Rule 8)
+            try:
+                from src.db.jira_registry import JiraRegistryStore
+
+                async with get_connection() as conn:
+                    registry = JiraRegistryStore(conn)
+                    await registry.create_tables()
+                    await registry.register(
+                        channel_id=channel,
+                        jira_key=create_result.jira_key,
+                        link_type="owned",
+                        linked_by=user_id,
+                    )
+                logger.info(
+                    "Registered created ticket in channel registry",
+                    extra={"jira_key": create_result.jira_key, "channel": channel},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to register ticket in registry: {e}")
+                # Non-blocking - ticket creation succeeded
+
             # Update thread pin with ticket link
             try:
                 from src.context.jira_linker import JiraLinker

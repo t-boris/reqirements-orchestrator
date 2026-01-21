@@ -58,6 +58,7 @@ from src.graph.nodes.decision_approval import decision_approval_node
 from src.graph.nodes.scope_gate import scope_gate_node
 from src.graph.nodes.jira_command import jira_command_node
 from src.graph.nodes.sync_trigger import sync_trigger_node
+from src.graph.nodes.jira_search import jira_search_node
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,17 @@ def should_continue(state: AgentState) -> Literal["extraction", "validation", "e
     return "extraction"
 
 
-def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"]:
+def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready", "preflight"]:
     """Route based on decision result.
 
     Used as conditional edge from decision node.
     All outcomes currently go to END (Slack handler sends response).
+
+    Routes:
+    - ask: Need more info from user
+    - preview: Show draft for approval (may include likely duplicates)
+    - ready: Approved, ready to create in Jira
+    - preflight: EXACT_MATCH found, must choose before proceeding
     """
     return get_decision_action(state)
 
@@ -154,6 +161,10 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         # Bulk sync with Jira
         logger.info("Intent router: routing to sync_flow")
         return "sync_flow"
+    elif intent_upper == "JIRA_SEARCH":
+        # Search Jira for existing issues
+        logger.info("Intent router: routing to jira_search_flow")
+        return "jira_search_flow"
     elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
@@ -210,6 +221,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("scope_gate", scope_gate_node)
     workflow.add_node("jira_command", jira_command_node)
     workflow.add_node("sync_trigger", sync_trigger_node)
+    workflow.add_node("jira_search", jira_search_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -228,6 +240,7 @@ def create_graph() -> StateGraph:
             "scope_gate_flow": "scope_gate",  # AMBIGUOUS intent - show scope gate
             "jira_command_flow": "jira_command",  # Natural language Jira commands
             "sync_flow": "sync_trigger",  # Bulk sync with Jira
+            "jira_search_flow": "jira_search",  # Search Jira for existing issues
         }
     )
 
@@ -255,6 +268,9 @@ def create_graph() -> StateGraph:
     # Sync trigger goes directly to END after preparing sync summary
     workflow.add_edge("sync_trigger", END)
 
+    # Jira search goes directly to END after preparing search results
+    workflow.add_edge("jira_search", END)
+
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
     workflow.add_conditional_edges(
@@ -271,7 +287,7 @@ def create_graph() -> StateGraph:
     workflow.add_edge("validation", "decision")
 
     # Decision routes to END (Slack handler processes the result)
-    # All three outcomes (ask, preview, ready) end the graph run
+    # All four outcomes (ask, preview, ready, preflight) end the graph run
     # The Slack handler will send appropriate response based on decision_result
     workflow.add_conditional_edges(
         "decision",
@@ -280,6 +296,7 @@ def create_graph() -> StateGraph:
             "ask": END,  # ASK: questions sent to user
             "preview": END,  # PREVIEW: draft shown for approval
             "ready": END,  # READY: ticket creation (Phase 7)
+            "preflight": END,  # PREFLIGHT: EXACT_MATCH found, show blocking duplicate UI
         }
     )
 

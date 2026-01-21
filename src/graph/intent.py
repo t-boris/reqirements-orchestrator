@@ -33,11 +33,15 @@ class IntentType(str, Enum):
 
     SYNC_REQUEST is for Jira sync commands like "update Jira issues" or
     "sync the tickets" - triggers the sync flow to compare Slack and Jira state.
+
+    JIRA_SEARCH is for searching Jira for existing issues like "check if we
+    already have a ticket for X" or "search Jira for similar issues".
     """
     TICKET = "TICKET"       # Create a NEW Jira ticket
     TICKET_ACTION = "TICKET_ACTION"  # Action on EXISTING ticket (subtasks, update, comment)
     JIRA_COMMAND = "JIRA_COMMAND"  # Edit/update/delete Jira issues via natural language
     SYNC_REQUEST = "SYNC_REQUEST"  # Sync channel decisions with Jira
+    JIRA_SEARCH = "JIRA_SEARCH"  # Search Jira for existing/similar issues
     REVIEW = "REVIEW"       # Analysis/feedback without Jira
     DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
     META = "META"           # Questions about the bot itself
@@ -59,6 +63,8 @@ class IntentResult(BaseModel):
     command_field: Optional[str] = None  # Field to change (priority, status, assignee, etc.)
     command_value: Optional[str] = None  # New value for the field
     target_type: Optional[Literal["explicit", "contextual"]] = None  # How target was specified
+    # For JIRA_SEARCH intent
+    search_query: Optional[str] = None  # What to search for in Jira
 
 
 async def _llm_classify(message: str, conversation_context: dict | None = None) -> IntentResult:
@@ -139,6 +145,17 @@ Classify the user's intent into ONE category:
 - TICKET: User wants to create a NEW Jira ticket (no existing ticket referenced)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
 
+- JIRA_SEARCH: User wants to SEARCH Jira for existing issues
+  Key phrases: "check Jira", "search Jira", "look in Jira", "find in Jira", "do we have a ticket",
+  "already have", "similar issue", "existing ticket", "look up", "search for tickets"
+  Examples:
+  - "check out Jira if we already have similar issue" -> JIRA_SEARCH, search_query=<topic from context>
+  - "search Jira for authentication issues" -> JIRA_SEARCH, search_query="authentication"
+  - "do we have a ticket for this?" -> JIRA_SEARCH, search_query=<topic from context>
+  - "look in Jira for API gateway" -> JIRA_SEARCH, search_query="API gateway"
+  - "find existing tickets about logging" -> JIRA_SEARCH, search_query="logging"
+  Extract the search query from the user's message or conversation context.
+
 - REVIEW: User wants help, analysis, discussion, or feedback WITHOUT creating a ticket
   Examples: "help me define architecture", "review this design", "what's the best approach",
   "I need help with X", "analyze the risks", "let's discuss Y"
@@ -167,9 +184,11 @@ IMPORTANT RULES:
 11. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
 12. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
 13. "Update Jira" or "sync Jira" without a specific ticket = SYNC_REQUEST
+14. JIRA_SEARCH is for searching Jira ("check Jira", "do we have", "similar issue", "existing ticket")
+15. "Check Jira if we have X" or "search for similar" = JIRA_SEARCH (not REVIEW)
 
 Respond in this exact format:
-INTENT: <SYNC_REQUEST|JIRA_COMMAND|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -178,6 +197,7 @@ COMMAND_TYPE: <update|delete|none>
 COMMAND_FIELD: <priority|status|assignee|description|summary|labels|none>
 COMMAND_VALUE: <the value to set, or "none">
 TARGET_TYPE: <explicit|contextual|none>
+SEARCH_QUERY: <what to search for in Jira, or "none">
 REASON: <brief explanation>"""
 
     try:
@@ -195,12 +215,13 @@ REASON: <brief explanation>"""
         command_field = None
         command_value = None
         target_type = None
+        search_query = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "SYNC_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -238,6 +259,10 @@ REASON: <brief explanation>"""
                 type_value = line.split(":", 1)[1].strip().lower()
                 if type_value in ["explicit", "contextual"]:
                     target_type = type_value
+            elif line.upper().startswith("SEARCH_QUERY:"):
+                query_value = line.split(":", 1)[1].strip()
+                if query_value and query_value.lower() != "none":
+                    search_query = query_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -251,6 +276,7 @@ REASON: <brief explanation>"""
             command_field=command_field,
             command_value=command_value,
             target_type=target_type,
+            search_query=search_query,
             reasons=[reason],
         )
 

@@ -56,11 +56,48 @@ class ChannelKnowledge(BaseModel):
     source_pin_ids: list[str] = Field(default_factory=list)
 
 
-class ChannelActivitySnapshot(BaseModel):
-    """Layer 3: Live summary of channel activity."""
+class EpicSummary(BaseModel):
+    """Summary of an epic for snapshot."""
 
-    active_epics: list[str] = Field(default_factory=list)
-    recent_tickets: list[str] = Field(default_factory=list)  # Last 10 ticket keys
+    key: str = Field(description="Jira issue key")
+    summary: str = Field(default="", description="Epic summary/title")
+    status: str = Field(default="", description="Current status")
+    child_count: int = Field(default=0, description="Number of child stories/tasks")
+
+
+class WorkItemSummary(BaseModel):
+    """Summary of a work item for snapshot."""
+
+    key: str = Field(description="Jira issue key")
+    summary: str = Field(default="", description="Item summary/title")
+    item_type: str = Field(default="", description="Type (story, bug, task)")
+
+
+class ChannelActivitySnapshot(BaseModel):
+    """Layer 3: Live summary of channel activity.
+
+    Enhanced for Rule 15: Includes ALL active work items, not just last 10.
+    """
+
+    # Epics with status (enhanced from just keys)
+    active_epics: list[EpicSummary] = Field(default_factory=list)
+
+    # Legacy field for backward compatibility
+    recent_tickets: list[str] = Field(default_factory=list)
+
+    # ALL active tickets, grouped by status (Rule 15 enhancement)
+    work_items: dict[str, list[WorkItemSummary]] = Field(
+        default_factory=dict,
+        description="Work items grouped by status: {status: [items]}"
+    )
+
+    # Totals for quick reference
+    item_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Count by type: {epic: 5, story: 12, bug: 3}"
+    )
+
+    # Existing fields
     top_constraints: list[dict] = Field(default_factory=list)
     unresolved_conflicts: list[dict] = Field(default_factory=list)
     last_updated: Optional[datetime] = None
