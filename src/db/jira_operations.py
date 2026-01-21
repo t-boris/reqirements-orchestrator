@@ -46,34 +46,30 @@ class JiraOperationStore:
 
     async def create_tables(self) -> None:
         """Create jira_operations table if not exists."""
-        sql = """
-        CREATE TABLE IF NOT EXISTS jira_operations (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            session_id TEXT NOT NULL,
-            draft_hash TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            jira_key TEXT,
-            created_by TEXT NOT NULL,
-            approved_by TEXT NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            status TEXT DEFAULT 'pending',
-            error_message TEXT,
-            workitem_id UUID,
-            UNIQUE(session_id, draft_hash, operation)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_jira_operations_session
-            ON jira_operations(session_id);
-
-        CREATE INDEX IF NOT EXISTS idx_jira_operations_jira_key
-            ON jira_operations(jira_key);
-
-        CREATE INDEX IF NOT EXISTS idx_jira_operations_workitem_id
-            ON jira_operations(workitem_id)
-            WHERE workitem_id IS NOT NULL;
-        """
         async with self.conn.cursor() as cur:
-            await cur.execute(sql)
+            # Create table without workitem_id index first
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS jira_operations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    session_id TEXT NOT NULL,
+                    draft_hash TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    jira_key TEXT,
+                    created_by TEXT NOT NULL,
+                    approved_by TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    status TEXT DEFAULT 'pending',
+                    error_message TEXT,
+                    workitem_id UUID,
+                    UNIQUE(session_id, draft_hash, operation)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_jira_operations_session
+                    ON jira_operations(session_id);
+
+                CREATE INDEX IF NOT EXISTS idx_jira_operations_jira_key
+                    ON jira_operations(jira_key);
+            """)
 
             # Add workitem_id column if it doesn't exist (migration for existing tables)
             await cur.execute("""
@@ -87,6 +83,13 @@ class JiraOperationStore:
                     END IF;
                 END
                 $$;
+            """)
+
+            # Create workitem_id index after column exists
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_jira_operations_workitem_id
+                    ON jira_operations(workitem_id)
+                    WHERE workitem_id IS NOT NULL;
             """)
 
         await self.conn.commit()
