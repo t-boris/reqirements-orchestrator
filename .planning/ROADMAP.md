@@ -440,12 +440,24 @@ Plans:
 ### Phase 23.5: Integration (Planned)
 **Goal**: Wire all components and migrate from Session model
 **Depends on**: Phase 23.4
-**Plans**: TBD
+**Plans**: 5 (2 waves)
+
+**Wave 1** (parallel):
+- 23.5-01: Migrate binding.py to WorkItemStore
+- 23.5-02: Migrate handlers/misc.py to WorkItemStore
+- 23.5-03: Add workitem_id to JiraOperationRecord
+
+**Wave 2** (depends on Wave 1):
+- 23.5-04: Wire all Phase 23 stores in __main__.py, deprecate SessionStore
+- 23.5-05: End-to-end integration tests
 
 **Features:**
-- [ ] Migrate existing ThreadSession data to WorkItems
-- [ ] Update all handlers to use WorkItem registry
-- [ ] End-to-end flow testing
+- [ ] Migrate binding.py from SessionStore to WorkItemStore — 23.5-01
+- [ ] Migrate handlers/misc.py from SessionStore to WorkItemStore — 23.5-02
+- [ ] Add workitem_id to JiraOperationRecord for tracking — 23.5-03
+- [ ] Wire WorkItemStore, ChannelModeStore, CommitStore in startup — 23.5-04
+- [ ] Mark SessionStore as deprecated — 23.5-04
+- [ ] End-to-end integration tests for WorkItem flow — 23.5-05
 
 ## Progress
 
