@@ -493,12 +493,25 @@ async def _post_creation_announcement(
 
     announcement_text = "\n".join(lines)
 
-    # Post announcement
+    # Post announcement to thread
     client.chat_postMessage(
         channel=channel_id,
         thread_ts=thread_ts,
         text=announcement_text,
     )
+
+    # Also post to main channel for context visibility
+    # This allows the bot to see the ticket key when user asks from channel level
+    if epics:
+        epic_list = ", ".join(e.get("jira_key", "") for e in epics)
+        channel_text = f":white_check_mark: Created tickets: {epic_list}"
+        if stories:
+            channel_text += f" with {len(stories)} stories"
+        client.chat_postMessage(
+            channel=channel_id,
+            # No thread_ts - posts to main channel
+            text=channel_text,
+        )
 
     logger.info(
         "Posted creation announcement",
