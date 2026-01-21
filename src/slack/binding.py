@@ -99,22 +99,62 @@ async def bind_epic(
     store: WorkItemStore,
     client: WebClient,
 ) -> None:
-    """Bind session to selected Epic.
+    """Bind conversation to selected Epic.
 
+    Creates or updates a WorkItem linking this thread to the Epic.
     Called when user clicks Epic selection button.
     """
-    # Update session with epic_id
-    await store.update_epic(
-        channel_id=identity.channel_id,
-        thread_ts=identity.thread_ts,
-        epic_id=epic_key,
+    # Check if there's already a WorkItem from this thread
+    items = await store.list_by_channel(identity.channel_id, limit=50)
+    existing = next(
+        (item for item in items if item.source_thread_ts == identity.thread_ts),
+        None,
     )
 
+    # Get epic info from Jira
+    epic_summary = "Epic"
+    try:
+        from src.jira.client import JiraService
+        from src.config.settings import get_settings
+
+        settings = get_settings()
+        jira = JiraService(settings)
+        epic = await jira.get_issue(epic_key)
+        epic_summary = epic.summary
+        await jira.close()
+    except Exception as e:
+        logger.warning(f"Failed to fetch epic summary: {e}")
+
+    if existing:
+        # Update existing WorkItem with jira_key
+        await store.update(
+            existing.id,
+            jira_key=epic_key,
+            status=WorkItemStatus.ACTIVE,
+        )
+        workitem = await store.get(existing.id)
+    else:
+        # Create new WorkItem linked to this Epic
+        workitem = await store.create(
+            channel_id=identity.channel_id,
+            item_type=WorkItemType.STORY,  # Default to story under epic
+            summary=f"Work from thread (under {epic_key})",
+            created_by=identity.user_id or "unknown",
+            source_thread_ts=identity.thread_ts,
+        )
+        # Set jira_key to link to epic
+        workitem = await store.update(
+            workitem.id,
+            jira_key=epic_key,
+            status=WorkItemStatus.ACTIVE,
+        )
+
     logger.info(
-        f"Session bound to Epic",
+        "Thread bound to Epic via WorkItem",
         extra={
             "session_id": identity.session_id,
             "epic_key": epic_key,
+            "workitem_id": workitem.id,
         }
     )
 
@@ -126,15 +166,7 @@ async def bind_epic(
 
         settings = get_settings()
         jira = JiraService(settings)
-
         linker = JiraLinker(client, jira)
-
-        # Get epic summary from Jira (or use epic_key if unavailable)
-        try:
-            epic = await jira.get_issue(epic_key)
-            epic_summary = epic.summary
-        except Exception:
-            epic_summary = "Epic"
 
         await linker.on_epic_bound(
             channel_id=identity.channel_id,
@@ -146,12 +178,11 @@ async def bind_epic(
         await jira.close()
     except Exception as e:
         logger.warning(f"Failed to create epic pin: {e}")
-        # Non-blocking - don't fail the binding
 
     # Post session card
     blocks = build_session_card(
         epic_key=epic_key,
-        epic_summary=None,  # See .planning/ISSUES.md ISS-006
+        epic_summary=epic_summary,
         session_status="Active - collecting requirements",
         thread_ts=identity.thread_ts,
     )
