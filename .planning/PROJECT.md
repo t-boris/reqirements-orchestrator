@@ -20,7 +20,7 @@ A Slack bot that acts as a collective thinking system where communication is the
 
 **What shipped in v1.1:**
 - Conversation history with two-layer context (raw + compressed)
-- Intent routing: TICKET/REVIEW/DISCUSSION with pattern matching + LLM fallback
+- Intent routing: TICKET/REVIEW/DISCUSSION with LLM-only classification
 - Architecture decision auto-detection and channel posting
 - Brain refactor: new AgentState, WorkflowStep, PendingAction architecture
 - Multi-ticket creation from reviews (Epic + Stories)
@@ -49,7 +49,7 @@ A Slack bot that acts as a collective thinking system where communication is the
 **v1.1:**
 - ✓ **Conversation history fetching** — Two-layer context (raw messages + compressed summary)
 - ✓ **Improved onboarding** — Channel join handler, hesitation detection, interactive /maro help
-- ✓ **Intent routing** — TICKET/REVIEW/DISCUSSION classification with pattern + LLM
+- ✓ **Intent routing** — TICKET/REVIEW/DISCUSSION classification with LLM-only
 - ✓ **Architecture decision records** — Auto-detect decisions, post to channel
 - ✓ **Review conversation flow** — Continue after review without misclassification
 - ✓ **Full ticket operations** — update_issue(), add_comment(), create_subtask()
@@ -110,7 +110,7 @@ A Slack bot that acts as a collective thinking system where communication is the
 | Async in sync handlers | Persistent background event loop for Bolt compatibility | ✓ Good |
 | Socket Mode over HTTP | No public endpoint needed, simpler deployment | ✓ Good |
 | Two-layer context | Raw messages + compressed summary balances detail vs tokens | ✓ Good |
-| Pattern-first intent routing | Fast for obvious cases, LLM for ambiguous | ✓ Good |
+| LLM-only intent routing | Full context analysis for accurate classification | ✓ Good |
 | WorkItem as first-class | Drafts before Jira, explicit sync control | ✓ Good |
 | Field ownership classification | Clear rules for bidirectional sync | ✓ Good |
 | Section fingerprinting | Granular conflict detection without full diff | ✓ Good |

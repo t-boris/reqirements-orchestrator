@@ -9,7 +9,7 @@
 **Key accomplishments:**
 
 - Conversation history with two-layer context (raw messages + compressed summary)
-- Intent routing: TICKET/REVIEW/DISCUSSION with pattern matching + LLM fallback
+- Intent routing: TICKET/REVIEW/DISCUSSION with LLM-only classification
 - Architecture decision auto-detection and channel posting
 - Brain refactor: new AgentState, WorkflowStep, PendingAction architecture
 - Multi-ticket creation from reviews (Epic + linked Stories)
