@@ -437,27 +437,28 @@ Plans:
 - [x] Conflict resolution UI and handlers — 23.4-05
 - [x] Comprehensive test coverage (35 tests) — 23.4-06
 
-### Phase 23.5: Integration (Planned)
+### Phase 23.5: Integration (Complete)
 **Goal**: Wire all components and migrate from Session model
 **Depends on**: Phase 23.4
-**Plans**: 5 (2 waves)
+**Plans**: 5/5 (2 waves)
+**Completed**: 2026-01-20
 
 **Wave 1** (parallel):
-- 23.5-01: Migrate binding.py to WorkItemStore
-- 23.5-02: Migrate handlers/misc.py to WorkItemStore
-- 23.5-03: Add workitem_id to JiraOperationRecord
+- [x] 23.5-01: Migrate binding.py to WorkItemStore — completed 2026-01-20
+- [x] 23.5-02: Migrate handlers/misc.py to WorkItemStore — completed 2026-01-20
+- [x] 23.5-03: Add workitem_id to JiraOperationRecord — completed 2026-01-20
 
 **Wave 2** (depends on Wave 1):
-- 23.5-04: Wire all Phase 23 stores in __main__.py, deprecate SessionStore
-- 23.5-05: End-to-end integration tests
+- [x] 23.5-04: Wire all Phase 23 stores in __main__.py, deprecate SessionStore — completed 2026-01-20
+- [x] 23.5-05: End-to-end integration tests — completed 2026-01-20
 
 **Features:**
-- [ ] Migrate binding.py from SessionStore to WorkItemStore — 23.5-01
-- [ ] Migrate handlers/misc.py from SessionStore to WorkItemStore — 23.5-02
-- [ ] Add workitem_id to JiraOperationRecord for tracking — 23.5-03
-- [ ] Wire WorkItemStore, ChannelModeStore, CommitStore in startup — 23.5-04
-- [ ] Mark SessionStore as deprecated — 23.5-04
-- [ ] End-to-end integration tests for WorkItem flow — 23.5-05
+- [x] Migrate binding.py from SessionStore to WorkItemStore — 23.5-01
+- [x] Migrate handlers/misc.py from SessionStore to WorkItemStore — 23.5-02
+- [x] Add workitem_id to JiraOperationRecord for tracking — 23.5-03
+- [x] Wire WorkItemStore, ChannelModeStore, CommitStore in startup — 23.5-04
+- [x] Mark SessionStore as deprecated — 23.5-04
+- [x] End-to-end integration tests for WorkItem flow (9 tests) — 23.5-05
 
 ## Progress
 
@@ -491,4 +492,4 @@ Plans:
 | 23.2 Channel Mode | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 23.3 Commit Semantics | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 23.4 Jira Sync Engine | v1.1 | 6/6 | Complete | 2026-01-20 |
-| 23.5 Integration | v1.1 | TBD | Planned | - |
+| 23.5 Integration | v1.1 | 5/5 | Complete | 2026-01-20 |
