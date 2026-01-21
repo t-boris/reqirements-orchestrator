@@ -27,6 +27,7 @@ class JiraOperationRecord(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = Field(default="pending", description="Status: pending, success, failed")
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    workitem_id: Optional[str] = Field(default=None, description="WorkItem UUID link")
 
 
 class JiraOperationStore:
