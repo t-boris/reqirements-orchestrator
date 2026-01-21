@@ -2,245 +2,68 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-14)
+See: .planning/PROJECT.md (updated 2026-01-20)
 
-**Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets.
-**Current focus:** v1.1 in progress — Phase 23 planned
+**Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
+**Current focus:** v1.1 shipped — Planning next milestone
 
 ## Current Position
 
-Phase: 23.5 (Integration)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 23.5-05-PLAN.md (WorkItem Flow Integration Tests)
+Phase: Complete (v1.1 shipped)
+Plan: N/A
+Status: Ready for next milestone
+Last activity: 2026-01-20 — v1.1 milestone complete
 
-Progress: ████████ 100% (Phase 23.5)
+Progress: ██████████ 100% (v1.1)
 
-## v1.0 Summary
+## Milestones Summary
 
-**Shipped:** 2026-01-14
+| Version | Name | Phases | Plans | Status | Shipped |
+|---------|------|--------|-------|--------|---------|
+| v1.0 | MVP | 1-10 | 43 | ✅ Complete | 2026-01-14 |
+| v1.1 | Communication as Source of Truth | 11-23.5 | 63 | ✅ Complete | 2026-01-20 |
 
-**Stats:**
-- 10 phases, 43 plans completed
-- 84 Python files, 13,248 LOC
-- 24 days development (Dec 22 → Jan 14)
-- 236 commits
+**Total:** 28 phases, 106 plans shipped
+
+## v1.1 Summary
+
+**Shipped:** 2026-01-20
 
 **What shipped:**
-- Thread-first Slack bot with Socket Mode
-- LangGraph ReAct agent (extraction → validation → decision)
-- Multi-provider LLM (Gemini, OpenAI, Anthropic)
-- Skills: ask_user, preview_ticket, jira_create, jira_search
-- Channel context from pins
-- Dynamic personas (PM/Architect/Security)
-- Docker deployment to GCE VM
+- Conversation history with two-layer context
+- Intent routing (TICKET/REVIEW/DISCUSSION)
+- Architecture decision auto-detection
+- Brain refactor with new AgentState architecture
+- Multi-ticket creation from reviews
+- WorkItem registry with channel modes
+- Bidirectional Jira sync with conflict detection
 
-## Next Milestone: v1.1 Context
-
-**Planned phases:**
-- Phase 11: Conversation History — fetch messages before @mention
-- Phase 12: Onboarding UX — improve first-time experience
-
-**Deferred from v1.0:**
-- Conversation history fetching (bot only sees @mention message)
-- `/help` command UX improvements
+**Stats:**
+- 18 phases, 63 plans
+- 146 Python files, 34,567 LOC
+- 6 days development (Jan 14 → Jan 20)
 
 ## Accumulated Context
 
-### Decisions
+### Key Decisions
 
-All v1.0 decisions logged in PROJECT.md Key Decisions table.
+All v1.0 and v1.1 decisions logged in MILESTONES archives and PROJECT.md.
 
-| Phase | Decision | Rationale |
-|-------|----------|-----------|
-| 11-02 | Preserve summary/buffer on disable | Allows context to persist if re-enabled later |
-| 11-02 | UPSERT for enable operation | Handles new and re-enable cases in one operation |
-| 11-03 | Pre-graph context injection | Context available to all nodes without individual fetches |
-| 11-03 | Buffer 30, keep 20 raw, compress 10+ | Balance token cost vs context quality |
-| 11.2-01 | 4s threshold for status | No spam for fast ops, visible feedback for slow ones |
-| 11.2-01 | Dual client support | asyncio.to_thread() for sync client in async context |
-| 11.2-02 | Predefined STATUS_MESSAGES | Consistent user-facing text for operations |
-| 11.2-02 | Bottleneck identification | Pattern match on status to identify slow component |
-| 11.2-02 | 15s/30s threshold updates | Limited updates to prevent status spam |
-| 11.2-04 | Progress callback optional | Backward compatible with existing code |
-| 11.2-04 | Factual error tone | No apologies, state what failed |
-| 11.2-04 | Failure persists visible | Don't auto-delete so user sees error |
-| 11.2-04 | Three action buttons | Retry/Skip/Cancel covers user choices |
-| 12-01 | Post to channel not thread | Channels are workspaces, threads are conversations |
-| 12-01 | Pin immediately | Quick-reference as persistent installation instructions |
-| 12-01 | Non-blocking pin failure | Log warning but don't fail if no pin permission |
-| 12-02 | Pattern match obvious cases | Greetings/perspective questions faster without LLM |
-| 12-02 | LLM for nuanced classification | VAGUE_IDEA and CONFUSED need intent understanding |
-| 12-02 | hint_select_* action pattern | Flexible routing for future hint button types |
-| 12-03 | Ephemeral messages for examples | Don't spam channel with help content |
-| 12-03 | Default /maro to help | Unknown subcommands show interactive help |
-| 13-01 | Negation patterns highest priority | "don't create ticket" must override "create ticket" pattern |
-| 13-01 | Pattern-matching-first | Check explicit patterns before LLM call for performance |
-| 13-02 | Persona selection priority | intent_result.persona_hint > state.persona > architect default |
-| 13-02 | Review response format | *{Persona} Review:* prefix for clarity |
-| 13-03 | Discussion responds inline | No new thread creation for casual interactions |
-| 13-03 | 1-2 sentence response limit | DISCUSSION_PROMPT enforces brevity |
-| 13-04 | Scope gate with 3 options | Decision only / Full review / Custom - user controls ticket content |
-| 13-04 | Modal-to-flow via context message | Scope submission posts message that triggers normal intent flow |
-| 13-04 | Tests use direct module loading | importlib avoids circular imports in test suite |
-| 13.1-01 | TICKET_ACTION patterns checked after NEGATION | "create subtasks for SCRUM-XXX" should not match "create ticket" |
-| 13.1-01 | Ticket key normalized to uppercase | Jira uses uppercase keys; ensures consistency |
-| 13.1-01 | Skip duplicate detection for bound threads | Prevents unnecessary Jira API calls |
-| 14-01 | DECISION_APPROVAL patterns only with review_context | Prevents false positives in other contexts |
-| 14-01 | review_context stored then cleared after posting | State lifecycle: review -> approval -> clear |
-| 14-01 | Decision posted to channel not thread | Thread = thinking process, Channel = decisions |
-| 15-01 | Continuation patterns only with has_review_context | Prevents "IdP: Okta" misclassification without review |
-| 15-01 | NOT_CONTINUATION patterns checked first | "create new ticket" overrides continuation detection |
-| 15-01 | LLM fallback uses context-aware prompt | Biases toward REVIEW_CONTINUATION with review context |
-| 15-01 | review_context kept after continuation | Enables DECISION_APPROVAL after user answers questions |
-| 16-01 | ADF conversion in service layer | JiraService handles text-to-ADF, not handlers |
-| 16-01 | LLM-based content extraction | Extract structured content from conversation context |
-| 16-01 | Separate prompts for update vs comment | Different formatting needs for descriptions vs comments |
-| 16-01 | Message extraction from state.messages | Get latest HumanMessage for accurate user input |
-| 17-02 | ReviewState enum with 4 lifecycle states | Track review_context: ACTIVE → CONTINUATION → APPROVED → POSTED |
-| 17-02 | Block new review when active review exists | Prevents overwriting review_context (Bug #3) |
-| 17-02 | Reference pattern detection | Detect "the architecture", "this review", "from above" for thread context |
-| 17-02 | Thread context extraction for references | Include bot messages and long user messages when reference detected |
-| 17-03 | Enhanced logging for channel join debugging | Log event receipt, user check, post status, pin status at each step |
-| 17-03 | Slack app setup documentation | Document event subscriptions and scopes with troubleshooting guide |
-| 18-02 | Split blocks.py by purpose | Clear responsibility boundaries (draft/duplicates/decisions/ui) |
-| 18-02 | Re-export from __init__.py | Zero changes needed in importing files |
-| 18-02 | Keep jira/client.py single file | Under 800 lines, sections sufficient |
-| 18-01 | Split handlers.py into package | 3193 lines -> 10 modules (<600 each) |
-| 18-01 | Backward compat via __init__.py | Existing imports continue to work |
-| 18-01 | Module organization by responsibility | core/dispatch/draft/duplicates/commands/onboarding/review/misc |
-| 18-04 | Accept 21 functions >100 lines | Dispatchers, UI builders, state machines - splitting would harm readability |
-| 18-04 | Body extraction pattern inline | 4-5 lines inline clearer than helper function |
-| 20-01 | UserIntent includes AMBIGUOUS | Triggers scope gate instead of guessing |
-| 20-01 | PendingAction replaces IntentType overload | DECISION_APPROVAL becomes PendingAction |
-| 20-01 | WorkflowStep typed, not stringly | Enables event validation per workflow step |
-| 20-01 | str+Enum inheritance | All enums inherit from (str, Enum) for serialization |
-| 20-03 | WorkflowStep -> set[str] mapping | Each step has explicit allowed event actions |
-| 20-03 | Separate ui_version check | Validates stale preview clicks within same step |
-| 20-03 | Predefined error messages | STALE_EVENT_MESSAGE, STALE_VERSION_MESSAGE for consistent UX |
-| 20-04 | pending_payload as dict[str, Any] | Flexible container for minimal refs (story_id, draft_id) |
-| 20-04 | ui_version starts at 0 | Incremented on each preview update for stale button detection |
-| 20-04 | thread_default_expires_at as ISO string | Compatible with other timestamp fields in state |
-| 20-05 | RouteResult as Enum for typed routing outcomes | Type safety and JSON serialization support |
-| 20-05 | RoutingDecision dataclass with Optional fields | Structured routing decisions for different outcomes |
-| 20-05 | UI version parsed from button value suffix | Format: value:version for stale preview detection |
-| 20-05 | Thread default expiry via ISO timestamp | Timezone-aware comparison for 2h expiry |
-| 20-06 | Remove "lean toward TICKET" bias | LLM chooses AMBIGUOUS when unsure instead of defaulting to TICKET |
-| 20-06 | 3-button scope gate for AMBIGUOUS | Review / Create Ticket / Not now gives user clear choices |
-| 20-06 | "Remember for this thread" checkbox | Reduces repeated scope gates in same thread |
-| 20-06 | 2h expiry for thread default | Aligns with 20-CONTEXT.md v4 requirements |
-| 20-07 | ReviewArtifact TypedDict structure | Explicit 6-field structure: summary, kind, version, topic, frozen_at, thread_ts |
-| 20-07 | freeze_review() clears review_context | Stops continuation triggers when review is frozen |
-| 20-07 | Check both enum and string states | Support ReviewState.POSTED and "POSTED" for flexibility |
-| 20-08 | Patch mode as default for review continuations | Reduces expensive full regeneration on every user answer |
-| 20-08 | 4-section patch structure | New Decisions, New Risks, New Open Questions, Changes Since (max 12 bullets) |
-| 20-08 | Full synthesis via explicit button | "Show Full Architecture" triggers complete document generation |
-| 20-09 | Stories linked to Epic via parent_id | Not Jira subtasks - configurable Epic-Story relationship |
-| 20-09 | Quantity threshold >3 items | Small batches (2-3) proceed without confirmation |
-| 20-09 | Size threshold 10k chars | Large batches offer split option |
-| 20-10 | Dry-run validation before batch creation | Catches errors before any tickets are created |
-| 20-10 | Epic created first for parent linking | Stories reference Epic key in parent field |
-| 20-10 | Handlers update UI, graph handles state | Separation of concerns for responsiveness |
-| 20-11 | Canonical ID via SHA256 hash | hash(text.lower().strip() + scope + type) for fact dedup |
-| 20-11 | UPSERT with GREATEST(confidence) | Keep highest confidence on merge for dedup |
-| 20-11 | Eviction by confidence ASC | Remove lowest value facts first when over limit |
-| 20-12 | AMBIGUOUS default instead of TICKET | Reduces aggressive ticket creation, lets user decide via scope gate |
-| 20-12 | IntentType simplified to 5 values | TICKET, REVIEW, DISCUSSION, META, AMBIGUOUS (PendingAction handles rest) |
-| 20-12 | event_router before intent classification | Priority: WorkflowEvent -> PendingAction -> thread_default -> intent |
-| 21-01 | TrackedIssue as dataclass | Simpler than Pydantic for internal data transfer |
-| 21-01 | UPSERT pattern for track() | Re-tracking same issue updates tracked_at and tracked_by |
-| 21-01 | Non-blocking auto-tracking | Failures are logged but don't interrupt user-facing operations |
-| 21-01 | Normalize issue keys to uppercase | Ensures consistency with Jira's format |
-| 21-02 | Rate limit auto-refresh to 30s | Prevents API spam on rapid track/untrack operations |
-| 21-02 | Status categories: open/in_progress/done | Mapped from Jira statuses for dashboard display |
-| 21-02 | Board auto-pinned on post | Visibility as persistent dashboard |
-| 21-02 | Non-blocking refresh failures | Log but don't interrupt user operations |
-| 21-03 | JIRA_COMMAND vs TICKET_ACTION | Modify fields vs create items - clear separation |
-| 21-03 | Contextual resolution priority | Thread binding > single tracked > most recent in conversation |
-| 21-03 | Delete requires danger confirmation | Red button + warning for destructive operations |
-| 21-05 | add_comment as default mode | Safest approach for Jira updates - doesn't modify description |
-| 21-05 | Non-blocking decision linking | Failures don't affect decision posting to channel |
-| 21-05 | Single vs multiple match logic | Single match auto-updates, multiple prompts user |
-| 21-05 | Button on decision posts | Allows retroactive linking of already-posted decisions |
-| 21-05 | channel_decisions tracking | Integrates with sync engine for bidirectional sync |
-| 21-04 | Confidence threshold 0.8 for auto-apply | High confidence prevents unintended Jira changes |
-| 21-04 | Decisions as comments not description updates | Safest approach, doesn't modify existing content |
-| 21-04 | SYNC_REQUEST as separate intent | Bulk sync distinct from single-ticket JIRA_COMMAND |
-| 21-04 | Record unlinked decisions | Enables later linking via /maro sync |
-| 22-01 | parent_index to parent_id UUID conversion | Avoids asking LLM to generate UUIDs; simpler prompt |
-| 22-01 | Single-item falls back to single-ticket flow | Richer draft editing experience for single items |
-| 22-03 | Orphan child stories when removing epic | Less destructive than deleting - stories remain, just unlinked |
-| 22-03 | Single-item prompt when 1 remaining | User may want richer single-ticket editing experience |
-| 22-03 | Source context from review_artifact | Connects preview to its review origin for traceability |
-| 22-04 | Epic-first creation order | Parent linking requires Epic to exist before Stories |
-| 22-04 | Store last_results for retry | Keep state with results when failures exist for retry handler |
-| 22-04 | Non-blocking auto-tracking | Log failures but don't interrupt user operation |
-| 22-04 | has_edits flag triggers cancel confirmation | Only show modal when user made changes |
-| 23.1-01 | WorkItemType enum with 5 types | EPIC, STORY, BUG, TASK, SPIKE cover all work item categories |
-| 23.1-01 | WorkItemStatus enum with 3 states | DRAFT/ACTIVE/DONE lifecycle with drafts as first-class |
-| 23.1-01 | Nullable Jira fields | Drafts exist without Jira backing; jira_key set on sync |
-| 23.1-01 | JSONB for facts/fingerprint | Flexible schema for extracted facts and conflict detection |
-| 23.1-02 | work_items DDL in SessionStore | Ensures table created at startup with existing startup flow |
-| 23.1-02 | WorkItemStore exported from db module | Follows existing pattern for store exports |
-| 23.1-04 | Readiness scoring weights | summary 0.2, description 0.3, facts 0.2, hierarchy 0.2, provenance 0.1 |
-| 23.1-04 | Epics get hierarchy bonus | Top-level Epics don't need parent_id for hierarchy points |
-| 23.2-01 | ChannelMode (str, Enum) pattern | Serialization compatibility with existing enum conventions |
-| 23.2-01 | Suggestion state in ChannelModeConfig | Supports first-time setup flow with confirmation |
-| 23.2-01 | UPSERT in set_mode | Handles create/update in single operation |
-| 23.2-02 | Feature mode requires --primary-epic | Prevents useless configuration without epic focus |
-| 23.2-02 | Default mode "project (default)" display | Clear user feedback when no config exists |
-| 23.2-03 | Thread override UPSERT pattern | Re-setting override updates in place rather than fail |
-| 23.2-03 | Expire filtering at query time | Simpler than background cleanup job |
-| 23.2-03 | Resolution returns (mode, source) tuple | Transparency for debugging mode resolution |
-| 23.2-04 | Transaction rollback for test isolation | Each test runs in transaction that rolls back for clean state |
-| 23.2-04 | Shared db_connection fixture in conftest | Enables consistent DB access pattern across all tests/db/* tests |
-| 23.3-03 | Git-log style commit display | Time + type + summary + thread link format for readability |
-| 23.3-03 | list_by_channel accepts status list | Enables filtering DRAFT+ACTIVE items together for board display |
-| 23.3-03 | Board message cached in-memory | Persistence deferred for simplicity, can add BoardStore later |
-| 23.3-04 | _run_async pattern for commit handlers | Same pattern as other handlers for sync-to-async execution |
-| 23.3-04 | Board integration via ChannelWorkBoardManager | Updates work board after commit creation |
-| 23.3-04 | Edit button shows stub message | Full editing will be implemented later |
-| 23.4-01 | 9 fields classified into 3 ownership categories | status/assignee/story_points/sprint=JIRA_OWNED, summary/description/labels=SLACK_OWNED, priority/due_date=SHARED |
-| 23.4-01 | Sprint is pure Jira (allow_suggest=False) | Sprint assignment managed entirely in Jira planning |
-| 23.4-02 | SHA-256 truncated to 16 chars for storage | Balance of collision resistance vs storage efficiency |
-| 23.4-02 | Three-way merge for conflict detection | Slack-only changes auto-merge Slack, Jira-only auto-merge Jira, both changed = conflict |
-| 23.4-04 | READINESS_THRESHOLD = 0.7 (70%) | Drafts at 70%+ readiness are "ready for Jira" |
-| 23.4-04 | Three-button CTA for ready drafts | Create in Jira / Keep local / Edit covers all user choices |
-| 23.4-05 | Named file jira_sync.py to avoid conflict | Existing sync.py (Phase 21-04) handles /maro sync command |
-| 23.4-05 | Regex action_id pattern for indexed buttons | resolve_conflict_slack_\\d+ matches per-conflict buttons |
-| 23.5-01 | WorkItem replaces ThreadSession for binding | WorkItem provides richer metadata and integrates with sync engine |
-| 23.5-01 | jira_key stores Epic link | Using jira_key (not separate epic_id) to link WorkItem to Epic |
-| 23.5-01 | source_thread_ts for lookup | Finding WorkItems by originating thread timestamp |
-| 23.5-01 | Default STORY type for new bindings | Thread bindings create STORY WorkItems under Epic |
-| 23.5-03 | workitem_id optional for backward compatibility | Existing records without workitem_id continue to work |
-| 23.5-03 | Partial index on workitem_id WHERE NOT NULL | Efficient lookups without indexing NULL rows |
-| 23.5-03 | Migration DDL with DO $$ block | Safe idempotent column addition for existing tables |
-| 23.5-04 | SessionStore kept but deprecated | warnings.warn() on init, migration requires existing tables |
-| 23.5-04 | Phase 23 stores under common comment | Clear organization in init_database function |
-| 23.5-04 | JiraOperationStore last in startup | Ensures workitem_id migration runs after table exists |
-| 23.5-05 | MagicMock wraps SessionIdentity | SessionIdentity lacks user_id; MagicMock adds it for test fixtures |
-| 23.5-05 | Patch imports at source module | JiraService imported locally in function; patch src.jira.client not binding |
-| 23.5-05 | Module-level NOW for datetime | WorkItem requires datetime; constant avoids fixture dependency |
-
-### Roadmap Evolution
-
-- Phase 11.1 inserted after Phase 11: Jira Duplicate Handling (URGENT) — Allow users to link to existing tickets when duplicates found
-- Phase 11.2 inserted after Phase 11: Progress & Status Indicators — Visual feedback during bot processing
-- Phase 13 added: Intent Router — Route messages to Ticket/Review/Discussion flows before extraction
-- Phase 13.1 inserted: Ticket Reference Handling — Handle "create subtasks for SCRUM-XXX", fix re-linking bug
-- Phase 14 added: Architecture Decision Records — Auto-detect decisions, post to channel
-- Phase 21 added: Agentic Intent Classification — Make intent classification agentic with tool access (from user feedback)
+Major v1.1 architectural decisions:
+- Two-layer context (raw + compressed) for conversation history
+- Pattern-first intent routing with LLM fallback
+- WorkItem as first-class citizen with drafts before Jira
+- Field ownership classification for bidirectional sync
+- Section fingerprinting for conflict detection
+- SessionStore deprecated in favor of WorkItemStore
 
 ### Deferred Issues
 
-None (onboarding addressed in Phase 12).
+None — all planned v1.1 features shipped.
 
 ### Pending Todos
 
-1. ~~**Add intent detection to distinguish review requests from ticket creation** (graph)~~ → Promoted to Phase 13
-   - File: `.planning/todos/pending/2026-01-15-intent-detection-review-vs-ticket.md` (archived)
-2. ~~**Make intent classification agentic with tool access** (graph)~~ → Promoted to Phase 21
-   - File: `.planning/todos/pending/2026-01-16-agentic-intent-classification.md`
+None.
 
 ### Blockers/Concerns
 
@@ -249,191 +72,14 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-20
-Stopped at: Completed 23.5-05-PLAN.md (WorkItem Flow Integration Tests)
+Stopped at: v1.1 milestone complete
 Resume file: None
-Next action: Phase 23.5 complete - proceed to next phase
+Next action: `/gsd:discuss-milestone` to plan next version
 
-## Phase 11 Summary (Complete)
+## What's Next
 
-**3 plans in 2 waves — ALL COMPLETE:**
+Options for next milestone:
+1. **v1.2** — Incremental improvements, bug fixes, polish
+2. **v2.0** — Major new direction or architecture change
 
-Wave 1 (parallel):
-- 11-01: History Fetching Service — `fetch_channel_history()`, `fetch_thread_history()`, `ConversationContext` [DONE]
-- 11-02: Channel Listening State — DB model, `ListeningStore`, `/maro enable|disable|status` [DONE]
-
-Wave 2:
-- 11-03: Handler Integration — AgentState extension, context injection, rolling summary updates [DONE]
-
-**Phase 11 accomplishments:**
-- Two-layer context pattern (raw messages + compressed summary)
-- Listening-enabled channels maintain rolling context
-- Non-listening channels fetch on-demand at @mention
-- Context injected into AgentState before graph runs
-
-## Phase 11.1 Summary (Complete)
-
-**1 plan — COMPLETE:**
-
-- 11.1-01: Jira Duplicate Handling Interactive UX [DONE]
-
-**Phase 11.1 accomplishments:**
-- Enhanced duplicate metadata (status, assignee, updated time)
-- LLM match explanation for best duplicate
-- Interactive UX: Link to this, Add as info, Create new, Show more
-- ThreadBindingStore for thread → Jira ticket bindings (in-memory MVP)
-- Show More modal for viewing all duplicate matches
-- Confirmation display after linking to existing ticket
-
-## Phase 11.2 Summary (Complete)
-
-**4 plans in 3 waves — ALL COMPLETE:**
-
-Wave 1:
-- 11.2-01: ProgressTracker Core — timing-based status (4s threshold), auto-cleanup [DONE]
-
-Wave 2:
-- 11.2-02: Skill-Specific Status — STATUS_MESSAGES dict, bottleneck identification at 15s/30s [DONE]
-
-Wave 3:
-- 11.2-04: Error Handling Protocol — set_error(), set_failure(), retry visibility, action buttons [DONE]
-
-**Phase 11.2 accomplishments:**
-- ProgressTracker with timing-based status (only shows for >4s operations)
-- Skill-specific messages (searching_jira, creating_ticket, etc.)
-- Long operation handling with bottleneck identification
-- Error state methods with retry visibility (1/3, 2/3, 3/3)
-- Progress callback pattern for service retry notifications
-- Error action buttons (Retry, Skip Jira, Cancel) after failures
-
-## Phase 12 Summary (Complete)
-
-**3 plans in 2 waves — ALL COMPLETE:**
-
-Wave 1 (parallel):
-- 12-01: Channel Join Handler with Pinned Quick-Reference [DONE]
-- 12-02: Hesitation Detection with LLM Classification [DONE]
-
-Wave 2:
-- 12-03: Interactive /maro help Command [DONE]
-
-**Phase 12 accomplishments:**
-- member_joined_channel event posts pinned quick-reference
-- classify_hesitation() with LLM-based intent detection
-- Contextual hints (GREETING, VAGUE_IDEA, PERSPECTIVE_NEEDED, CONFUSED)
-- hint_select_* action handlers for persona buttons
-- Interactive /maro help with example conversations
-- /help redirects to interactive help
-- Ephemeral example messages don't spam channel
-
-**Core Principle:** MARO's onboarding personality is quiet, observant, helpful only when needed. Teaches by doing, not by lecturing.
-
-## Phase 13 Summary (Complete)
-
-**4 plans in 3 waves — ALL COMPLETE:**
-
-Wave 1:
-- 13-01: Intent Router Core — IntentType enum, pattern matching, LLM fallback [DONE]
-
-Wave 2 (parallel):
-- 13-02: Review Flow — review_node, persona-based analysis, *{Persona} Review:* format [DONE]
-- 13-03: Discussion Flow — discussion_node, 1-2 sentence responses, inline replies [DONE]
-
-Wave 3:
-- 13-04: Scope Gate + Tests — Review-to-ticket button, scope modal, 53 regression tests [DONE]
-
-**Phase 13 accomplishments:**
-- Three-way intent classification: TICKET, REVIEW, DISCUSSION
-- Pattern-matching-first with LLM fallback for ambiguous cases
-- Negation patterns checked first ("don't create ticket" -> REVIEW)
-- Review flow with persona-based analysis (security, architect, pm)
-- Discussion flow for casual interactions (brief responses, no threads)
-- Review-to-ticket transition with scope selection modal
-- 53 regression tests for intent classification patterns
-
-## Phase 13.1 Summary (Complete)
-
-**1 plan — COMPLETE:**
-
-- 13.1-01: Ticket Reference Handling [DONE]
-
-**Phase 13.1 accomplishments:**
-- TICKET_ACTION intent type with ticket_key and action_type fields
-- 5 TICKET_ACTION patterns: create_subtask, add_subtask, update, add_comment, link
-- Thread binding check at start of decision_node (skips duplicate detection if bound)
-- Fixed re-linking bug: same-ticket actions proceed with action, don't re-link
-- 21 new tests for TICKET_ACTION patterns (74 total tests pass)
-
-## Phase 14 Summary (Complete)
-
-**1 plan — COMPLETE:**
-
-- 14-01: Architecture Decision Records [DONE]
-
-**Phase 14 accomplishments:**
-- DECISION_APPROVAL intent type with 9 detection patterns
-- review_context field in AgentState for tracking recent reviews
-- review_node saves context after analysis for decision detection
-- decision_approval_node packages context for handler
-- build_decision_blocks() for formatted channel posts
-- LLM-based decision extraction from review context
-- Decisions posted to channel (not thread) as permanent record
-
-**Core Principle:** Thread = thinking process (architecture discussions), Channel = approved decisions (permanent record).
-
-## Phase 15 Summary (Complete)
-
-**1 plan — COMPLETE:**
-
-- 15-01: Review Conversation Flow [DONE]
-
-**Phase 15 accomplishments:**
-- REVIEW_CONTINUATION intent type with 5 answer patterns
-- Context-aware intent classification (has_review_context parameter)
-- review_continuation_node synthesizes answers and asks for approval
-- NOT_CONTINUATION patterns prevent false positives
-- Handler posts continuation with persona prefix
-- 24 tests verify pattern matching for common answer formats
-
-**Core Principle:** When user replies with answers after a review, continue the conversation instead of misclassifying as ticket creation.
-
-## Phase 16 Summary (Complete)
-
-**1 plan — COMPLETE:**
-
-- 16-01: Ticket Operations [DONE]
-
-**Phase 16 accomplishments:**
-- Three new JiraService methods: update_issue(), add_comment(), create_subtask()
-- All methods support ADF conversion, dry-run mode, progress callbacks
-- Content extraction prompts (UPDATE_EXTRACTION_PROMPT, COMMENT_EXTRACTION_PROMPT)
-- Helper functions: _extract_update_content(), _extract_comment_content()
-- Replaced stubs for update and add_comment actions with real API calls
-- ticket_action_node passes user_message and review_context for extraction
-- Error handling with user-friendly Slack messages
-
-**Core Principle:** Enable full ticket lifecycle management beyond creation. Use LLM to extract structured, actionable content from conversations instead of raw message dumps.
-
-## Phase 17 Summary (Complete)
-
-**3 plans — ALL COMPLETE:**
-
-- 17-01: Intent Classification Bug Fixes [DONE]
-- 17-02: Review Flow Fixes [DONE]
-- 17-03: Channel Join Welcome Message Debug [DONE]
-
-**Phase 17 accomplishments:**
-- Added 3 new REVIEW_CONTINUATION patterns for user deferring to bot
-- Pattern: "propose default", "you decide for me", "how you see it"
-- Pattern: "I like architecture/approach/design/solution"
-- NOT_CONTINUATION pattern for "propose new/different architecture"
-- Fixed Bug #1: "I like architecture" now correctly classified as REVIEW_CONTINUATION
-- Fixed Bug #3: "propose default, how you see it" now correctly classified as REVIEW_CONTINUATION
-- ReviewState enum with 4 lifecycle states (ACTIVE, CONTINUATION, APPROVED, POSTED)
-- Block new review when active review exists (prevents context overwriting)
-- Reference detection for thread context extraction
-- Enhanced logging in member_joined_channel handler for debugging
-- Comprehensive Slack app setup documentation
-- 3 unit tests for channel join handler
-- Total: 38 tests added across all Phase 17 plans
-
-**Core Principle:** User responses during review conversations should be recognized as continuations, not misclassified as new requests. Review context has lifecycle states to prevent loss. Debugging tools help diagnose production issues.
+Run `/gsd:discuss-milestone` to gather requirements for next version.
