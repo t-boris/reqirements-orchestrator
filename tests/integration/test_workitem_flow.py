@@ -6,10 +6,14 @@ Tests the complete flow:
 3. Readiness detection -> CTA display
 """
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.db.models import WorkItem, WorkItemType, WorkItemStatus
 from src.slack.session import SessionIdentity
+
+# Test helper for creating valid datetime
+NOW = datetime.now(timezone.utc)
 
 
 class TestEpicBindingFlow:
@@ -35,8 +39,8 @@ class TestEpicBindingFlow:
             parent_id=None,
             source_thread_ts=identity.thread_ts,
             created_by=identity.user_id,
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.0,
         )
         mock_store.update.return_value = WorkItem(
@@ -53,25 +57,26 @@ class TestEpicBindingFlow:
             parent_id=None,
             source_thread_ts=identity.thread_ts,
             created_by=identity.user_id,
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.0,
         )
         mock_store.get.return_value = mock_store.update.return_value
 
-        # Mock Jira client
-        with patch("src.slack.binding.JiraService") as mock_jira_cls:
+        # Mock Jira client and related imports
+        with patch("src.jira.client.JiraService") as mock_jira_cls:
             mock_jira = AsyncMock()
             mock_jira.get_issue.return_value = MagicMock(summary="Test Epic")
             mock_jira_cls.return_value = mock_jira
 
-            with patch("src.slack.binding.JiraLinker") as mock_linker_cls:
+            with patch("src.context.jira_linker.JiraLinker") as mock_linker_cls:
                 mock_linker = AsyncMock()
                 mock_linker_cls.return_value = mock_linker
 
-                from src.slack.binding import bind_epic
+                with patch("src.config.settings.get_settings"):
+                    from src.slack.binding import bind_epic
 
-                await bind_epic(identity, "PROJ-100", mock_store, mock_slack_client)
+                    await bind_epic(identity, "PROJ-100", mock_store, mock_slack_client)
 
         # Verify WorkItem created
         mock_store.create.assert_called_once()
@@ -102,8 +107,8 @@ class TestEpicBindingFlow:
             parent_id=None,
             source_thread_ts=identity.thread_ts,
             created_by=identity.user_id,
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.5,
         )
 
@@ -112,18 +117,19 @@ class TestEpicBindingFlow:
         mock_store.update.return_value = existing_item
         mock_store.get.return_value = existing_item
 
-        with patch("src.slack.binding.JiraService") as mock_jira_cls:
+        with patch("src.jira.client.JiraService") as mock_jira_cls:
             mock_jira = AsyncMock()
             mock_jira.get_issue.return_value = MagicMock(summary="Test Epic")
             mock_jira_cls.return_value = mock_jira
 
-            with patch("src.slack.binding.JiraLinker") as mock_linker_cls:
+            with patch("src.context.jira_linker.JiraLinker") as mock_linker_cls:
                 mock_linker = AsyncMock()
                 mock_linker_cls.return_value = mock_linker
 
-                from src.slack.binding import bind_epic
+                with patch("src.config.settings.get_settings"):
+                    from src.slack.binding import bind_epic
 
-                await bind_epic(identity, "PROJ-200", mock_store, mock_slack_client)
+                    await bind_epic(identity, "PROJ-200", mock_store, mock_slack_client)
 
         # Verify no new WorkItem created
         mock_store.create.assert_not_called()
@@ -172,8 +178,8 @@ class TestStartBindingFlow:
             parent_id=None,
             source_thread_ts=identity.thread_ts,
             created_by=identity.user_id,
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.7,
         )
 
@@ -211,8 +217,8 @@ class TestGetWorkitemForThread:
             parent_id=None,
             source_thread_ts="1234567890.111111",
             created_by="U123",
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.0,
         )
 
@@ -230,8 +236,8 @@ class TestGetWorkitemForThread:
             parent_id=None,
             source_thread_ts="1234567890.222222",
             created_by="U123",
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.0,
         )
 
@@ -284,8 +290,8 @@ class TestReadinessFlow:
             parent_id=None,
             source_thread_ts=None,
             created_by="U123",
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.3,
         )
         assert is_ready_for_jira(low_score_item) is False
@@ -305,8 +311,8 @@ class TestReadinessFlow:
             parent_id="parent-123",
             source_thread_ts="123.456",
             created_by="U123",
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.8,
         )
         assert is_ready_for_jira(ready_item) is True
@@ -326,8 +332,8 @@ class TestReadinessFlow:
             parent_id=None,
             source_thread_ts=None,
             created_by="U123",
-            created_at=None,
-            updated_at=None,
+            created_at=NOW,
+            updated_at=NOW,
             readiness_score=0.9,
         )
         assert is_ready_for_jira(already_synced) is False
