@@ -134,6 +134,9 @@ from src.slack.handlers.update import (
 # Commit approval handlers (Phase 23.3)
 from src.slack.handlers.commit import register_commit_handlers
 
+# Jira sync handlers (Phase 23.4)
+from src.slack.handlers.jira_sync import register_jira_sync_handlers
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -213,4 +216,6 @@ __all__ = [
     "handle_update_edit_modal_submit",
     # Commit approval handlers (Phase 23.3)
     "register_commit_handlers",
+    # Jira sync handlers (Phase 23.4)
+    "register_jira_sync_handlers",
 ]
