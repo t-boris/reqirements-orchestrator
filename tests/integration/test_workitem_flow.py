@@ -260,3 +260,103 @@ class TestGetWorkitemForThread:
         )
 
         assert result is None
+
+
+class TestReadinessFlow:
+    """Test readiness detection and CTA flow."""
+
+    def test_is_ready_for_jira_threshold(self):
+        """is_ready_for_jira checks threshold and jira_key."""
+        from src.slack.blocks.readiness import is_ready_for_jira, READINESS_THRESHOLD
+
+        # Not ready - below threshold
+        low_score_item = WorkItem(
+            id="wi-low",
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            status=WorkItemStatus.DRAFT,
+            summary="Low score",
+            description=None,
+            facts={},
+            jira_key=None,
+            jira_sync_at=None,
+            jira_fingerprint=None,
+            parent_id=None,
+            source_thread_ts=None,
+            created_by="U123",
+            created_at=None,
+            updated_at=None,
+            readiness_score=0.3,
+        )
+        assert is_ready_for_jira(low_score_item) is False
+
+        # Ready - above threshold, no jira_key
+        ready_item = WorkItem(
+            id="wi-ready",
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            status=WorkItemStatus.DRAFT,
+            summary="Ready item",
+            description="Full description",
+            facts={"constraint": "must be fast"},
+            jira_key=None,
+            jira_sync_at=None,
+            jira_fingerprint=None,
+            parent_id="parent-123",
+            source_thread_ts="123.456",
+            created_by="U123",
+            created_at=None,
+            updated_at=None,
+            readiness_score=0.8,
+        )
+        assert is_ready_for_jira(ready_item) is True
+
+        # Not ready - already has jira_key
+        already_synced = WorkItem(
+            id="wi-synced",
+            channel_id="C123",
+            item_type=WorkItemType.STORY,
+            status=WorkItemStatus.ACTIVE,
+            summary="Synced item",
+            description="Full description",
+            facts={},
+            jira_key="PROJ-500",  # Already in Jira
+            jira_sync_at=None,
+            jira_fingerprint=None,
+            parent_id=None,
+            source_thread_ts=None,
+            created_by="U123",
+            created_at=None,
+            updated_at=None,
+            readiness_score=0.9,
+        )
+        assert is_ready_for_jira(already_synced) is False
+
+
+class TestConflictDetection:
+    """Test section-level conflict detection."""
+
+    def test_no_conflict_when_only_slack_changed(self):
+        """Auto-merge Slack changes when Jira unchanged."""
+        from src.jira.fingerprint import compute_fingerprint, detect_conflict
+
+        base = compute_fingerprint("## Problem\nOriginal content.")
+        slack = compute_fingerprint("## Problem\nSlack made changes.")
+        jira = compute_fingerprint("## Problem\nOriginal content.")
+
+        result = detect_conflict(slack, jira, base)
+
+        assert result["conflicts"] == []
+        assert result["auto_merge"].get("problem") == "slack"
+
+    def test_conflict_when_both_changed_same_section(self):
+        """Conflict when both sides changed same section."""
+        from src.jira.fingerprint import compute_fingerprint, detect_conflict
+
+        base = compute_fingerprint("## Problem\nOriginal content.")
+        slack = compute_fingerprint("## Problem\nSlack version.")
+        jira = compute_fingerprint("## Problem\nJira version.")
+
+        result = detect_conflict(slack, jira, base)
+
+        assert "problem" in result["conflicts"]
