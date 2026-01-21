@@ -327,3 +327,59 @@ class JiraOperationStore:
             )
             for row in rows
         ]
+
+    async def get_by_workitem_id(
+        self,
+        workitem_id: str,
+        *,
+        operation: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> list[JiraOperationRecord]:
+        """Get operations for a WorkItem.
+
+        Args:
+            workitem_id: WorkItem UUID.
+            operation: Optional filter by operation type (e.g., "jira_create").
+            status: Optional filter by status (e.g., "success").
+
+        Returns:
+            List of matching JiraOperationRecord objects.
+        """
+        query = """
+            SELECT id, session_id, draft_hash, operation, jira_key,
+                   created_by, approved_by, created_at, status, error_message, workitem_id
+            FROM jira_operations
+            WHERE workitem_id = %s
+        """
+        params: list = [workitem_id]
+
+        if operation:
+            query += " AND operation = %s"
+            params.append(operation)
+
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+
+        query += " ORDER BY created_at DESC"
+
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
+            rows = await cur.fetchall()
+
+        return [
+            JiraOperationRecord(
+                id=str(row[0]),
+                session_id=row[1],
+                draft_hash=row[2],
+                operation=row[3],
+                jira_key=row[4],
+                created_by=row[5],
+                approved_by=row[6],
+                created_at=row[7],
+                status=row[8],
+                error_message=row[9],
+                workitem_id=str(row[10]) if row[10] else None,
+            )
+            for row in rows
+        ]
