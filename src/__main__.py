@@ -10,6 +10,7 @@ from src.db.connection import init_db, get_connection
 from src.db.session_store import SessionStore
 from src.db.channel_context_store import ChannelContextStore
 from src.db.listening_store import ListeningStore
+from src.db.workitem_store import WorkItemStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -29,8 +30,13 @@ async def init_database() -> None:
 
     # Create application tables
     async with get_connection() as conn:
+        # Legacy session store (deprecated, kept for migration)
         session_store = SessionStore(conn)
         await session_store.create_tables()
+
+        # WorkItem registry (Phase 23)
+        workitem_store = WorkItemStore(conn)
+        await workitem_store.create_tables()
 
         context_store = ChannelContextStore(conn)
         await context_store.create_tables()
