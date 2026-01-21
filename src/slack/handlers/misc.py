@@ -244,11 +244,11 @@ async def handle_epic_selection(ack, body, client: WebClient, action):
 
     # Bind to selected Epic
     from src.slack.binding import bind_epic
-    from src.db.session_store import SessionStore
+    from src.db.workitem_store import WorkItemStore
     from src.db.connection import get_connection
 
     async with get_connection() as conn:
-        store = SessionStore(conn)
+        store = WorkItemStore(conn)
         await bind_epic(identity, epic_key, store, client)
 
 
