@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-14)
 ## Current Position
 
 Phase: 23.5 (Integration)
-Plan: 1 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 23.5-01-PLAN.md (Migrate binding.py to WorkItemStore)
+Last activity: 2026-01-21 — Completed 23.5-03-PLAN.md (JiraOperationRecord WorkItem Link)
 
 Progress: █████░ 85% (Phase 23.5)
 
@@ -212,6 +212,9 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table.
 | 23.5-01 | jira_key stores Epic link | Using jira_key (not separate epic_id) to link WorkItem to Epic |
 | 23.5-01 | source_thread_ts for lookup | Finding WorkItems by originating thread timestamp |
 | 23.5-01 | Default STORY type for new bindings | Thread bindings create STORY WorkItems under Epic |
+| 23.5-03 | workitem_id optional for backward compatibility | Existing records without workitem_id continue to work |
+| 23.5-03 | Partial index on workitem_id WHERE NOT NULL | Efficient lookups without indexing NULL rows |
+| 23.5-03 | Migration DDL with DO $$ block | Safe idempotent column addition for existing tables |
 
 ### Roadmap Evolution
 
@@ -239,10 +242,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-20
-Stopped at: Completed 23.5-01-PLAN.md (Migrate binding.py to WorkItemStore)
+Last session: 2026-01-21
+Stopped at: Completed 23.5-03-PLAN.md (JiraOperationRecord WorkItem Link)
 Resume file: None
-Next action: Execute 23.5-02-PLAN.md (Migrate handlers/misc.py to WorkItemStore)
+Next action: Execute 23.5-04-PLAN.md (Sync Operation Integration)
 
 ## Phase 11 Summary (Complete)
 
