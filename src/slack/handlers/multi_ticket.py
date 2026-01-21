@@ -345,6 +345,21 @@ async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> N
                     },
                 )
 
+                # Bind thread to first epic created for contextual references
+                if item.get("type") == "epic" and idx == 0:
+                    try:
+                        from src.slack.thread_bindings import get_binding_store
+
+                        binding_store = get_binding_store()
+                        await binding_store.bind(
+                            channel_id=channel_id,
+                            thread_ts=thread_ts,
+                            issue_key=jira_issue.key,
+                            bound_by="system",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to bind thread to epic: {e}")
+
             except Exception as e:
                 logger.error(f"Failed to create ticket for item {item.get('id')}: {e}")
                 results.append({

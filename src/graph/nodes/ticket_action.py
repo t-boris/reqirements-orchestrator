@@ -26,6 +26,9 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
     Reads intent_result to get ticket_key and action_type, then sets up
     decision_result for the handler to process.
 
+    If ticket_key is None (contextual reference like "the epic"), resolves
+    from thread binding.
+
     Returns partial state update with decision_result containing:
     - action: "ticket_action"
     - ticket_key: The referenced ticket (e.g., "SCRUM-1111")
@@ -35,24 +38,28 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
     ticket_key = intent_result.get("ticket_key")
     action_type = intent_result.get("action_type")
 
-    logger.info(
-        "Ticket action node processing",
-        extra={
-            "ticket_key": ticket_key,
-            "action_type": action_type,
-        }
-    )
-
-    # Check thread binding for re-linking prevention
+    # Check thread binding for contextual resolution and re-linking prevention
     thread_ts = state.get("thread_ts")
     channel_id = state.get("channel_id")
     already_bound_to_same = False
+    binding = None
 
     if thread_ts and channel_id:
         from src.slack.thread_bindings import get_binding_store
 
         binding_store = get_binding_store()
         binding = await binding_store.get_binding(channel_id, thread_ts)
+
+        # If ticket_key is None but thread is bound, use the bound ticket
+        if not ticket_key and binding:
+            ticket_key = binding.issue_key
+            logger.info(
+                "Resolved ticket_key from thread binding",
+                extra={
+                    "ticket_key": ticket_key,
+                    "action_type": action_type,
+                }
+            )
 
         if binding and binding.issue_key == ticket_key:
             # Thread already bound to the SAME ticket - do action, don't re-link
@@ -64,6 +71,15 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
                     "bound_ticket": binding.issue_key,
                 }
             )
+
+    logger.info(
+        "Ticket action node processing",
+        extra={
+            "ticket_key": ticket_key,
+            "action_type": action_type,
+            "resolved_from_binding": binding is not None and not intent_result.get("ticket_key"),
+        }
+    )
 
     # Get latest human message for content extraction
     messages = state.get("messages", [])

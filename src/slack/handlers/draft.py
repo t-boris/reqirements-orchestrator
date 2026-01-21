@@ -317,6 +317,21 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             # New creation - update session state
             await runner.handle_approval(approved=True)
 
+            # Bind thread to the created ticket for contextual references
+            try:
+                from src.slack.thread_bindings import get_binding_store
+
+                binding_store = get_binding_store()
+                await binding_store.bind(
+                    channel_id=channel,
+                    thread_ts=thread_ts,
+                    issue_key=create_result.jira_key,
+                    bound_by="system",  # Auto-bound on ticket creation
+                )
+            except Exception as e:
+                logger.warning(f"Failed to bind thread to ticket: {e}")
+                # Non-blocking
+
             # Update thread pin with ticket link
             try:
                 from src.context.jira_linker import JiraLinker
