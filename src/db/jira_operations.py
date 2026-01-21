@@ -229,7 +229,7 @@ class JiraOperationStore:
         """
         sql = """
         SELECT id, session_id, draft_hash, operation, jira_key,
-               created_by, approved_by, created_at, status, error_message
+               created_by, approved_by, created_at, status, error_message, workitem_id
         FROM jira_operations
         WHERE session_id = %s AND draft_hash = %s AND operation = %s;
         """
@@ -251,6 +251,7 @@ class JiraOperationStore:
             created_at=row[7],
             status=row[8],
             error_message=row[9],
+            workitem_id=str(row[10]) if row[10] else None,
         )
 
     async def was_already_created(
@@ -301,7 +302,7 @@ class JiraOperationStore:
         """
         sql = """
         SELECT id, session_id, draft_hash, operation, jira_key,
-               created_by, approved_by, created_at, status, error_message
+               created_by, approved_by, created_at, status, error_message, workitem_id
         FROM jira_operations
         WHERE session_id = %s
         ORDER BY created_at DESC;
@@ -322,6 +323,7 @@ class JiraOperationStore:
                 created_at=row[7],
                 status=row[8],
                 error_message=row[9],
+                workitem_id=str(row[10]) if row[10] else None,
             )
             for row in rows
         ]
