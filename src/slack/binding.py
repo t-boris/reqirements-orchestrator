@@ -43,23 +43,28 @@ async def start_binding_flow(
     message_text: str,
     store: WorkItemStore,
 ) -> None:
-    """Start Epic binding flow for new session.
+    """Start Epic binding flow for new conversation.
 
-    1. Search for relevant Epics
-    2. Post epic selector to thread
+    1. Check if thread already has a WorkItem
+    2. If not, search for relevant Epics and show selector
     3. Wait for user selection (handled by action handler)
     """
-    # Get or create session
-    session = await store.get_or_create(
-        channel_id=identity.channel_id,
-        thread_ts=identity.thread_ts,
+    # Check for existing WorkItem in this thread
+    items = await store.list_by_channel(
+        identity.channel_id,
+        limit=1,
+    )
+    # Find item that originated from this thread
+    existing = next(
+        (item for item in items if item.source_thread_ts == identity.thread_ts),
+        None,
     )
 
-    # If already bound, post session card
-    if session.epic_id:
+    # If already has WorkItem with jira_key (bound to Epic), show card
+    if existing and existing.jira_key:
         blocks = build_session_card(
-            epic_key=session.epic_id,
-            epic_summary=None,  # See .planning/ISSUES.md ISS-006
+            epic_key=existing.jira_key,
+            epic_summary=existing.summary,
             session_status="Active",
             thread_ts=identity.thread_ts,
         )
@@ -71,7 +76,7 @@ async def start_binding_flow(
         )
         return
 
-    # Suggest Epics
+    # Suggest Epics based on message content
     suggested = await suggest_epics(message_text, identity.channel_id)
 
     # Post epic selector
