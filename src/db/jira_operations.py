@@ -58,6 +58,7 @@ class JiraOperationStore:
             created_at TIMESTAMPTZ DEFAULT NOW(),
             status TEXT DEFAULT 'pending',
             error_message TEXT,
+            workitem_id UUID,
             UNIQUE(session_id, draft_hash, operation)
         );
 
@@ -66,9 +67,28 @@ class JiraOperationStore:
 
         CREATE INDEX IF NOT EXISTS idx_jira_operations_jira_key
             ON jira_operations(jira_key);
+
+        CREATE INDEX IF NOT EXISTS idx_jira_operations_workitem_id
+            ON jira_operations(workitem_id)
+            WHERE workitem_id IS NOT NULL;
         """
         async with self.conn.cursor() as cur:
             await cur.execute(sql)
+
+            # Add workitem_id column if it doesn't exist (migration for existing tables)
+            await cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'jira_operations' AND column_name = 'workitem_id'
+                    ) THEN
+                        ALTER TABLE jira_operations ADD COLUMN workitem_id UUID;
+                    END IF;
+                END
+                $$;
+            """)
+
         await self.conn.commit()
         logger.debug("Created jira_operations table")
 
