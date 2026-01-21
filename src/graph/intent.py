@@ -112,23 +112,29 @@ Classify the user's intent into ONE category:
   Key verbs: change, update, set, modify, edit, delete, remove, close, mark
   Key fields: priority, status, assignee, description, summary, labels
   Target: ticket key (SCRUM-XXX) OR contextual reference ("that ticket", "the auth ticket", "it")
+  For contextual references, extract the ticket key from CONVERSATION CONTEXT above.
   Examples:
-  - "change the priority of SCRUM-123 to high" -> command_type=update, field=priority, value=high
-  - "update that ticket's status to Done" -> command_type=update, field=status, value=Done, target=contextual
-  - "delete SCRUM-456" -> command_type=delete
-  - "change the assignee to @john" -> command_type=update, field=assignee, value=@john
-  - "set the status of the auth ticket to In Progress" -> command_type=update, field=status
-  - "mark SCRUM-789 as done" -> command_type=update, field=status, value=done
-  - "close that ticket" -> command_type=update, field=status, value=closed
+  - "change the priority of SCRUM-123 to high" -> command_type=update, field=priority, value=high, ticket_key=SCRUM-123
+  - "update that ticket's status to Done" -> command_type=update, field=status, value=Done, ticket_key=<from context>
+  - "delete SCRUM-456" -> command_type=delete, ticket_key=SCRUM-456
+  - "change the assignee to @john" -> command_type=update, field=assignee, value=@john, ticket_key=<from context>
+  - "set the status of the auth ticket to In Progress" -> command_type=update, field=status, ticket_key=<from context>
+  - "mark SCRUM-789 as done" -> command_type=update, field=status, value=done, ticket_key=SCRUM-789
+  - "close that ticket" -> command_type=update, field=status, value=closed, ticket_key=<from context>
+  IMPORTANT: For contextual references, look in CONVERSATION CONTEXT and extract the actual ticket key!
 
 - TICKET_ACTION: User wants to CREATE NEW items linked to an existing ticket
-  The message must reference a specific ticket key (e.g., SCRUM-123, PROJ-456).
+  The ticket can be referenced explicitly (SCRUM-123) OR contextually ("the epic", "that ticket").
+  For contextual references, extract the ticket key from CONVERSATION CONTEXT above.
   Examples:
-  - "create user stories for SCRUM-113" -> action_type=create_stories
-  - "create subtasks for PROJ-456" -> action_type=create_subtask
-  - "add a comment to SCRUM-123" -> action_type=add_comment
-  - "update PROJ-789 with the new requirements" -> action_type=update
-  - "break down SCRUM-100 into stories" -> action_type=create_stories
+  - "create user stories for SCRUM-113" -> action_type=create_stories, ticket_key=SCRUM-113
+  - "create subtasks for PROJ-456" -> action_type=create_subtask, ticket_key=PROJ-456
+  - "add a comment to SCRUM-123" -> action_type=add_comment, ticket_key=SCRUM-123
+  - "update PROJ-789 with the new requirements" -> action_type=update, ticket_key=PROJ-789
+  - "break down SCRUM-100 into stories" -> action_type=create_stories, ticket_key=SCRUM-100
+  - "create stories under the epic" -> action_type=create_stories, ticket_key=<from context>
+  - "now create user stories for that" -> action_type=create_stories, ticket_key=<from context>
+  IMPORTANT: If user says "the epic", "that ticket", "it" - look in conversation context for the ticket key!
 
 - TICKET: User wants to create a NEW Jira ticket (no existing ticket referenced)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
