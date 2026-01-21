@@ -1,8 +1,13 @@
 """Session store with async CRUD operations using psycopg v3.
 
 Provides database persistence for thread sessions and channel context.
+
+.. deprecated:: 23.5
+    Use :class:`WorkItemStore` instead. This module is maintained for
+    backward compatibility during migration.
 """
 import uuid
+import warnings
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -13,7 +18,11 @@ from src.db.models import ChannelContext, ThreadSession
 
 
 class SessionStore:
-    """Async CRUD operations for session data using raw SQL.
+    """Session store for thread sessions.
+
+    .. deprecated:: 23.5
+        Use :class:`WorkItemStore` instead. This class is maintained for
+        backward compatibility during migration.
 
     Usage:
         async with get_connection() as conn:
@@ -28,6 +37,11 @@ class SessionStore:
         Args:
             conn: Async psycopg connection from the pool.
         """
+        warnings.warn(
+            "SessionStore is deprecated, use WorkItemStore instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._conn = conn
 
     async def create_tables(self) -> None:
