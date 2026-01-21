@@ -13,6 +13,7 @@ from src.db.listening_store import ListeningStore
 from src.db.workitem_store import WorkItemStore
 from src.db.channel_mode_store import ChannelModeStore
 from src.db.commit_store import CommitStore
+from src.db.jira_operations import JiraOperationStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -52,6 +53,10 @@ async def init_database() -> None:
 
         listening_store = ListeningStore(conn)
         await listening_store.create_tables()
+
+        # Jira operations tracking
+        jira_ops_store = JiraOperationStore(conn)
+        await jira_ops_store.create_tables()
 
     logger.info("Database initialized")
 
