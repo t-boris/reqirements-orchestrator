@@ -7,7 +7,8 @@ from slack_sdk.web import WebClient
 
 from src.slack.blocks import build_session_card, build_epic_selector
 from src.slack.session import SessionIdentity
-from src.db.session_store import SessionStore
+from src.db.workitem_store import WorkItemStore
+from src.db.models import WorkItem, WorkItemType, WorkItemStatus
 from src.memory.zep_client import search_epics
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ async def start_binding_flow(
     client: WebClient,
     identity: SessionIdentity,
     message_text: str,
-    store: SessionStore,
+    store: WorkItemStore,
 ) -> None:
     """Start Epic binding flow for new session.
 
@@ -90,7 +91,7 @@ async def start_binding_flow(
 async def bind_epic(
     identity: SessionIdentity,
     epic_key: str,
-    store: SessionStore,
+    store: WorkItemStore,
     client: WebClient,
 ) -> None:
     """Bind session to selected Epic.
