@@ -140,6 +140,13 @@ from src.slack.handlers.commit import register_commit_handlers
 # Jira sync handlers (Phase 23.4)
 from src.slack.handlers.jira_sync import register_jira_sync_handlers
 
+# Change request handlers (Phase 25.3)
+from src.slack.handlers.change_request import (
+    handle_change_request_approve,
+    handle_change_request_cancel,
+    handle_change_request_edit,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -224,4 +231,8 @@ __all__ = [
     "register_commit_handlers",
     # Jira sync handlers (Phase 23.4)
     "register_jira_sync_handlers",
+    # Change request handlers (Phase 25.3)
+    "handle_change_request_approve",
+    "handle_change_request_cancel",
+    "handle_change_request_edit",
 ]

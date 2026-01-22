@@ -84,6 +84,11 @@ from src.slack.handlers.sync import (
     handle_sync_merge,
     handle_sync_merge_submit,
 )
+from src.slack.handlers.change_request import (
+    handle_change_request_approve,
+    handle_change_request_cancel,
+    handle_change_request_edit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -212,4 +217,9 @@ def register_handlers(app: App) -> None:
     app.action(re.compile(r"^update_preview_cancel(?::\d+)?$"))(handle_update_preview_cancel)
     app.view("update_edit_modal")(handle_update_edit_modal_submit)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview")
+    # Change request actions (Phase 25.3)
+    app.action("change_request_approve")(handle_change_request_approve)
+    app.action("change_request_cancel")(handle_change_request_cancel)
+    app.action("change_request_edit")(handle_change_request_edit)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request")
