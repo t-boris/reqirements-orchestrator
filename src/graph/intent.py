@@ -344,17 +344,22 @@ REASON: <brief explanation>"""
         )
 
 
-async def classify_intent(message: str, conversation_context: dict | None = None) -> IntentResult:
+async def classify_intent(
+    message: str,
+    conversation_context: dict | None = None,
+    active_draft: dict | None = None,  # Phase 26
+) -> IntentResult:
     """Classify user message intent using LLM with full context.
 
     Args:
         message: User's message text
         conversation_context: Full conversation history for context
+        active_draft: Active draft summary for context-aware classification (Phase 26)
 
     Returns:
         IntentResult with intent type, confidence, and reasons
     """
-    result = await _llm_classify(message, conversation_context)
+    result = await _llm_classify(message, conversation_context, active_draft)
     logger.info(
         f"Intent classified by LLM: {result.intent.value}, "
         f"confidence={result.confidence}, persona={result.persona_hint}, reasons={result.reasons}"
@@ -404,7 +409,18 @@ async def intent_router_node(state: dict) -> dict:
     else:
         # Get conversation context for LLM
         conversation_context = state.get("conversation_context")
-        result = await classify_intent(latest_human_message, conversation_context)
+
+        # Build active draft summary for context-aware classification (Phase 26)
+        active_draft = None
+        draft = state.get("draft")
+        if draft and hasattr(draft, 'title') and draft.title:
+            active_draft = {
+                "title": draft.title,
+                "issue_type": draft.issue_type.value if hasattr(draft, 'issue_type') and draft.issue_type else None,
+                "requested_scope": draft.requested_scope.value if hasattr(draft, 'requested_scope') and draft.requested_scope else None,
+            }
+
+        result = await classify_intent(latest_human_message, conversation_context, active_draft)
 
     logger.info(
         f"IntentRouter: intent={result.intent.value}, "
