@@ -219,7 +219,9 @@ def get_help_blocks() -> list[dict]:
                     "*Debugging*\n"
                     "`/maro debug` - Show debug status\n"
                     "`/maro debug on|off` - Enable/disable debug\n"
-                    "`/maro debug state` - Full internal state"
+                    "`/maro debug state` - Full internal state\n\n"
+                    "*Operations*\n"
+                    "`/maro explain` - Explain last decision/action"
                 )
             }
         },
