@@ -63,7 +63,7 @@
 
 ### Phase 26: Context-Aware Intent Classification
 
-**Status:** Not started
+**Status:** COMPLETE (4/4 plans)
 
 **Objective:** Make intent classification context-aware so MARO understands issue types structurally and doesn't confuse meta-questions about drafts with REVIEW requests.
 
@@ -194,4 +194,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 25.3 CHANGE_REQUEST | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.4 ReviewArtifact | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
-| 26. Context-Aware Intent | v1.2 | 3/4 | In progress | - |
+| 26. Context-Aware Intent | v1.2 | 4/4 | Complete | 2026-01-22 |
