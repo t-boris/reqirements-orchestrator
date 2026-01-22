@@ -16,7 +16,6 @@ from langchain_core.messages import HumanMessage
 
 from src.schemas.state import AgentState, AgentPhase
 from src.schemas.draft import TicketDraft
-from src.graph.graph import get_compiled_graph
 from src.graph.state import ChannelState, ThreadState
 
 if TYPE_CHECKING:
@@ -43,6 +42,7 @@ class GraphRunner:
     async def _ensure_graph(self):
         """Ensure graph is compiled (lazy async initialization)."""
         if self.graph is None:
+            from src.graph.graph import get_compiled_graph
             self.graph = await get_compiled_graph()
 
     async def run_with_message(
