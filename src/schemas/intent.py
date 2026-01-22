@@ -22,6 +22,7 @@ class Intent(str, Enum):
     """
     # Primary intents
     WORKITEM_CREATE = "workitem_create"  # Create new work item
+    DRAFT_REFINE = "draft_refine"        # Refine/clarify current draft (Phase 26)
     TICKET_ACTION = "ticket_action"      # Actions on existing ticket
     JIRA_COMMAND = "jira_command"        # Modify ticket fields
     SYNC_REQUEST = "sync_request"        # Bulk sync
