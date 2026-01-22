@@ -595,6 +595,16 @@ Reviewed by: {artifact_persona}
                     except ValueError:
                         logger.warning(f"Invalid requested_scope: {scope_str}")
 
+            # Clean up title - remove type prefixes (Phase 26)
+            if "title" in extracted:
+                title = extracted["title"]
+                # Remove common type prefixes that LLM might still add
+                for prefix in ["Epic:", "Story:", "Task:", "Bug:", "EPIC:", "STORY:", "TASK:", "BUG:"]:
+                    if title.startswith(prefix):
+                        extracted["title"] = title[len(prefix):].strip()
+                        logger.debug(f"Stripped '{prefix}' prefix from title")
+                        break
+
             # Handle constraints specially (list of dicts)
             if "constraints" in extracted:
                 existing_constraints = draft.constraints
