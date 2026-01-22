@@ -68,6 +68,8 @@ from src.db.board_store import BoardStore, BoardState
 from src.db.workitem_store import WorkItemStore
 from src.db.channel_mode_store import ChannelModeStore
 from src.db.commit_store import CommitStore
+from src.db.channel_state_store import ChannelStateStore
+from src.db.thread_state_store import ThreadStateStore
 
 __all__ = [
     # Connection (02-01)
@@ -123,4 +125,7 @@ __all__ = [
     "CommitStore",
     "CommitType",
     "CommitEntry",
+    # Separated State Stores (25-05)
+    "ChannelStateStore",
+    "ThreadStateStore",
 ]
