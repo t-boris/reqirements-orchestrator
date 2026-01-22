@@ -510,3 +510,189 @@ Be concise. This will be posted to the channel as a permanent record.
             thread_ts=thread_ts,
             text="I understood that as approval, but couldn't extract the decision. The review is still available above.",
         )
+
+
+def handle_review_approve(ack, body, client: WebClient):
+    """Handle "Approve & Save" button click for artifact approval.
+
+    Marks the review artifact as approved in the database.
+    Pattern: Sync wrapper with immediate ack, delegates to async.
+    """
+    ack()
+    _run_async(_handle_review_approve_async(body, client))
+
+
+async def _handle_review_approve_async(body, client: WebClient):
+    """Async handler for artifact approval."""
+    from src.db import get_connection
+    from src.db.artifact_store import ArtifactStore
+
+    # Extract artifact_id from button value
+    artifact_id = body["actions"][0].get("value", "")
+    if not artifact_id:
+        logger.warning("No artifact_id in review_approve button")
+        return
+
+    message = body.get("message", {})
+    thread_ts = message.get("thread_ts") or message.get("ts")
+    channel_id = body["channel"]["id"]
+    user_id = body["user"]["id"]
+
+    logger.info(
+        "Review approve button clicked",
+        extra={
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+            "artifact_id": artifact_id,
+        }
+    )
+
+    try:
+        async with get_connection() as conn:
+            store = ArtifactStore(conn)
+            artifact = await store.approve(artifact_id, user_id)
+
+        if artifact:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":white_check_mark: Review approved and saved as artifact `{artifact_id[:8]}...`",
+            )
+            logger.info(
+                "Artifact approved",
+                extra={
+                    "artifact_id": artifact_id,
+                    "approved_by": user_id,
+                }
+            )
+        else:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=":warning: Could not find artifact to approve.",
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to approve artifact: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="Sorry, I couldn't save the approval. Please try again.",
+        )
+
+
+def handle_turn_into_workitem(ack, body, client: WebClient):
+    """Handle "Turn into Work Item" button click.
+
+    Creates a WorkItem from the artifact and links them.
+    Pattern: Sync wrapper with immediate ack, delegates to async.
+    """
+    ack()
+    _run_async(_handle_turn_into_workitem_async(body, client))
+
+
+async def _handle_turn_into_workitem_async(body, client: WebClient):
+    """Async handler for turning artifact into workitem."""
+    import uuid
+    from src.db import get_connection
+    from src.db.artifact_store import ArtifactStore
+    from src.db.workitem_store import WorkItemStore
+    from src.db.models import (
+        ArtifactLinkType,
+        ArtifactTargetType,
+        WorkItem,
+        WorkItemType,
+        WorkItemStatus,
+    )
+    from datetime import datetime, timezone
+
+    # Extract artifact_id from button value
+    artifact_id = body["actions"][0].get("value", "")
+    if not artifact_id:
+        logger.warning("No artifact_id in review_to_workitem button")
+        return
+
+    message = body.get("message", {})
+    thread_ts = message.get("thread_ts") or message.get("ts")
+    channel_id = body["channel"]["id"]
+    user_id = body["user"]["id"]
+
+    logger.info(
+        "Turn into workitem button clicked",
+        extra={
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+            "artifact_id": artifact_id,
+        }
+    )
+
+    try:
+        async with get_connection() as conn:
+            artifact_store = ArtifactStore(conn)
+            artifact = await artifact_store.get(artifact_id)
+
+            if not artifact:
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=":warning: Could not find artifact.",
+                )
+                return
+
+            # Create WorkItem from artifact
+            workitem_store = WorkItemStore(conn)
+            now = datetime.now(timezone.utc)
+
+            workitem = WorkItem(
+                id=str(uuid.uuid4()),
+                channel_id=channel_id,
+                item_type=WorkItemType.TASK,  # Default to task for review-derived work
+                status=WorkItemStatus.DRAFT,
+                summary=artifact.summary or f"Review: {artifact.kind.value}",
+                description=artifact.full_content[:2000] if artifact.full_content else None,
+                facts={
+                    "from_review": True,
+                    "artifact_id": artifact_id,
+                    "decisions": artifact.decisions[:3] if artifact.decisions else [],
+                    "risks": artifact.risks[:3] if artifact.risks else [],
+                },
+                source_thread_ts=thread_ts,
+                created_by=user_id,
+                created_at=now,
+                updated_at=now,
+            )
+
+            await workitem_store.create(workitem)
+
+            # Link artifact to workitem
+            await artifact_store.add_link(
+                artifact_id=artifact_id,
+                target_type=ArtifactTargetType.WORKITEM,
+                target_id=workitem.id,
+                link_type=ArtifactLinkType.RESULTED_IN,
+            )
+
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":white_check_mark: Created work item from artifact. Draft ID: `{workitem.id[:8]}...`\n\nUse `/maro status` to see your drafts.",
+        )
+
+        logger.info(
+            "Created workitem from artifact",
+            extra={
+                "artifact_id": artifact_id,
+                "workitem_id": workitem.id,
+                "created_by": user_id,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to create workitem from artifact: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="Sorry, I couldn't create the work item. Please try again.",
+        )
