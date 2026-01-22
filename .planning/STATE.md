@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.1 shipped — Planning next milestone
+**Current focus:** v1.2 Developer Experience — Phase 24: Debug Mode
 
 ## Current Position
 
-Phase: Complete (v1.1 shipped)
-Plan: N/A
-Status: Ready for next milestone
-Last activity: 2026-01-20 — v1.1 milestone complete
+Phase: 24-debug-mode
+Plan: Ready to execute (3 plans)
+Status: Plans created, ready for execution
+Last activity: 2026-01-22 — Phase 24 planned
 
-Progress: ██████████ 100% (v1.1)
+Progress: ░░░░░░░░░░ 0% (v1.2)
 
 ## Milestones Summary
 
@@ -22,8 +22,9 @@ Progress: ██████████ 100% (v1.1)
 |---------|------|--------|-------|--------|---------|
 | v1.0 | MVP | 1-10 | 43 | ✅ Complete | 2026-01-14 |
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | ✅ Complete | 2026-01-20 |
+| v1.2 | Developer Experience | 24+ | 3+ | 🚧 In Progress | - |
 
-**Total:** 28 phases, 106 plans shipped
+**Total:** 28 phases, 106 plans shipped (v1.2: 3 plans ready)
 
 ## v1.1 Summary
 
@@ -71,15 +72,16 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-20
-Stopped at: v1.1 milestone complete
+Last session: 2026-01-22
+Stopped at: Phase 24 plans created
 Resume file: None
-Next action: `/gsd:discuss-milestone` to plan next version
+Next action: `/gsd:execute-phase 24` to implement debug mode
 
 ## What's Next
 
-Options for next milestone:
-1. **v1.2** — Incremental improvements, bug fixes, polish
-2. **v2.0** — Major new direction or architecture change
+**Phase 24: Debug Mode** — 3 plans ready for execution:
+- Plan 01: Foundation (DebugStore, DebugCollector)
+- Plan 02: Slash Command (/maro debug on/off/status/state)
+- Plan 03: Integration (debug output in message flow)
 
-Run `/gsd:discuss-milestone` to gather requirements for next version.
+Run `/gsd:execute-phase 24` to start implementation.

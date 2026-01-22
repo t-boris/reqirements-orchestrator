@@ -4,6 +4,35 @@
 
 - ✅ **v1.0 MVP** — Phases 1-10 (shipped 2026-01-14) → [Archive](milestones/v1.0-ROADMAP.md)
 - ✅ **v1.1 Communication as Source of Truth** — Phases 11-23.5 (shipped 2026-01-20) → [Archive](milestones/v1.1-ROADMAP.md)
+- 🚧 **v1.2 Developer Experience** — Phases 24+
+
+---
+
+## v1.2 Developer Experience
+
+**Goal:** Improve debugging and observability for bot operators.
+
+### Phase 24: Debug Mode
+
+**Objective:** Per-channel debug mode that shows internal processing details.
+
+**Features:**
+- `/maro debug on/off` - Enable/disable per channel
+- `/maro debug status` - Quick health check (mode, project, counts)
+- `/maro debug state` - Full internal dump (context, registry, activity)
+- Verbose output after each message processing (intent, duplicates, decision, LLM calls)
+
+**Design decisions:**
+- Output: Same thread as user message
+- Timing: Single consolidated message after processing
+- LLM content: Truncated (300 chars) + .txt file attachment for full content
+- Errors: Last 5 stack frames
+
+**Components:**
+1. `DebugStore` - Per-channel debug settings persistence
+2. `DebugCollector` - Accumulate debug data during processing
+3. `/maro debug` handler - Slash command for on/off/status/state
+4. Dispatch integration - Post debug output after processing
 
 ## Completed Milestones
 
@@ -95,3 +124,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 23.3 Commit Semantics | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 23.4 Jira Sync Engine | v1.1 | 6/6 | Complete | 2026-01-20 |
 | 23.5 Integration | v1.1 | 5/5 | Complete | 2026-01-20 |
+| 24. Debug Mode | v1.2 | 0/3 | Ready | - |
