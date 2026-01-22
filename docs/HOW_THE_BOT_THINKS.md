@@ -51,7 +51,31 @@ Every interaction is tracked per-thread with:
 - Pending questions (for re-ask logic)
 - Workflow step (for button validation)
 
-### 1.3 LLM Providers
+### 1.3 Git Model
+
+MARO follows a Git-like model for truth management:
+
+| Git Concept | MARO Equivalent | Description |
+|-------------|-----------------|-------------|
+| Repository | Channel | Source of truth, owns work item registry |
+| Working Tree | Thread | Exploration/drafting space |
+| Commit | Approved Decision | Immutable truth entry in channel log |
+| Remote | Jira | Deployment target (replica of truth) |
+| Push | Sync/Publish | Propagate truth to Jira |
+
+**Key insight:** Jira is not the source of truth. Jira is where truth gets *deployed* after being decided in the channel.
+
+**Mantra:** "Threads propose. Channels decide. Jira executes."
+
+```
+Thread: "We need rate limiting"
+    ↓ (draft)
+Channel: "Approved as WORK-123"
+    ↓ (sync)
+Jira: "SCRUM-456 created"
+```
+
+### 1.4 LLM Providers
 
 The bot uses a provider-agnostic adapter layer supporting:
 
