@@ -67,3 +67,5 @@ class IntentResult(BaseModel):
     # For CHANGE_REQUEST intent
     change_targets: list[str] = Field(default_factory=list)  # Target keys/ids to change
     change_operation: Optional[Literal["update", "delete", "split", "merge", "move", "link"]] = None
+    # Context relation (Phase 26) - how message relates to active context
+    context_relation: Optional[Literal["continue", "refine", "change", "new_topic"]] = None
