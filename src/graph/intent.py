@@ -1,70 +1,28 @@
 """Intent Router for classifying user messages.
 
-Classifies user messages into five pure user intents:
-- TICKET: User wants to create a Jira ticket
+Classifies user messages into pure user intents:
+- WORKITEM_CREATE: User wants to create a new work item (Jira ticket)
+- TICKET_ACTION: User wants to perform actions on an existing ticket
+- JIRA_COMMAND: User wants to modify ticket fields via natural language
+- SYNC_REQUEST: User wants to sync channel with Jira
+- JIRA_SEARCH: User wants to search for existing issues
 - REVIEW: User wants analysis/feedback without Jira operations
 - DISCUSSION: Casual greeting, simple question, no action needed
 - META: Questions about the bot itself
 - AMBIGUOUS: Intent unclear - triggers scope gate for user to decide
+- OPS: Operational mode (debug failures or explain decisions)
 
 ALL classification is done by LLM with full conversation context.
 No pattern matching - LLM makes all decisions based on complete context.
 """
 import logging
-from enum import Enum
-from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from src.schemas.intent import Intent, IntentResult, OpsSubtype
 
 logger = logging.getLogger(__name__)
 
-
-class IntentType(str, Enum):
-    """Pure user intent - what user wants (not workflow state).
-
-    Note: DECISION_APPROVAL, REVIEW_CONTINUATION are now PendingAction values
-    in src/schemas/state.py, detected via event_router before intent classification.
-
-    TICKET_ACTION is still classified here because it requires LLM to extract
-    the ticket_key from the user's message.
-
-    JIRA_COMMAND is for natural language Jira management commands like
-    "change the priority of that ticket to high" or "set status to Done".
-
-    SYNC_REQUEST is for Jira sync commands like "update Jira issues" or
-    "sync the tickets" - triggers the sync flow to compare Slack and Jira state.
-
-    JIRA_SEARCH is for searching Jira for existing issues like "check if we
-    already have a ticket for X" or "search Jira for similar issues".
-    """
-    TICKET = "TICKET"       # Create a NEW Jira ticket
-    TICKET_ACTION = "TICKET_ACTION"  # Action on EXISTING ticket (subtasks, update, comment)
-    JIRA_COMMAND = "JIRA_COMMAND"  # Edit/update/delete Jira issues via natural language
-    SYNC_REQUEST = "SYNC_REQUEST"  # Sync channel decisions with Jira
-    JIRA_SEARCH = "JIRA_SEARCH"  # Search Jira for existing/similar issues
-    REVIEW = "REVIEW"       # Analysis/feedback without Jira
-    DISCUSSION = "DISCUSSION"  # Casual greeting, simple question
-    META = "META"           # Questions about the bot itself
-    AMBIGUOUS = "AMBIGUOUS"  # Intent unclear - triggers scope gate for user to decide
-
-
-class IntentResult(BaseModel):
-    """Result of intent classification."""
-    intent: IntentType
-    confidence: float = Field(ge=0.0, le=1.0)
-    persona_hint: Optional[Literal["pm", "architect", "security"]] = None
-    topic: Optional[str] = None
-    reasons: list[str] = Field(default_factory=list)
-    # For TICKET_ACTION intent
-    ticket_key: Optional[str] = None  # e.g., "SCRUM-113"
-    action_type: Optional[Literal["create_subtask", "create_stories", "update", "add_comment", "link"]] = None
-    # For JIRA_COMMAND intent
-    command_type: Optional[Literal["update", "delete"]] = None  # Type of Jira command
-    command_field: Optional[str] = None  # Field to change (priority, status, assignee, etc.)
-    command_value: Optional[str] = None  # New value for the field
-    target_type: Optional[Literal["explicit", "contextual"]] = None  # How target was specified
-    # For JIRA_SEARCH intent
-    search_query: Optional[str] = None  # What to search for in Jira
+# Re-export for backward compatibility
+IntentType = Intent  # Alias for legacy code
 
 
 async def _llm_classify(message: str, conversation_context: dict | None = None) -> IntentResult:
@@ -156,6 +114,22 @@ Classify the user's intent into ONE category:
   - "find existing tickets about logging" -> JIRA_SEARCH, search_query="logging"
   Extract the search query from the user's message or conversation context.
 
+- CHANGE_REQUEST: User wants to MODIFY existing truth (not create new)
+  Key distinction: Starts with "we already have X, but now need to change"
+  Triggers (high confidence):
+  - Verbs: "change", "update", "modify", "rename", "remove", "drop", "replace", "delete"
+  - Phrases: "this is wrong", "not like that", "we decided differently"
+  - Actions: "split into 3 tickets", "move under another epic", "mark as duplicate"
+  Examples:
+  - "change the title of that work item" -> CHANGE_REQUEST, change_operation=update
+  - "delete SCRUM-123" -> CHANGE_REQUEST, change_targets=[SCRUM-123], change_operation=delete
+  - "split this into 3 separate tickets" -> CHANGE_REQUEST, change_operation=split
+  - "merge those two tickets" -> CHANGE_REQUEST, change_operation=merge
+  - "move this under another epic" -> CHANGE_REQUEST, change_operation=move
+  NOT CHANGE_REQUEST:
+  - "create a new ticket" -> TICKET (new, not modification)
+  - "update status in Jira" -> JIRA_COMMAND (single field, no diff)
+
 - REVIEW: User wants help, analysis, discussion, or feedback WITHOUT creating a ticket
   Examples: "help me define architecture", "review this design", "what's the best approach",
   "I need help with X", "analyze the risks", "let's discuss Y"
@@ -172,7 +146,7 @@ Classify the user's intent into ONE category:
 
 IMPORTANT RULES:
 1. SYNC_REQUEST is for BULK sync ("update Jira issues", "sync tickets") - no specific ticket mentioned
-2. JIRA_COMMAND is for MODIFYING existing ticket fields (priority, status, assignee)
+2. JIRA_COMMAND is for MODIFYING existing ticket fields (priority, status, assignee) - SINGLE field only
 3. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
 4. "Change priority of X" or "set status to Y" = JIRA_COMMAND
 5. "Create stories for X" or "add comment to X" = TICKET_ACTION
@@ -186,9 +160,13 @@ IMPORTANT RULES:
 13. "Update Jira" or "sync Jira" without a specific ticket = SYNC_REQUEST
 14. JIRA_SEARCH is for searching Jira ("check Jira", "do we have", "similar issue", "existing ticket")
 15. "Check Jira if we have X" or "search for similar" = JIRA_SEARCH (not REVIEW)
+16. CHANGE_REQUEST is for STRUCTURAL changes (split, merge, delete, move, rename) - NOT single field updates
+17. "Delete this ticket" or "split into multiple" = CHANGE_REQUEST (structural change)
+18. "Update title" or "change the description" with diff preview = CHANGE_REQUEST
+19. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
 
 Respond in this exact format:
-INTENT: <SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|TICKET|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -198,6 +176,8 @@ COMMAND_FIELD: <priority|status|assignee|description|summary|labels|none>
 COMMAND_VALUE: <the value to set, or "none">
 TARGET_TYPE: <explicit|contextual|none>
 SEARCH_QUERY: <what to search for in Jira, or "none">
+CHANGE_TARGETS: <comma-separated list of affected keys/ids, or "none">
+CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
 REASON: <brief explanation>"""
 
     try:
@@ -216,12 +196,14 @@ REASON: <brief explanation>"""
         command_value = None
         target_type = None
         search_query = None
+        change_targets = []
+        change_operation = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST", "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -263,6 +245,14 @@ REASON: <brief explanation>"""
                 query_value = line.split(":", 1)[1].strip()
                 if query_value and query_value.lower() != "none":
                     search_query = query_value
+            elif line.upper().startswith("CHANGE_TARGETS:"):
+                targets_value = line.split(":", 1)[1].strip()
+                if targets_value and targets_value.lower() != "none":
+                    change_targets = [t.strip() for t in targets_value.split(",") if t.strip()]
+            elif line.upper().startswith("CHANGE_OPERATION:"):
+                op_value = line.split(":", 1)[1].strip().lower()
+                if op_value in ["update", "delete", "split", "merge", "move", "link"]:
+                    change_operation = op_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -277,6 +267,8 @@ REASON: <brief explanation>"""
             command_value=command_value,
             target_type=target_type,
             search_query=search_query,
+            change_targets=change_targets,
+            change_operation=change_operation,
             reasons=[reason],
         )
 

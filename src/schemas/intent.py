@@ -63,3 +63,6 @@ class IntentResult(BaseModel):
     search_query: Optional[str] = None  # What to search for in Jira
     # For OPS intent
     ops_subtype: Optional[OpsSubtype] = None
+    # For CHANGE_REQUEST intent
+    change_targets: list[str] = Field(default_factory=list)  # Target keys/ids to change
+    change_operation: Optional[Literal["update", "delete", "split", "merge", "move", "link"]] = None
