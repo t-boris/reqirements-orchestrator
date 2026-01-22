@@ -61,6 +61,18 @@ CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
 
+- OPS: Operational mode - either debugging failures or explaining decisions
+  Subtypes:
+  - DEBUG: Error signals present (exception, failed, timeout, stack trace, 400/500 errors)
+    Phrases: "fix this", "why did this fail", "retry", "error", "broken", "what went wrong"
+  - EXPLAIN: Questions about bot's reasoning/decisions
+    Phrases: "why did you do that?", "show reasoning", "explain your logic", "how did you decide?"
+  Examples:
+  - "why did this fail?" -> OPS, ops_subtype=debug
+  - "fix this error" -> OPS, ops_subtype=debug
+  - "why did you do that?" -> OPS, ops_subtype=explain
+  - "show me your reasoning" -> OPS, ops_subtype=explain
+
 - SYNC_REQUEST: User wants to SYNC channel decisions with Jira (bulk update)
   Key phrases: "update Jira issues", "sync Jira", "sync tickets", "update the tickets",
   "sync everything", "synchronize", "push changes to Jira", "update Jira with our decisions"
@@ -100,7 +112,8 @@ Classify the user's intent into ONE category:
   - "now create user stories for that" -> action_type=create_stories, ticket_key=<from context>
   IMPORTANT: If user says "the epic", "that ticket", "it" - look in conversation context for the ticket key!
 
-- TICKET: User wants to create a NEW Jira ticket (no existing ticket referenced)
+- WORKITEM_CREATE: User wants to create a NEW work item (no existing ticket referenced)
+  (Previously called TICKET - still accepted as alias)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
 
 - JIRA_SEARCH: User wants to SEARCH Jira for existing issues
@@ -127,7 +140,7 @@ Classify the user's intent into ONE category:
   - "merge those two tickets" -> CHANGE_REQUEST, change_operation=merge
   - "move this under another epic" -> CHANGE_REQUEST, change_operation=move
   NOT CHANGE_REQUEST:
-  - "create a new ticket" -> TICKET (new, not modification)
+  - "create a new ticket" -> WORKITEM_CREATE (new, not modification)
   - "update status in Jira" -> JIRA_COMMAND (single field, no diff)
 
 - REVIEW: User wants help, analysis, discussion, or feedback WITHOUT creating a ticket
@@ -142,7 +155,7 @@ Classify the user's intent into ONE category:
   Examples: "what can you do?", "how do you work?"
 
 - AMBIGUOUS: ONLY use when the message is truly unclear AND could equally be ticket OR review
-  This should be RARE. Most requests are clearly REVIEW (discussion/help) or TICKET (explicit creation).
+  This should be RARE. Most requests are clearly REVIEW (discussion/help) or WORKITEM_CREATE (explicit creation).
 
 IMPORTANT RULES:
 1. SYNC_REQUEST is for BULK sync ("update Jira issues", "sync tickets") - no specific ticket mentioned
@@ -150,23 +163,26 @@ IMPORTANT RULES:
 3. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
 4. "Change priority of X" or "set status to Y" = JIRA_COMMAND
 5. "Create stories for X" or "add comment to X" = TICKET_ACTION
-6. If user mentions a ticket key AND wants to CREATE items under it = TICKET_ACTION
-7. If user wants to MODIFY/CHANGE field values = JIRA_COMMAND
-8. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
-9. "Define architecture" or "design system" = REVIEW (architecture discussion)
-10. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
-11. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
-12. TICKET requires EXPLICIT new ticket creation language (no existing ticket reference)
-13. "Update Jira" or "sync Jira" without a specific ticket = SYNC_REQUEST
-14. JIRA_SEARCH is for searching Jira ("check Jira", "do we have", "similar issue", "existing ticket")
-15. "Check Jira if we have X" or "search for similar" = JIRA_SEARCH (not REVIEW)
-16. CHANGE_REQUEST is for STRUCTURAL changes (split, merge, delete, move, rename) - NOT single field updates
-17. "Delete this ticket" or "split into multiple" = CHANGE_REQUEST (structural change)
-18. "Update title" or "change the description" with diff preview = CHANGE_REQUEST
-19. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
+6. OPS intent triggers:
+   - If error patterns detected (exception, failed, 400, timeout) -> OPS with ops_subtype=debug
+   - If asking "why did you" / "explain" / "show reasoning" -> OPS with ops_subtype=explain
+7. WORKITEM_CREATE (formerly TICKET) requires EXPLICIT new creation language
+8. If user mentions a ticket key AND wants to CREATE items under it = TICKET_ACTION
+9. If user wants to MODIFY/CHANGE field values = JIRA_COMMAND
+10. "Help me with X" or "I need help with X" = REVIEW (not AMBIGUOUS)
+11. "Define architecture" or "design system" = REVIEW (architecture discussion)
+12. Only use AMBIGUOUS if user literally could mean either "create ticket" or "discuss"
+13. When in doubt between REVIEW and AMBIGUOUS, choose REVIEW
+14. "Update Jira" or "sync Jira" without a specific ticket = SYNC_REQUEST
+15. JIRA_SEARCH is for searching Jira ("check Jira", "do we have", "similar issue", "existing ticket")
+16. "Check Jira if we have X" or "search for similar" = JIRA_SEARCH (not REVIEW)
+17. CHANGE_REQUEST is for STRUCTURAL changes (split, merge, delete, move, rename) - NOT single field updates
+18. "Delete this ticket" or "split into multiple" = CHANGE_REQUEST (structural change)
+19. "Update title" or "change the description" with diff preview = CHANGE_REQUEST
+20. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
 
 Respond in this exact format:
-INTENT: <SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -178,6 +194,7 @@ TARGET_TYPE: <explicit|contextual|none>
 SEARCH_QUERY: <what to search for in Jira, or "none">
 CHANGE_TARGETS: <comma-separated list of affected keys/ids, or "none">
 CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
+OPS_SUBTYPE: <debug|explain|none>
 REASON: <brief explanation>"""
 
     try:
@@ -196,14 +213,17 @@ REASON: <brief explanation>"""
         command_value = None
         target_type = None
         search_query = None
-        change_targets = []
-        change_operation = None
+        ops_subtype = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
-                valid_intents = ["TICKET", "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST", "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"]
+                valid_intents = [
+                    "OPS", "TICKET", "WORKITEM_CREATE", "TICKET_ACTION",
+                    "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST",
+                    "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"
+                ]
                 if intent_value in valid_intents:
                     intent_str = intent_value
             elif line.upper().startswith("CONFIDENCE:"):
@@ -245,19 +265,21 @@ REASON: <brief explanation>"""
                 query_value = line.split(":", 1)[1].strip()
                 if query_value and query_value.lower() != "none":
                     search_query = query_value
-            elif line.upper().startswith("CHANGE_TARGETS:"):
-                targets_value = line.split(":", 1)[1].strip()
-                if targets_value and targets_value.lower() != "none":
-                    change_targets = [t.strip() for t in targets_value.split(",") if t.strip()]
-            elif line.upper().startswith("CHANGE_OPERATION:"):
-                op_value = line.split(":", 1)[1].strip().lower()
-                if op_value in ["update", "delete", "split", "merge", "move", "link"]:
-                    change_operation = op_value
+            elif line.upper().startswith("OPS_SUBTYPE:"):
+                subtype_str = line.split(":", 1)[1].strip().lower()
+                if subtype_str == "debug":
+                    ops_subtype = OpsSubtype.DEBUG
+                elif subtype_str == "explain":
+                    ops_subtype = OpsSubtype.EXPLAIN
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
+        # Normalize deprecated intents
+        if intent_str == "TICKET":
+            intent_str = "WORKITEM_CREATE"
+
         return IntentResult(
-            intent=IntentType(intent_str),
+            intent=Intent(intent_str.lower()),
             confidence=confidence,
             persona_hint=persona_hint,
             ticket_key=ticket_key,
@@ -267,15 +289,14 @@ REASON: <brief explanation>"""
             command_value=command_value,
             target_type=target_type,
             search_query=search_query,
-            change_targets=change_targets,
-            change_operation=change_operation,
+            ops_subtype=ops_subtype,
             reasons=[reason],
         )
 
     except Exception as e:
         logger.warning(f"LLM intent classification failed: {e}, defaulting to REVIEW")
         return IntentResult(
-            intent=IntentType.REVIEW,
+            intent=Intent.REVIEW,
             confidence=0.5,
             reasons=["llm classification failed, default to REVIEW"],
         )
@@ -334,7 +355,7 @@ async def intent_router_node(state: dict) -> dict:
     if not latest_human_message:
         logger.warning("No human message found for intent classification")
         result = IntentResult(
-            intent=IntentType.REVIEW,
+            intent=Intent.REVIEW,
             confidence=0.5,
             reasons=["no message found, default to REVIEW"],
         )
