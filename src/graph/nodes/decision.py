@@ -193,11 +193,131 @@ def _compute_confidence_score(draft: TicketDraft, duplicate: dict) -> float:
     return min(score, 1.0)
 
 
-async def _search_for_duplicates(draft: TicketDraft | None) -> tuple[list[dict], list[float]]:
-    """Search for potential duplicate tickets with confidence scores.
+async def _search_channel_registry(
+    draft: TicketDraft,
+    channel_id: str,
+) -> list[dict]:
+    """Search channel's WorkItem registry for duplicates.
+
+    Channel-first duplicate detection - checks local truth before remote.
+    This reflects the Git model: check local (channel) before remote (Jira).
+
+    Args:
+        draft: The draft ticket being created.
+        channel_id: The channel to search in.
+
+    Returns:
+        List of matching workitems as dicts with confidence scores.
+    """
+    try:
+        from src.db import get_connection
+        from src.db.workitem_store import WorkItemStore
+        from src.db.models import WorkItemStatus
+
+        duplicates = []
+
+        async with get_connection() as conn:
+            store = WorkItemStore(conn)
+            workitems = await store.list_by_channel(
+                channel_id,
+                status=[WorkItemStatus.DRAFT, WorkItemStatus.ACTIVE],
+                limit=50,
+            )
+
+            draft_title = (draft.title or "").lower()
+            draft_problem = (draft.problem or "").lower()
+
+            for item in workitems:
+                confidence = _compute_channel_similarity(
+                    draft_title,
+                    draft_problem,
+                    (item.summary or "").lower(),
+                    (item.description or "").lower(),
+                )
+
+                if confidence >= 0.5:  # Threshold for channel matches
+                    duplicates.append({
+                        "workitem_id": item.id,
+                        "jira_key": item.jira_key,
+                        "key": item.jira_key or item.id[:8],
+                        "summary": item.summary,
+                        "status": item.status.value,
+                        "confidence": confidence,
+                        "source": "channel",
+                        "match_reason": "",
+                    })
+
+        # Sort by confidence
+        duplicates.sort(key=lambda x: x["confidence"], reverse=True)
+        return duplicates[:5]  # Top 5
+
+    except Exception as e:
+        logger.warning(f"Failed to search channel registry: {e}")
+        return []
+
+
+def _compute_channel_similarity(
+    draft_title: str,
+    draft_problem: str,
+    item_summary: str,
+    item_description: str,
+) -> float:
+    """Compute similarity score between draft and existing item.
+
+    Used for channel-first duplicate detection.
+
+    Args:
+        draft_title: Draft title (lowercased)
+        draft_problem: Draft problem statement (lowercased)
+        item_summary: Existing item summary (lowercased)
+        item_description: Existing item description (lowercased)
+
+    Returns:
+        Confidence score from 0.0 to 1.0.
+    """
+    score = 0.0
+
+    # Remove common stop words
+    stop_words = {"the", "a", "an", "is", "are", "to", "for", "and", "or", "as", "in", "on", "at", "with"}
+
+    # Title word overlap (up to 0.5)
+    draft_words = set(draft_title.split()) - stop_words
+    item_words = set(item_summary.split()) - stop_words
+    if draft_words and item_words:
+        overlap = len(draft_words & item_words)
+        max_words = max(len(draft_words), len(item_words))
+        score += (overlap / max_words) * 0.5
+
+    # Problem/description overlap (up to 0.3)
+    if draft_problem and item_description:
+        draft_prob_words = set(draft_problem.split()) - stop_words
+        item_desc_words = set(item_description.split()) - stop_words
+        if draft_prob_words and item_desc_words:
+            overlap = len(draft_prob_words & item_desc_words)
+            max_words = max(len(draft_prob_words), len(item_desc_words))
+            score += (overlap / max_words) * 0.3
+
+    # Boost for exact title match
+    if draft_title == item_summary:
+        score = min(score + 0.3, 1.0)
+
+    return score
+
+
+async def _search_for_duplicates(
+    draft: TicketDraft | None,
+    channel_id: str | None = None,
+) -> tuple[list[dict], list[float]]:
+    """Search for duplicates - channel first, then Jira.
+
+    Order:
+    1. Check channel WorkItem registry (local truth)
+    2. If no high-confidence match, check Jira (remote replica)
+
+    This reflects the Git model: check local before remote.
 
     Returns tuple of:
-    - list of {key, summary, url, status, assignee, updated, match_reason} dicts
+    - list of {key, summary, url, status, assignee, updated, match_reason, source} dicts
     - list of confidence scores (0.0-1.0) for each duplicate
 
     For the best match (first), generates LLM explanation of why it matches.
@@ -206,6 +326,43 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> tuple[list[dict],
     if not draft or not draft.title:
         return [], []
 
+    duplicates = []
+    confidence_scores = []
+    best_confidence = 0.0
+
+    # 1. Search channel registry first (local)
+    if channel_id:
+        try:
+            channel_duplicates = await _search_channel_registry(draft, channel_id)
+            for dup in channel_duplicates:
+                dup["source"] = "channel"  # Mark as local match
+                duplicates.append(dup)
+                conf = dup.get("confidence", 0)
+                confidence_scores.append(conf)
+                if conf > best_confidence:
+                    best_confidence = conf
+
+            if channel_duplicates:
+                logger.info(
+                    "Found channel registry matches",
+                    extra={
+                        "count": len(channel_duplicates),
+                        "best_confidence": best_confidence,
+                        "channel_id": channel_id,
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Channel registry search failed: {e}")
+
+    # 2. If high confidence local match, skip Jira search
+    if best_confidence >= 0.85:
+        # Generate match explanation for best match
+        if duplicates:
+            match_reason = await _explain_duplicate_match(draft, duplicates[0])
+            duplicates[0]["match_reason"] = match_reason
+        return duplicates, confidence_scores
+
+    # 3. Search Jira (remote)
     try:
         from src.config.settings import get_settings
         from src.jira.client import JiraService
@@ -217,11 +374,14 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> tuple[list[dict],
         try:
             result = await search_similar_to_draft(draft, jira_service, limit=5)
 
-            # Convert to display format with enhanced metadata
-            duplicates = []
-            confidence_scores = []
+            # Track existing jira_keys from channel matches
+            existing_keys = {d.get("jira_key") for d in duplicates if d.get("jira_key")}
 
-            for issue in result.issues[:5]:  # Keep up to 5 for "show more"
+            for issue in result.issues[:5]:
+                # Skip if already in channel registry (avoid duplicates)
+                if issue.key in existing_keys:
+                    continue
+
                 dup = {
                     "key": issue.key,
                     "summary": issue.summary,
@@ -230,51 +390,51 @@ async def _search_for_duplicates(draft: TicketDraft | None) -> tuple[list[dict],
                     "assignee": issue.assignee,
                     "updated": issue.updated,
                     "match_reason": "",
+                    "source": "jira",  # Mark as remote match
                 }
-                duplicates.append(dup)
 
                 # Compute confidence score
                 confidence = _compute_confidence_score(draft, dup)
+                duplicates.append(dup)
                 confidence_scores.append(confidence)
-
-            # Sort by confidence descending
-            if duplicates:
-                pairs = sorted(
-                    zip(duplicates, confidence_scores),
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-                duplicates = [p[0] for p in pairs]
-                confidence_scores = [p[1] for p in pairs]
-
-            # Generate match explanation for best match only
-            if duplicates:
-                match_reason = await _explain_duplicate_match(draft, duplicates[0])
-                duplicates[0]["match_reason"] = match_reason
-
-                logger.info(
-                    "Found potential duplicates",
-                    extra={
-                        "count": len(duplicates),
-                        "draft_title": draft.title[:50],
-                        "best_match": duplicates[0]["key"],
-                        "best_confidence": confidence_scores[0] if confidence_scores else 0.0,
-                        "match_reason": match_reason,
-                    },
-                )
-
-            return duplicates, confidence_scores
 
         finally:
             await jira_service.close()
 
     except Exception as e:
-        # Don't fail the workflow if duplicate search fails
+        # Don't fail the workflow if Jira search fails
         logger.warning(
-            "Failed to search for duplicates",
+            "Failed to search Jira for duplicates",
             extra={"error": str(e)},
         )
-        return [], []
+
+    # Sort all results by confidence descending
+    if duplicates:
+        pairs = sorted(
+            zip(duplicates, confidence_scores),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        duplicates = [p[0] for p in pairs]
+        confidence_scores = [p[1] for p in pairs]
+
+        # Generate match explanation for best match only
+        match_reason = await _explain_duplicate_match(draft, duplicates[0])
+        duplicates[0]["match_reason"] = match_reason
+
+        logger.info(
+            "Found potential duplicates (channel-first)",
+            extra={
+                "count": len(duplicates),
+                "draft_title": draft.title[:50],
+                "best_match": duplicates[0].get("key"),
+                "best_source": duplicates[0].get("source"),
+                "best_confidence": confidence_scores[0] if confidence_scores else 0.0,
+                "match_reason": match_reason,
+            },
+        )
+
+    return duplicates, confidence_scores
 
 
 async def decision_node(state: AgentState) -> dict[str, Any]:
@@ -407,10 +567,10 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
 
     # Decision logic
     if is_valid and not conflicts:
-        # Ready for preview - check for duplicates first
-        logger.info("Draft valid, checking for potential duplicates before preview")
+        # Ready for preview - check for duplicates first (channel-first)
+        logger.info("Draft valid, checking for potential duplicates before preview (channel-first)")
 
-        potential_duplicates, confidence_scores = await _search_for_duplicates(draft)
+        potential_duplicates, confidence_scores = await _search_for_duplicates(draft, channel_id)
 
         # Build preflight result
         preflight = PreflightResult.from_search_results(potential_duplicates, confidence_scores)
