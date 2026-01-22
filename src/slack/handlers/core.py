@@ -7,13 +7,14 @@ Contains the core event loop and message processing logic.
 import asyncio
 import logging
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from slack_bolt import BoltContext
 from slack_sdk.web import WebClient
 
 from src.slack.session import SessionIdentity
 from src.graph.runner import get_runner
+from src.debug.collector import DebugCollector
 
 if TYPE_CHECKING:
     from src.slack.progress import ProgressTracker
@@ -191,6 +192,10 @@ async def _process_mention(
     # Create progress tracker for timing-based status feedback
     tracker = ProgressTracker(client, channel, thread_ts)
 
+    # Check debug mode at start (before processing)
+    debug_enabled = await _is_debug_enabled(channel)
+    collector: Optional[DebugCollector] = DebugCollector() if debug_enabled else None
+
     try:
         await tracker.start("Processing...")
 
@@ -215,10 +220,20 @@ async def _process_mention(
         # Handle routing result
         if routing.result == RouteResult.DUPLICATE:
             logger.info("Duplicate event, skipping")
+            if collector:
+                collector.add_entry("decision", "Event Routing", {
+                    "result": "DUPLICATE",
+                    "action": "skipped",
+                })
             await tracker.complete()
             return
 
         if routing.result == RouteResult.STALE_UI:
+            if collector:
+                collector.add_entry("decision", "Event Routing", {
+                    "result": "STALE_UI",
+                    "action": "error_message",
+                })
             client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -228,11 +243,23 @@ async def _process_mention(
             return
 
         if routing.result == RouteResult.CONTINUATION:
+            if collector:
+                collector.add_entry("decision", "Event Routing", {
+                    "result": "CONTINUATION",
+                    "pending_action": str(routing.pending_action),
+                })
             # Handle pending action continuation
             await _handle_continuation(
-                identity, routing.pending_action, state, text, user, client, thread_ts, channel, tracker
+                identity, routing.pending_action, state, text, user, client, thread_ts, channel, tracker, collector
             )
             return
+
+        # Log intent classification start
+        if collector:
+            collector.add_entry("intent", "Event Routing", {
+                "result": "INTENT_CLASSIFY",
+                "message_preview": text[:100],
+            })
 
         # Default: run graph with intent classification (RouteResult.INTENT_CLASSIFY)
         # Build conversation context BEFORE running graph (Phase 11)
@@ -249,11 +276,20 @@ async def _process_mention(
 
         result = await runner.run_with_message(text, user, conversation_context=conversation_context)
 
+        # Log decision from graph result
+        if collector:
+            collector.add_entry("decision", "Graph Decision", {
+                "action": result.get("action", "unknown"),
+                "intent": result.get("intent_result", {}).get("intent", "unknown") if result.get("intent_result") else "unknown",
+            })
+
         # Use dispatcher for skill execution (dispatcher handles status updates)
         await _dispatch_result(result, identity, client, runner, tracker)
 
     except Exception as e:
         logger.error(f"Error processing mention: {e}", exc_info=True)
+        if collector:
+            collector.add_error(e, "process_mention")
         client.chat_postMessage(
             channel=channel,
             thread_ts=thread_ts,
@@ -261,6 +297,12 @@ async def _process_mention(
         )
     finally:
         await tracker.complete()
+        # Post debug output if enabled
+        if collector and collector.entries:
+            try:
+                await _post_debug_output(client, channel, thread_ts, collector)
+            except Exception as debug_err:
+                logger.warning(f"Failed to post debug output: {debug_err}")
 
 
 async def _handle_continuation(
@@ -273,6 +315,7 @@ async def _handle_continuation(
     thread_ts: str,
     channel: str,
     tracker,
+    collector: Optional[DebugCollector] = None,
 ):
     """Handle pending action continuation.
 
@@ -289,6 +332,7 @@ async def _handle_continuation(
         thread_ts: Thread timestamp
         channel: Channel ID
         tracker: Progress tracker
+        collector: Optional debug collector for debug mode
     """
     from src.schemas.state import PendingAction
 
@@ -301,6 +345,12 @@ async def _handle_continuation(
         },
     )
 
+    if collector:
+        collector.add_entry("intent", "Continuation Handler", {
+            "pending_action": str(pending_action),
+            "message_preview": text[:100] if text else "",
+        })
+
     # Get runner to continue processing
     runner = get_runner(identity)
 
@@ -308,9 +358,23 @@ async def _handle_continuation(
     if pending_action == PendingAction.WAITING_UPDATE_CONFIRM:
         from src.slack.handlers.update import refine_update_from_feedback
 
+        if collector:
+            collector.add_entry("decision", "Update Refinement", {
+                "action": "refine_update_from_feedback",
+            })
         processed = await refine_update_from_feedback(identity, client, text)
         if processed:
+            if collector:
+                collector.add_entry("decision", "Update Refinement Result", {
+                    "processed": True,
+                })
             await tracker.complete()
+            # Post debug output for continuation path
+            if collector and collector.entries:
+                try:
+                    await _post_debug_output(client, channel, thread_ts, collector)
+                except Exception as debug_err:
+                    logger.warning(f"Failed to post debug output: {debug_err}")
             return
         # If not processed (no pending_update), fall through to normal flow
 
@@ -319,6 +383,10 @@ async def _handle_continuation(
     review_context = state.get("review_context")
     if review_context:
         logger.info("Forcing REVIEW_CONTINUATION intent for active review")
+        if collector:
+            collector.add_entry("intent", "Review Continuation Forced", {
+                "has_review_context": True,
+            })
         current_state = await runner._get_current_state()
         current_state["intent_result"] = {
             "intent": "REVIEW_CONTINUATION",
@@ -343,9 +411,70 @@ async def _handle_continuation(
         conversation_context=conversation_context,
     )
 
+    # Log decision from graph result
+    if collector:
+        collector.add_entry("decision", "Continuation Graph Decision", {
+            "action": result.get("action", "unknown"),
+            "intent": result.get("intent_result", {}).get("intent", "unknown") if result.get("intent_result") else "unknown",
+        })
+
     # Dispatch result
     from src.slack.handlers.dispatch import _dispatch_result
     await _dispatch_result(result, identity, client, runner, tracker)
+
+    # Post debug output for continuation path
+    if collector and collector.entries:
+        try:
+            await _post_debug_output(client, channel, thread_ts, collector)
+        except Exception as debug_err:
+            logger.warning(f"Failed to post debug output: {debug_err}")
+
+
+async def _is_debug_enabled(channel_id: str) -> bool:
+    """Check if debug mode is enabled for channel."""
+    from src.db import get_connection
+    from src.db.debug_store import DebugStore
+
+    try:
+        async with get_connection() as conn:
+            store = DebugStore(conn)
+            return await store.is_enabled(channel_id)
+    except Exception:
+        return False
+
+
+async def _post_debug_output(
+    client: WebClient,
+    channel_id: str,
+    thread_ts: str,
+    collector: DebugCollector,
+) -> None:
+    """Post debug output as thread reply.
+
+    Truncates LLM prompts to 300 chars in message.
+    Uploads full content as .txt file if needed.
+    """
+    from src.slack.blocks.debug import build_debug_output_blocks
+
+    blocks, full_content = build_debug_output_blocks(collector)
+
+    # Post debug message
+    result = client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        blocks=blocks,
+        text="Debug output",
+    )
+
+    # Upload full content as file if needed
+    if full_content:
+        client.files_upload_v2(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            content=full_content,
+            filename=f"debug_{thread_ts}.txt",
+            title="Full Debug Output",
+        )
 
 
 async def _check_persona_switch(
