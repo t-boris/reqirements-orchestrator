@@ -136,6 +136,21 @@ Classify the user's intent into ONE category:
   (Previously called TICKET - still accepted as alias)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
 
+- DRAFT_REFINE: User is asking about or wants to modify the ACTIVE DRAFT (not create new)
+  REQUIRES: Active draft must exist in context
+  Key signals:
+  - Questions about draft structure: "is one epic enough?", "should we split this?"
+  - Decomposition requests: "break this down", "make it more granular"
+  - Scope clarifications: "do you think this covers everything?"
+  - Meta-questions: "what do you think about the structure?"
+  Examples:
+  - "Do you think only one epic is enough?" -> DRAFT_REFINE (when draft exists)
+  - "Should we split this into multiple epics?" -> DRAFT_REFINE
+  - "Is this scope appropriate?" -> DRAFT_REFINE
+  - "Can you break this down further?" -> DRAFT_REFINE
+  IMPORTANT: Only use DRAFT_REFINE if ACTIVE DRAFT CONTEXT is present above.
+  If no active draft, use REVIEW instead.
+
 - JIRA_SEARCH: User wants to SEARCH Jira for existing issues
   Key phrases: "check Jira", "search Jira", "look in Jira", "find in Jira", "do we have a ticket",
   "already have", "similar issue", "existing ticket", "look up", "search for tickets"
@@ -202,7 +217,7 @@ IMPORTANT RULES:
 20. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
 
 Respond in this exact format:
-INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|DRAFT_REFINE|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -215,6 +230,7 @@ SEARCH_QUERY: <what to search for in Jira, or "none">
 CHANGE_TARGETS: <comma-separated list of affected keys/ids, or "none">
 CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
 OPS_SUBTYPE: <debug|explain|none>
+CONTEXT_RELATION: <continue|refine|change|new_topic|none>
 REASON: <brief explanation>"""
 
     try:
@@ -234,13 +250,14 @@ REASON: <brief explanation>"""
         target_type = None
         search_query = None
         ops_subtype = None
+        context_relation = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
                 valid_intents = [
-                    "OPS", "TICKET", "WORKITEM_CREATE", "TICKET_ACTION",
+                    "OPS", "TICKET", "WORKITEM_CREATE", "DRAFT_REFINE", "TICKET_ACTION",
                     "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST",
                     "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"
                 ]
@@ -291,6 +308,10 @@ REASON: <brief explanation>"""
                     ops_subtype = OpsSubtype.DEBUG
                 elif subtype_str == "explain":
                     ops_subtype = OpsSubtype.EXPLAIN
+            elif line.upper().startswith("CONTEXT_RELATION:"):
+                relation = line.split(":", 1)[1].strip().lower()
+                if relation in ["continue", "refine", "change", "new_topic"]:
+                    context_relation = relation
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -310,6 +331,7 @@ REASON: <brief explanation>"""
             target_type=target_type,
             search_query=search_query,
             ops_subtype=ops_subtype,
+            context_relation=context_relation,
             reasons=[reason],
         )
 
