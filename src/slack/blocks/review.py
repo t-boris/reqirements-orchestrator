@@ -4,7 +4,79 @@ Provides block builders for:
 - Patch review output with version indicator
 - Full synthesis output
 - "Show full architecture" and "Approve & Post Decision" buttons
+- Review response with artifact action buttons (Phase 25)
 """
+
+
+def build_review_response_blocks(
+    review_text: str,
+    persona: str,
+    topic: str | None = None,
+    artifact_id: str | None = None,
+) -> list[dict]:
+    """Build Slack blocks for review response with artifact buttons.
+
+    Phase 25: Reviews are now stored as persistent artifacts. This adds
+    buttons to approve/save the artifact or turn it into a work item.
+
+    Args:
+        review_text: The full review content
+        persona: Persona name that performed review
+        topic: Review topic (optional)
+        artifact_id: UUID of the stored artifact (optional)
+
+    Returns:
+        List of Slack blocks for review response
+    """
+    blocks = [
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f":memo: *{persona}* | {topic or 'Review'}",
+                },
+            ],
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": review_text[:3000],  # Slack text limit
+            },
+        },
+    ]
+
+    # Add action buttons if we have an artifact_id
+    if artifact_id:
+        buttons = [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Approve & Save"},
+                "action_id": "review_approve",
+                "style": "primary",
+                "value": artifact_id,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Turn into Work Item"},
+                "action_id": "review_to_workitem",
+                "value": artifact_id,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Dismiss"},
+                "action_id": "review_dismiss",
+            },
+        ]
+
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "actions",
+            "elements": buttons,
+        })
+
+    return blocks
 
 
 def build_patch_review_blocks(
