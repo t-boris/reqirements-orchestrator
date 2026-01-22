@@ -55,10 +55,15 @@ class TicketDraft(BaseModel):
     Evidence links trace every extraction back to source messages.
 
     Minimum viable for PREVIEW: title + problem + 1 AC
+    Type classification: issue_type (Epic/Story/Task/Bug), requested_scope (what to generate)
     """
     # Identity
     id: str = Field(default_factory=lambda: str(uuid4()))
     epic_id: Optional[str] = None  # Linked Epic key
+
+    # Type classification (Phase 26)
+    issue_type: Optional[IssueType] = None  # EPIC, STORY, TASK, BUG
+    requested_scope: Optional[RequestedScope] = None  # EPICS_ONLY, FULL_PLAN, SINGLE_ITEM
 
     # Core fields (required for PREVIEW)
     title: str = ""  # Maps to Jira summary
