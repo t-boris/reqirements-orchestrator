@@ -229,6 +229,10 @@ async def _dispatch_result(
                 text=discussion_msg,
             )
 
+    elif action == "ops":
+        # OPS response - debug or explain (Phase 25.2)
+        await _handle_ops_response(result, identity, client)
+
     elif action == "review_continuation":
         # Review continuation - synthesized response to user's answers
         continuation_msg = result.get("message", "")
@@ -1295,4 +1299,75 @@ async def _handle_change_request_preview(
         thread_ts=thread_ts,
         blocks=blocks,
         text="Change request preview",
+    )
+
+
+# --- OPS Response Handler (Phase 25.2) ---
+
+async def _handle_ops_response(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle OPS response - debug or explain.
+
+    Formats response based on subtype:
+    - DEBUG: System operator style with triage info
+    - EXPLAIN: Policy trace format
+
+    Args:
+        result: Decision result with message and subtype
+        identity: Session identity
+        client: Slack WebClient
+    """
+    ops_msg = result.get("message", "")
+    subtype = result.get("subtype", "debug")
+    timestamp = result.get("timestamp", "")
+
+    if not ops_msg:
+        ops_msg = "I couldn't generate a response."
+
+    # Format prefix based on subtype
+    if subtype == "explain":
+        prefix = ":brain: *MARO Explain*\n\n"
+    else:  # debug
+        prefix = ":wrench: *MARO Debug*\n\n"
+
+    # Build blocks for richer formatting
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": prefix + ops_msg
+            }
+        }
+    ]
+
+    # Add timestamp context for debug responses
+    if timestamp and subtype == "debug":
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Analysis generated at {timestamp[:19]}"
+                }
+            ]
+        })
+
+    client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts if identity.thread_ts else None,
+        blocks=blocks,
+        text=ops_msg[:200],  # Fallback text
+    )
+
+    logger.info(
+        "OPS response sent",
+        extra={
+            "channel_id": identity.channel_id,
+            "thread_ts": identity.thread_ts,
+            "subtype": subtype,
+        }
     )
