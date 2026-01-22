@@ -29,7 +29,7 @@ Event Router (pre-graph filtering)
 Intent Classification (LLM)
     ↓
 Graph Routing (LangGraph)
-    ├─→ Ticket Flow (extraction → validation → decision)
+    ├─→ WorkItem Flow (extraction → validation → decision)
     ├─→ Review Flow (persona-based analysis)
     ├─→ Discussion Flow (brief conversational)
     ├─→ Scope Gate Flow (ambiguous → 3-button UI)
@@ -100,7 +100,8 @@ The bot classifies every message into one of 9 intent types:
 
 | Intent | Description | Example |
 |--------|-------------|---------|
-| **TICKET** | Create NEW Jira ticket | "create a ticket for authentication" |
+| **WORKITEM_CREATE** | Create NEW work item | "create a ticket for authentication" |
+| ~~TICKET~~ | *Deprecated alias for WORKITEM_CREATE* | - |
 | **TICKET_ACTION** | Create items linked to existing ticket | "create stories for SCRUM-123" |
 | **JIRA_COMMAND** | Modify existing ticket fields | "change priority to high" |
 | **SYNC_REQUEST** | Bulk sync channel with Jira | "update Jira issues" |
@@ -543,7 +544,7 @@ Focus on: What makes them similar? Be specific and concise.
 START
   → intent_router (LLM classification)
   → [conditional routing]
-    ├─ ticket_flow
+    ├─ workitem_flow
     │    → extraction (update draft from message)
     │    → [should_continue?]
     │    │   ├─ extraction (loop for more info)
@@ -582,7 +583,7 @@ START
          → END
 ```
 
-### 5.2 Ticket Flow Detail
+### 5.2 WorkItem Flow Detail
 
 ```
 extraction
