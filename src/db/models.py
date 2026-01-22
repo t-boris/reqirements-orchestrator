@@ -356,3 +356,67 @@ class WorkItem(BaseModel):
     readiness_score: float = Field(
         default=0.0, description="0.0-1.0 score for draft completeness"
     )
+
+
+class ArtifactKind(str, Enum):
+    """Type of review artifact."""
+
+    ARCHITECTURE = "architecture"
+    SECURITY = "security"
+    PM = "pm"
+    GENERAL = "general"
+
+
+class ArtifactLinkType(str, Enum):
+    """Type of link between artifact and target."""
+
+    DERIVED_FROM = "derived_from"  # Artifact came from this source
+    RESULTED_IN = "resulted_in"  # Artifact led to this workitem
+    REFERENCES = "references"  # Artifact mentions this
+
+
+class ArtifactTargetType(str, Enum):
+    """Type of entity an artifact links to."""
+
+    WORKITEM = "workitem"
+    COMMIT = "commit"
+    JIRA = "jira"
+
+
+class ReviewArtifact(BaseModel):
+    """Persistent review artifact.
+
+    Reviews are stored as permanent artifacts linked to commits/workitems.
+    Unlike WorkItems, reviews represent knowledge/reasoning/decisions,
+    not necessarily actionable tasks.
+    """
+
+    artifact_id: str = Field(description="UUID for the artifact")
+    channel_id: str = Field(description="Slack channel ID")
+    source_thread_ts: str = Field(description="Thread where review originated")
+    kind: ArtifactKind = Field(description="Type of review")
+    version: int = Field(default=1, description="Version number")
+    content_hash: str = Field(description="Hash of full_content for deduplication")
+    summary: str = Field(description="One-line summary of the review")
+    full_content: str = Field(description="Full review text")
+    decisions: list[str] = Field(default_factory=list, description="Extracted decisions")
+    risks: list[str] = Field(default_factory=list, description="Extracted risks")
+    open_questions: list[str] = Field(default_factory=list, description="Open questions")
+    created_at: datetime = Field(description="When artifact was created")
+    created_by: str = Field(description="User ID who created")
+    approved_by: Optional[str] = Field(default=None, description="User ID who approved")
+    approved_at: Optional[datetime] = Field(default=None, description="When approved")
+
+
+class ArtifactLink(BaseModel):
+    """Link between artifact and another entity.
+
+    Enables tracking relationships between reviews and workitems/commits/jira.
+    """
+
+    link_id: str = Field(description="UUID for the link")
+    artifact_id: str = Field(description="Source artifact ID")
+    target_type: ArtifactTargetType = Field(description="Type of target entity")
+    target_id: str = Field(description="Target entity ID (workitem_id, commit_id, or jira_key)")
+    link_type: ArtifactLinkType = Field(description="Relationship type")
+    created_at: datetime = Field(description="When link was created")
