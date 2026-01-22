@@ -4,12 +4,16 @@ When user asks for review/analysis, this node provides thoughtful architectural
 feedback like a senior engineer, without triggering the ticket creation pipeline.
 
 The review is conversational and thorough - a discussion, not a ticket.
+
+Phase 25: Reviews are now stored as persistent ReviewArtifacts linked to
+commits/workitems.
 """
 import logging
 from typing import Any
 
 from src.schemas.state import AgentState
 from src.personas import get_persona, get_default_persona, PersonaName
+from src.db.models import ArtifactKind
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +137,116 @@ def _build_context_string(state: AgentState) -> str:
     return "No additional context available."
 
 
+def _persona_to_kind(persona: str) -> ArtifactKind:
+    """Map persona name to artifact kind."""
+    mapping = {
+        "Architect": ArtifactKind.ARCHITECTURE,
+        "architect": ArtifactKind.ARCHITECTURE,
+        "Technical Architect": ArtifactKind.ARCHITECTURE,
+        "Security Analyst": ArtifactKind.SECURITY,
+        "security": ArtifactKind.SECURITY,
+        "Product Manager": ArtifactKind.PM,
+        "pm": ArtifactKind.PM,
+    }
+    return mapping.get(persona, ArtifactKind.GENERAL)
+
+
+def _extract_decisions(text: str) -> list[str]:
+    """Extract decisions from review text."""
+    decisions = []
+    for line in text.split("\n"):
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in ["decided", "decision:", "we should", "recommend", "conclusion"]):
+            cleaned = line.strip()
+            if cleaned and len(cleaned) > 10:
+                decisions.append(cleaned)
+    return decisions[:5]  # Limit to 5
+
+
+def _extract_risks(text: str) -> list[str]:
+    """Extract risks from review text."""
+    risks = []
+    for line in text.split("\n"):
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in ["risk", "concern", "warning", "caution", "danger", "issue"]):
+            cleaned = line.strip()
+            if cleaned and len(cleaned) > 10:
+                risks.append(cleaned)
+    return risks[:5]  # Limit to 5
+
+
+def _extract_questions(text: str) -> list[str]:
+    """Extract open questions from review text."""
+    questions = []
+    for line in text.split("\n"):
+        if "?" in line:
+            cleaned = line.strip()
+            if cleaned and len(cleaned) > 10:
+                questions.append(cleaned)
+    return questions[:5]  # Limit to 5
+
+
+def _summarize_review(text: str) -> str:
+    """Generate short summary of review."""
+    # Take first non-empty line or first 100 chars
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("*") and len(stripped) > 20:
+            return stripped[:100]
+    return text[:100]
+
+
+async def _store_review_artifact(
+    channel_id: str,
+    thread_ts: str,
+    persona: str,
+    review_text: str,
+    user_id: str,
+) -> str | None:
+    """Store review as persistent artifact.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+        persona: Persona name used for review
+        review_text: Full review content
+        user_id: User who triggered the review
+
+    Returns:
+        artifact_id if stored successfully, None otherwise
+    """
+    from src.db import get_connection
+    from src.db.artifact_store import ArtifactStore
+
+    try:
+        async with get_connection() as conn:
+            store = ArtifactStore(conn)
+            artifact = await store.create(
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                kind=_persona_to_kind(persona),
+                summary=_summarize_review(review_text),
+                full_content=review_text,
+                created_by=user_id,
+                decisions=_extract_decisions(review_text),
+                risks=_extract_risks(review_text),
+                open_questions=_extract_questions(review_text),
+            )
+            logger.info(
+                "Stored review artifact",
+                extra={
+                    "artifact_id": artifact.artifact_id,
+                    "channel_id": channel_id,
+                    "thread_ts": thread_ts,
+                    "kind": artifact.kind.value,
+                },
+            )
+            return artifact.artifact_id
+    except Exception as e:
+        logger.error(f"Failed to store review artifact: {e}")
+        return None
+
+
 async def review_node(state: AgentState) -> dict[str, Any]:
     """Generate persona-based analysis for review requests.
 
@@ -222,6 +336,24 @@ async def review_node(state: AgentState) -> dict[str, Any]:
     try:
         analysis = await llm.chat(prompt)
 
+        # Build review_context for architecture decision tracking (Phase 14)
+        # This enables DECISION_APPROVAL detection on subsequent messages
+        from datetime import datetime, timezone
+        import time
+
+        channel_id = state.get("channel_id", "")
+        thread_ts = state.get("thread_ts", "")
+        user_id = state.get("user_id", "")
+
+        # Store review as persistent artifact (Phase 25)
+        artifact_id = await _store_review_artifact(
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            persona=persona_name,
+            review_text=analysis,
+            user_id=user_id,
+        )
+
         logger.info(
             f"Review node generated analysis: {len(analysis)} chars",
             extra={
@@ -230,13 +362,9 @@ async def review_node(state: AgentState) -> dict[str, Any]:
                 "state": ReviewState.ACTIVE,
                 "message_length": len(latest_human_message),
                 "analysis_length": len(analysis),
+                "artifact_id": artifact_id,
             },
         )
-
-        # Build review_context for architecture decision tracking (Phase 14)
-        # This enables DECISION_APPROVAL detection on subsequent messages
-        from datetime import datetime, timezone
-        import time
 
         review_context = {
             "state": ReviewState.ACTIVE,  # SET STATE - review just posted, awaiting user response
@@ -244,9 +372,10 @@ async def review_node(state: AgentState) -> dict[str, Any]:
             "review_summary": analysis,
             "persona": persona_name,
             "review_timestamp": datetime.now(timezone.utc).isoformat(),
-            "thread_ts": state.get("thread_ts", ""),
-            "channel_id": state.get("channel_id", ""),
+            "thread_ts": thread_ts,
+            "channel_id": channel_id,
             "created_at": time.time(),
+            "artifact_id": artifact_id,  # Link to persistent artifact
         }
 
         return {
@@ -255,6 +384,7 @@ async def review_node(state: AgentState) -> dict[str, Any]:
                 "message": analysis,
                 "persona": persona_name,
                 "topic": topic,
+                "artifact_id": artifact_id,  # Pass artifact_id for UI buttons
             },
             "review_context": review_context,
         }
