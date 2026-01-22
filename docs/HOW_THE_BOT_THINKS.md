@@ -288,6 +288,60 @@ Enhanced snapshot includes:
 - Item counts by type (epic: 5, story: 12, bug: 3)
 - Up to 50 recent tickets (increased from 10)
 
+### 3.5 Commit Semantics
+
+#### What is a Commit?
+
+A **commit** is an approved decision that becomes channel truth. Commits are:
+- Immutable once created
+- Linked to source thread
+- Optionally synced to Jira
+
+#### Commit Triggers
+
+| Event | Creates Commit? |
+|-------|-----------------|
+| Draft approved | Yes |
+| WorkItem created | Yes |
+| Decision approved | Yes |
+| Review approved | Yes (as artifact) |
+| Jira field updated | Yes (change record) |
+| Discussion message | No |
+
+#### Commit Structure
+
+```python
+class Commit:
+    commit_id: str
+    channel_id: str
+    source_thread_ts: str
+    commit_type: Literal["workitem", "decision", "artifact", "change"]
+    summary: str
+    details: dict
+    created_at: datetime
+    created_by: str
+    jira_synced: bool
+    jira_key: Optional[str]
+```
+
+#### Commit Log
+
+Each channel maintains a commit log (append-only):
+
+```
+[2026-01-22 10:30] WORKITEM: Created "Rate limiting API" (draft)
+[2026-01-22 10:45] DECISION: Approved rate limiting approach
+[2026-01-22 11:00] WORKITEM: Published to Jira as SCRUM-456
+[2026-01-22 14:00] CHANGE: Updated priority High → Critical
+```
+
+#### Relation to Jira Sync
+
+- Commits exist independently of Jira
+- `jira_synced=false` means local-only truth
+- Sync is explicit: "Publish to Jira" or `/maro sync`
+- Jira updates flow back as CHANGE commits
+
 ---
 
 ## 4. LLM Prompts Reference
