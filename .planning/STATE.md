@@ -73,7 +73,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 25-04-PLAN.md (review artifact persistence)
+Stopped at: Completed 25-02-PLAN.md (OPS intent with DEBUG/EXPLAIN subtypes)
 Resume file: None
 Next action: Execute 25-05-PLAN.md (Wave 2 - state separation + dedupe reorder)
 
