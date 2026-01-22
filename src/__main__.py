@@ -16,6 +16,8 @@ from src.db.commit_store import CommitStore
 from src.db.jira_operations import JiraOperationStore
 from src.db.debug_store import DebugStore
 from src.db.artifact_store import ArtifactStore
+from src.db.channel_state_store import ChannelStateStore
+from src.db.thread_state_store import ThreadStateStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -67,6 +69,13 @@ async def init_database() -> None:
         # Review artifact persistence (Phase 25)
         artifact_store = ArtifactStore(conn)
         await artifact_store.create_tables()
+
+        # Phase 25: Separated channel/thread state (Git model)
+        channel_state_store = ChannelStateStore(conn)
+        await channel_state_store.create_tables()
+
+        thread_state_store = ThreadStateStore(conn)
+        await thread_state_store.create_tables()
 
     logger.info("Database initialized")
 
