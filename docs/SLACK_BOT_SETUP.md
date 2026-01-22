@@ -17,11 +17,16 @@ Complete instructions for creating and configuring the MARO Slack bot.
 
 1. Go to https://api.slack.com/apps
 2. Click **Create New App**
-3. Choose **From an app manifest**
+3. Choose **From a manifest** (recommended)
 4. Select your workspace
-5. Paste the manifest below (YAML format):
+5. Choose **YAML** format
+6. Paste the manifest below:
 
 ```yaml
+_metadata:
+  major_version: 2
+  minor_version: 1
+
 display_information:
   name: MARO
   description: Managed Automated Requirements Orchestrator
@@ -88,7 +93,17 @@ settings:
   token_rotation_enabled: false
 ```
 
-6. Click **Create**
+7. Click **Next**
+8. Review the summary and click **Create**
+
+> **Note:** With `socket_mode_enabled: true`, no request URLs are needed. Slack sends events via WebSocket connection.
+
+### If You Have an Existing App
+
+1. Go to **Settings** → **App Manifest**
+2. Click **Edit** or switch to YAML view
+3. Add/update the `features.slash_commands` section
+4. Save and reinstall the app
 
 ---
 
