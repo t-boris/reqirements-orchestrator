@@ -98,7 +98,7 @@ def should_continue(state: AgentState) -> Literal["extraction", "validation", "e
     return "extraction"
 
 
-def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready", "preflight"]:
+def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready", "preflight", "draft_refine"]:
     """Route based on decision result.
 
     Used as conditional edge from decision node.
@@ -109,6 +109,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     - preview: Show draft for approval (may include likely duplicates)
     - ready: Approved, ready to create in Jira
     - preflight: EXACT_MATCH found, must choose before proceeding
+    - draft_refine: User asking about draft structure (Phase 26)
     """
     return get_decision_action(state)
 
@@ -311,7 +312,7 @@ def create_graph() -> StateGraph:
     workflow.add_edge("validation", "decision")
 
     # Decision routes to END (Slack handler processes the result)
-    # All four outcomes (ask, preview, ready, preflight) end the graph run
+    # All five outcomes (ask, preview, ready, preflight, draft_refine) end the graph run
     # The Slack handler will send appropriate response based on decision_result
     workflow.add_conditional_edges(
         "decision",
@@ -321,6 +322,7 @@ def create_graph() -> StateGraph:
             "preview": END,  # PREVIEW: draft shown for approval
             "ready": END,  # READY: ticket creation (Phase 7)
             "preflight": END,  # PREFLIGHT: EXACT_MATCH found, show blocking duplicate UI
+            "draft_refine": END,  # DRAFT_REFINE: user asking about draft structure (Phase 26)
         }
     )
 
