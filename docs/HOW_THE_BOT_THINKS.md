@@ -7,8 +7,17 @@ This document explains the complete decision-making logic, rules, prompts, and b
 ## Table of Contents
 
 1. [Core Architecture](#1-core-architecture)
+   - 1.1 High-Level Flow
+   - 1.2 Identity & State
+   - 1.3 Git Model
+   - 1.4 LLM Providers
 2. [Intent Classification](#2-intent-classification)
 3. [Governance Rules](#3-governance-rules)
+   - 3.1 Core Model
+   - 3.2 Duplicate Handling Rules
+   - 3.3 Registry Rules
+   - 3.4 Context Rules
+   - 3.5 Commit Semantics
 4. [LLM Prompts Reference](#4-llm-prompts-reference)
 5. [State Machine & Workflows](#5-state-machine--workflows)
 6. [Decision Logic](#6-decision-logic)
@@ -841,12 +850,16 @@ def compute_confidence(draft, duplicate):
 
 MARO's intelligence is built on:
 
-1. **LLM-powered intent classification** with 9 distinct types
-2. **Rule-based governance** ensuring consistent behavior
-3. **Graph-based workflows** with conditional routing
-4. **Smart duplicate detection** preventing redundant work
-5. **Human-in-the-loop** interrupts for critical decisions
-6. **Context-aware extraction** building understanding progressively
-7. **Persona-based analysis** for different perspectives
+1. **WorkItem-centric model** — Channel is truth, Jira is deployment
+2. **Git-like semantics** — Threads propose, channels commit, Jira syncs
+3. **LLM-powered intent classification** with 10+ distinct types
+4. **Rule-based governance** ensuring consistent behavior
+5. **Graph-based workflows** with conditional routing
+6. **Smart duplicate detection** — channel-first, then Jira
+7. **Human-in-the-loop** interrupts for critical decisions
+8. **Context-aware extraction** building understanding progressively
+9. **Persona-based analysis** for different perspectives
 
-The system is designed to be **conversational**, **non-blocking**, and **transparent** - always explaining its reasoning and giving users explicit choices.
+**Mantra:** "Threads propose. Channels decide. Jira executes."
+
+The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
