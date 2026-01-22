@@ -215,6 +215,26 @@ class ChannelModeConfig(BaseModel):
     updated_at: datetime
 
 
+class DebugModeConfig(BaseModel):
+    """Debug mode configuration for a channel.
+
+    When enabled, the bot outputs detailed debug information about its
+    processing steps, LLM calls, intent routing, and decision making.
+    """
+
+    id: str = Field(description="UUID for the config record")
+    channel_id: str = Field(description="Slack channel ID (unique)")
+    enabled: bool = Field(default=False, description="Whether debug mode is active")
+    verbosity: str = Field(
+        default="full",
+        description="Debug verbosity level: minimal, standard, full",
+    )
+    set_by: str = Field(description="User ID who enabled/disabled debug mode")
+    set_at: datetime = Field(description="When debug mode was last changed")
+    created_at: datetime
+    updated_at: datetime
+
+
 class ThreadModeOverride(BaseModel):
     """Per-thread mode override.
 
