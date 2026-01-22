@@ -5,6 +5,7 @@ Handles:
 - Interrupt at ASK/PREVIEW for human-in-the-loop
 - Resume with new messages
 - State persistence via checkpointer
+- Separated channel/thread state loading (Phase 25)
 """
 import asyncio
 import logging
@@ -16,6 +17,7 @@ from langchain_core.messages import HumanMessage
 from src.schemas.state import AgentState, AgentPhase
 from src.schemas.draft import TicketDraft
 from src.graph.graph import get_compiled_graph
+from src.graph.state import ChannelState, ThreadState
 
 if TYPE_CHECKING:
     from src.slack.session import SessionIdentity
@@ -101,17 +103,23 @@ class GraphRunner:
                 return {"action": "error", "error": str(e)}
 
     async def _get_current_state(self) -> dict[str, Any]:
-        """Get current state from checkpointer or initialize new."""
+        """Get current state from checkpointer or initialize new.
+
+        Also loads separated channel and thread state from stores.
+        """
         await self._ensure_graph()
         try:
             checkpoint = await self.graph.aget_state(self._config)
             if checkpoint and checkpoint.values:
-                return dict(checkpoint.values)
+                state = dict(checkpoint.values)
+                # Load separated state
+                state = await self._load_separated_state(state)
+                return state
         except Exception as e:
             logger.debug(f"No existing state: {e}")
 
         # Initialize new state
-        return {
+        state = {
             "messages": [],
             "draft": TicketDraft(epic_id=None),
             "phase": AgentPhase.COLLECTING,
@@ -141,6 +149,75 @@ class GraphRunner:
             "pending_update": None,
         }
 
+        # Load separated state
+        state = await self._load_separated_state(state)
+        return state
+
+    async def _load_separated_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Load channel and thread state from stores.
+
+        Args:
+            state: Current state dict
+
+        Returns:
+            State dict with channel_state and thread_state populated
+        """
+        channel_id = state.get("channel_id") or self.identity.channel_id
+        thread_ts = state.get("thread_ts") or self.identity.thread_ts
+
+        if not channel_id:
+            return state
+
+        try:
+            from src.db import get_connection
+            from src.db.channel_state_store import ChannelStateStore
+            from src.db.thread_state_store import ThreadStateStore
+
+            async with get_connection() as conn:
+                # Load channel state
+                channel_store = ChannelStateStore(conn)
+                channel_state = await channel_store.get(channel_id)
+                state["channel_state"] = channel_state
+
+                # Load thread state
+                if thread_ts:
+                    thread_store = ThreadStateStore(conn)
+                    thread_state = await thread_store.get_or_create(channel_id, thread_ts)
+                    state["thread_state"] = thread_state
+
+        except Exception as e:
+            logger.warning(f"Failed to load separated state: {e}")
+            # Continue without separated state - backward compat
+
+        return state
+
+    async def _save_separated_state(self, state: dict[str, Any]) -> None:
+        """Save channel and thread state to stores.
+
+        Called after graph execution to persist separated state.
+
+        Args:
+            state: Current state dict with channel_state and thread_state
+        """
+        try:
+            from src.db import get_connection
+            from src.db.channel_state_store import ChannelStateStore
+            from src.db.thread_state_store import ThreadStateStore
+
+            async with get_connection() as conn:
+                # Save channel state
+                if state.get("channel_state"):
+                    channel_store = ChannelStateStore(conn)
+                    await channel_store.update(state["channel_state"])
+
+                # Save thread state
+                if state.get("thread_state"):
+                    thread_store = ThreadStateStore(conn)
+                    await thread_store.save(state["thread_state"])
+
+        except Exception as e:
+            logger.warning(f"Failed to save separated state: {e}")
+
     async def _run_until_interrupt(self, state: dict[str, Any]) -> dict[str, Any]:
         """Run graph until interrupt point or completion.
 
@@ -149,6 +226,8 @@ class GraphRunner:
         - PREVIEW: Show draft for approval
         - READY_TO_CREATE: Approved, ready for Jira (Phase 7)
         """
+        result_state = None
+
         # Stream through graph
         async for event in self.graph.astream(state, self._config):
             # Check for interrupt conditions
@@ -160,11 +239,18 @@ class GraphRunner:
             if action in ["ask", "preview", "ready_to_create", "review", "discussion", "hint", "ticket_action", "review_continuation", "decision_approval"]:
                 # Interrupt - return current state
                 logger.info(f"Graph interrupted at {action}")
-                return self._merge_state(state, current_state)
+                result_state = self._merge_state(state, current_state)
+                break
 
-        # Graph completed
-        final_state = await self.graph.aget_state(self._config)
-        return dict(final_state.values) if final_state else state
+        # If no interrupt, get final state
+        if result_state is None:
+            final_state = await self.graph.aget_state(self._config)
+            result_state = dict(final_state.values) if final_state else state
+
+        # Save separated state after execution
+        await self._save_separated_state(result_state)
+
+        return result_state
 
     def _merge_state(self, base: dict[str, Any], updates: dict) -> dict[str, Any]:
         """Merge state updates into base state."""
