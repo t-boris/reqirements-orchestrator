@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 24-debug-mode
-Plan: Ready to execute (3 plans)
-Status: Plans created, ready for execution
-Last activity: 2026-01-22 — Phase 24 planned
+Plan: 1 of 3 complete in current phase
+Status: In progress
+Last activity: 2026-01-22 — Completed 24-01-PLAN.md
 
-Progress: ░░░░░░░░░░ 0% (v1.2)
+Progress: ███░░░░░░░ 33% (v1.2)
 
 ## Milestones Summary
 
@@ -73,15 +73,15 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Phase 24 plans created
+Stopped at: Completed 24-01-PLAN.md
 Resume file: None
-Next action: `/gsd:execute-phase 24` to implement debug mode
+Next action: `/gsd:execute-plan 24-02` to implement debug slash command
 
 ## What's Next
 
-**Phase 24: Debug Mode** — 3 plans ready for execution:
-- Plan 01: Foundation (DebugStore, DebugCollector)
+**Phase 24: Debug Mode** — 1 of 3 plans complete:
+- Plan 01: Foundation (DebugStore, DebugCollector) - COMPLETE
 - Plan 02: Slash Command (/maro debug on/off/status/state)
 - Plan 03: Integration (debug output in message flow)
 
-Run `/gsd:execute-phase 24` to start implementation.
+Run `/gsd:execute-plan 24-02` to continue implementation.
