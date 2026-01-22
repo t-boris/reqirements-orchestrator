@@ -39,9 +39,11 @@ Intent Classification (LLM)
     ↓
 Graph Routing (LangGraph)
     ├─→ WorkItem Flow (extraction → validation → decision)
+    ├─→ Draft Refine Flow (meta-questions about draft → clarification)
     ├─→ Review Flow (persona-based analysis)
     ├─→ Discussion Flow (brief conversational)
     ├─→ Scope Gate Flow (ambiguous → 3-button UI)
+    ├─→ Change Request Flow (modify existing Jira issues)
     ├─→ Jira Command Flow (field modifications)
     ├─→ Sync Flow (bulk channel sync)
     └─→ Jira Search Flow (search existing)
@@ -111,6 +113,8 @@ The bot classifies every message into one of 9 intent types:
 |--------|-------------|---------|
 | **WORKITEM_CREATE** | Create NEW work item | "create a ticket for authentication" |
 | ~~TICKET~~ | *Deprecated alias for WORKITEM_CREATE* | - |
+| **DRAFT_REFINE** | Clarify/refine active draft structure | "is one epic enough?" |
+| **CHANGE_REQUEST** | Modify existing Jira issue | "update the description" |
 | **TICKET_ACTION** | Create items linked to existing ticket | "create stories for SCRUM-123" |
 | **JIRA_COMMAND** | Modify existing ticket fields | "change priority to high" |
 | **SYNC_REQUEST** | Bulk sync channel with Jira | "update Jira issues" |
@@ -176,12 +180,39 @@ SEARCH_QUERY: <query or "none">
 REASON: <brief explanation>
 ```
 
-### 2.3 Classification Rules
+### 2.3 Context-Aware Classification (Phase 26)
+
+The intent classifier now receives **active draft state** in addition to the message:
+
+```
+ACTIVE DRAFT CONTEXT:
+- Title: Voice-controlled Remote Command Execution
+- Issue Type: epic
+- Status: Draft in progress
+NOTE: If user asks questions about this draft (structure, scope, decomposition),
+      classify as DRAFT_REFINE, NOT REVIEW.
+```
+
+**Key rule:** When active draft exists and user asks "Do you think X is enough?" or "Should we split this?", classify as `DRAFT_REFINE` (not REVIEW).
+
+### 2.4 Classification Rules
 
 1. **Default to REVIEW** - When uncertain, classify as REVIEW (not AMBIGUOUS)
-2. **Context-aware** - Extracts ticket keys from conversation history for contextual references
-3. **Persona detection** - Captures PM/Architect/Security hints for review personas
-4. **Metadata extraction** - Extracts command fields, search queries, action types
+2. **Draft-aware** - Meta-questions about active draft → DRAFT_REFINE
+3. **Context-aware** - Extracts ticket keys from conversation history for contextual references
+4. **Persona detection** - Captures PM/Architect/Security hints for review personas
+5. **Metadata extraction** - Extracts command fields, search queries, action types
+
+### 2.5 Context Relation
+
+Each intent classification now includes a `context_relation` field:
+
+| Relation | Meaning |
+|----------|---------|
+| `continue` | Message continues current flow |
+| `refine` | Message refines/clarifies current draft |
+| `change` | Message requests changes to existing truth |
+| `new_topic` | Message is unrelated to current context |
 
 ---
 
@@ -402,6 +433,14 @@ Fields you can update:
 - constraints: List of {"key", "value"} technical decisions
 - dependencies: List of external dependencies
 - risks: List of potential risks
+- issue_type: Type of work item (epic, story, task, bug)
+  Only set if user explicitly mentions: "create an epic", "make a story", "this is a bug"
+- requested_scope: What to generate (epics_only, full_plan, single_item)
+  - epics_only: User says "only epic(s)", "just epics", "epic-level only"
+  - full_plan: User says "full breakdown", "complete plan", "with stories"
+  - single_item: Default for normal requests
+
+IMPORTANT: Do NOT put "Epic:" or "Story:" prefixes in the title. Use issue_type field instead.
 
 Return empty object {} if no new information to extract.
 
@@ -563,6 +602,11 @@ START
     │    → decision (route to ask/preview/preflight)
     │    → END
     │
+    ├─ draft_refine_flow (Phase 26)
+    │    → decision (checks DRAFT_REFINE intent)
+    │    → returns refinement_prompt with options
+    │    → END
+    │
     ├─ review_flow
     │    → review (persona-based analysis)
     │    → END
@@ -636,6 +680,11 @@ Each workflow step has allowed actions:
 
 ```python
 def decision_node(state):
+    # 0. Check for DRAFT_REFINE intent (Phase 26)
+    if intent == "DRAFT_REFINE" and draft.title:
+        # User asking meta-questions about draft structure
+        return DRAFT_REFINE (with refinement_prompt)
+
     # 1. Check thread binding first
     if thread_bound_to_ticket:
         skip_duplicate_detection()
@@ -718,6 +767,7 @@ def batch_questions(questions):
 | `ask` | `SkillDispatcher.ask_user` | Questions in modal/blocks |
 | `preview` | `SkillDispatcher.show_draft` | Draft blocks + approve/reject |
 | `preflight` | `build_preflight_blocks` | Duplicate UI + 3 choice buttons |
+| `draft_refine` | `_build_refinement_prompt` | Options for draft decomposition |
 | `ready` | Simple message | "Ticket approved and ready" |
 | `review` | Chunked blocks | Analysis + approve/edit buttons |
 | `discussion` | Simple message | Brief conversational response |
@@ -852,14 +902,20 @@ MARO's intelligence is built on:
 
 1. **WorkItem-centric model** — Channel is truth, Jira is deployment
 2. **Git-like semantics** — Threads propose, channels commit, Jira syncs
-3. **LLM-powered intent classification** with 10+ distinct types
-4. **Rule-based governance** ensuring consistent behavior
-5. **Graph-based workflows** with conditional routing
-6. **Smart duplicate detection** — channel-first, then Jira
-7. **Human-in-the-loop** interrupts for critical decisions
-8. **Context-aware extraction** building understanding progressively
-9. **Persona-based analysis** for different perspectives
+3. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+4. **Structured type extraction** — issue_type/requested_scope instead of "Epic:" prefixes
+5. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
+6. **Rule-based governance** ensuring consistent behavior
+7. **Graph-based workflows** with conditional routing
+8. **Smart duplicate detection** — channel-first, then Jira
+9. **Human-in-the-loop** interrupts for critical decisions
+10. **Context-aware extraction** building understanding progressively
+11. **Persona-based analysis** for different perspectives
 
 **Mantra:** "Threads propose. Channels decide. Jira executes."
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
+
+---
+
+*Last updated: 2026-01-22 (Phase 26 context-aware intent)*
