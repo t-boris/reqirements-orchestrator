@@ -4,6 +4,12 @@ Captured from codebase during Phase 18 (Clean Code).
 
 ## Open Issues
 
+### Bug: Slash Commands Not Working (Reported 2026-01-22)
+
+| ID | Description | Symptoms | Notes |
+|----|-------------|----------|-------|
+| ISS-012 | `/maro help` disappears, no response | Command runs but returns nothing, no errors in logs | Needs investigation - likely Slack response issue |
+
 ### Feature Group: Epic/Session Management — Phase 23
 
 **Status:** Promoted to Phase 23 (2026-01-20)
@@ -92,4 +98,4 @@ The following functions exceed 100 lines but are considered acceptable complexit
 
 ---
 
-*Last updated: 2026-01-20 (Issue review)*
+*Last updated: 2026-01-22 (Added ISS-012 slash command bug)*
