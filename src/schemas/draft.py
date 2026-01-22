@@ -97,6 +97,15 @@ class TicketDraft(BaseModel):
             or self.constraints
         )
 
+    def get_display_type(self) -> str:
+        """Get human-readable issue type for display.
+
+        Returns issue_type value or 'Story' as default.
+        """
+        if self.issue_type:
+            return self.issue_type.value.title()  # "epic" -> "Epic"
+        return "Story"  # Default fallback
+
     def has_content(self) -> bool:
         """Check if draft has any content (opposite of is_empty)."""
         return not self.is_empty()
