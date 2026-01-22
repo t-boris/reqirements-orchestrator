@@ -59,6 +59,7 @@ from src.graph.nodes.scope_gate import scope_gate_node
 from src.graph.nodes.jira_command import jira_command_node
 from src.graph.nodes.sync_trigger import sync_trigger_node
 from src.graph.nodes.jira_search import jira_search_node
+from src.graph.nodes.change_request import change_request_node
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
@@ -165,6 +166,10 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         # Search Jira for existing issues
         logger.info("Intent router: routing to jira_search_flow")
         return "jira_search_flow"
+    elif intent_upper == "CHANGE_REQUEST":
+        # Diff-based updates to existing truth
+        logger.info("Intent router: routing to change_request_flow")
+        return "change_request_flow"
     elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
@@ -222,6 +227,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("jira_command", jira_command_node)
     workflow.add_node("sync_trigger", sync_trigger_node)
     workflow.add_node("jira_search", jira_search_node)
+    workflow.add_node("change_request", change_request_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -241,6 +247,7 @@ def create_graph() -> StateGraph:
             "jira_command_flow": "jira_command",  # Natural language Jira commands
             "sync_flow": "sync_trigger",  # Bulk sync with Jira
             "jira_search_flow": "jira_search",  # Search Jira for existing issues
+            "change_request_flow": "change_request",  # Diff-based updates (Phase 25.3)
         }
     )
 
@@ -270,6 +277,9 @@ def create_graph() -> StateGraph:
 
     # Jira search goes directly to END after preparing search results
     workflow.add_edge("jira_search", END)
+
+    # Change request goes directly to END after preparing diff preview
+    workflow.add_edge("change_request", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
