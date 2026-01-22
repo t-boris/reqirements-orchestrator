@@ -16,6 +16,21 @@ class ConstraintStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 
+class IssueType(str, Enum):
+    """Type of Jira issue to create."""
+    EPIC = "epic"
+    STORY = "story"
+    TASK = "task"
+    BUG = "bug"
+
+
+class RequestedScope(str, Enum):
+    """Scope of work items requested by user."""
+    EPICS_ONLY = "epics_only"      # User wants only epic-level items
+    FULL_PLAN = "full_plan"        # Full breakdown (epics + stories)
+    SINGLE_ITEM = "single_item"    # Just one ticket (default)
+
+
 class DraftConstraint(BaseModel):
     """Structured constraint with status tracking."""
     key: str  # e.g., "API.date_format"
