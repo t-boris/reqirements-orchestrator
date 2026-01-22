@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 24: Debug Mode
+**Current focus:** v1.2 Developer Experience — Phase 25: WorkItem-Centric Architecture
 
 ## Current Position
 
-Phase: 24-debug-mode
-Plan: 3 of 3 complete in current phase
-Status: Phase complete
-Last activity: 2026-01-22 — Completed 24-03-PLAN.md
+Phase: 25-workitem-centric
+Plan: 1 of 5 plans complete
+Status: In progress
+Last activity: 2026-01-22 — Completed 25-01-PLAN.md
 
-Progress: ██████████ 100% (v1.2 Phase 24)
+Progress: ██░░░░░░░░ 20% (v1.2 Phase 25)
 
 ## Milestones Summary
 
@@ -73,15 +73,27 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 24-03-PLAN.md (Phase 24 complete)
+Stopped at: Completed 25-01-PLAN.md (documentation rewrite)
 Resume file: None
-Next action: `/gsd:complete-milestone` to archive v1.2 and prepare for next version
+Next action: Continue Wave 1 execution (25-02, 25-03, 25-04 can run in parallel)
 
 ## What's Next
 
-**Phase 24: Debug Mode** — COMPLETE (3 of 3 plans):
-- Plan 01: Foundation (DebugStore, DebugCollector) - COMPLETE
-- Plan 02: Slash Command (/maro debug on/off/status/state) - COMPLETE
-- Plan 03: Integration (debug output in message flow) - COMPLETE
+**Phase 25: WorkItem-Centric Architecture** — ALL PLANS CREATED
 
-Phase 24 is complete. Run `/gsd:complete-milestone` when ready to wrap up v1.2.
+Discussion document: `.planning/phases/25-workitem-centric/DISCUSSION.md`
+
+**Plans:**
+- 25-01-PLAN.md: Documentation rewrite (Git model, system identity)
+- 25-02-PLAN.md: Intent rename + OPS intent (DEBUG/EXPLAIN)
+- 25-03-PLAN.md: CHANGE_REQUEST intent (diff-based updates)
+- 25-04-PLAN.md: ReviewArtifact persistence
+- 25-05-PLAN.md: State separation + dedupe reorder
+
+**Execution waves:**
+```
+Wave 1 (parallel): 25.1, 25.2, 25.3, 25.4
+Wave 2: 25.5 (depends on 25.2-25.4)
+```
+
+**Next action:** Execute Wave 1 plans (run `/gsd:execute-phase 25`)
