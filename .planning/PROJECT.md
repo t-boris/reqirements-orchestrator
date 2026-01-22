@@ -8,9 +8,9 @@ A Slack bot that acts as a collective thinking system where communication is the
 
 **Chat is the source of truth.** The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
 
-## Current State (v1.1)
+## Current State (v1.2 in progress)
 
-**Shipped:** 2026-01-20
+**Latest:** 2026-01-22
 
 **Tech stack:** Python 3.11, LangGraph, Slack Bolt, PostgreSQL, Docker
 
@@ -26,6 +26,14 @@ A Slack bot that acts as a collective thinking system where communication is the
 - Multi-ticket creation from reviews (Epic + Stories)
 - Communication as Source of Truth: WorkItem registry, channel modes, commit semantics
 - Bidirectional Jira sync with field ownership and conflict detection
+
+**v1.2 in progress:**
+- Phase 24: Debug mode (`/maro debug on/off/status/state`)
+- Phase 25: WorkItem-centric architecture (WORKITEM_CREATE, OPS intent, CHANGE_REQUEST)
+- Phase 26: Context-aware intent classification
+  - `DRAFT_REFINE` intent for meta-questions about active draft
+  - `issue_type` and `requested_scope` extraction (no more "Epic:" prefixes)
+  - Context-aware LLM classification (message + draft state → intent)
 
 ## Requirements
 
@@ -115,6 +123,8 @@ A Slack bot that acts as a collective thinking system where communication is the
 | Field ownership classification | Clear rules for bidirectional sync | ✓ Good |
 | Section fingerprinting | Granular conflict detection without full diff | ✓ Good |
 | SessionStore deprecated | Migrate to WorkItemStore, keep for backward compat | — Pending cleanup |
+| Context-aware intent | Pass draft state to LLM classifier for DRAFT_REFINE detection | ✓ Good |
+| Structured issue types | IssueType/RequestedScope enums instead of "Epic:" title prefixes | ✓ Good |
 
 ---
-*Last updated: 2026-01-20 after v1.1 milestone*
+*Last updated: 2026-01-22 after Phase 26 (v1.2)*
