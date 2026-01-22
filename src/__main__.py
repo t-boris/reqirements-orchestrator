@@ -14,6 +14,7 @@ from src.db.workitem_store import WorkItemStore
 from src.db.channel_mode_store import ChannelModeStore
 from src.db.commit_store import CommitStore
 from src.db.jira_operations import JiraOperationStore
+from src.db.debug_store import DebugStore
 from src.health import start_health_server
 from src.slack.app import get_slack_app, start_socket_mode
 from src.slack.router import register_handlers
@@ -57,6 +58,10 @@ async def init_database() -> None:
         # Jira operations tracking
         jira_ops_store = JiraOperationStore(conn)
         await jira_ops_store.create_tables()
+
+        # Debug mode tracking (Phase 24)
+        debug_store = DebugStore(conn)
+        await debug_store.create_tables()
 
     logger.info("Database initialized")
 
