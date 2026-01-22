@@ -51,6 +51,11 @@ from src.slack.blocks.readiness import (
     is_ready_for_jira,
     READINESS_THRESHOLD,
 )
+from src.slack.blocks.debug import (
+    build_debug_status_blocks,
+    build_debug_state_blocks,
+    build_debug_output_blocks,
+)
 
 __all__ = [
     # Draft
@@ -89,4 +94,8 @@ __all__ = [
     "build_kept_local_blocks",
     "is_ready_for_jira",
     "READINESS_THRESHOLD",
+    # Debug
+    "build_debug_status_blocks",
+    "build_debug_state_blocks",
+    "build_debug_output_blocks",
 ]
