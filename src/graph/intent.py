@@ -25,12 +25,17 @@ logger = logging.getLogger(__name__)
 IntentType = Intent  # Alias for legacy code
 
 
-async def _llm_classify(message: str, conversation_context: dict | None = None) -> IntentResult:
+async def _llm_classify(
+    message: str,
+    conversation_context: dict | None = None,
+    active_draft: dict | None = None,  # Active draft summary (Phase 26)
+) -> IntentResult:
     """Use LLM to classify user intent with full conversation context.
 
     Args:
         message: User's current message text
         conversation_context: Full conversation history (messages + summary)
+        active_draft: Active draft summary for context-aware classification (Phase 26)
     """
     from src.llm import get_llm
 
@@ -54,9 +59,24 @@ async def _llm_classify(message: str, conversation_context: dict | None = None) 
                     context_str += f"[{user}]: {text}\n"
             context_str += "\n"
 
+    # Build active draft context (Phase 26)
+    draft_context_str = ""
+    if active_draft:
+        draft_title = active_draft.get("title", "")
+        draft_issue_type = active_draft.get("issue_type", "")
+        draft_has_content = bool(draft_title)
+        if draft_has_content:
+            draft_context_str = f"""
+ACTIVE DRAFT CONTEXT:
+- Title: {draft_title}
+- Issue Type: {draft_issue_type or 'not specified'}
+- Status: Draft in progress
+NOTE: If user asks questions about this draft (structure, scope, decomposition), classify as DRAFT_REFINE, NOT REVIEW.
+"""
+
     prompt = f"""You are classifying user intent for a Slack bot that helps with Jira tickets and architecture discussions.
 
-{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}
+{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}{f"ACTIVE DRAFT:{chr(10)}{draft_context_str}" if draft_context_str else ""}
 CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
