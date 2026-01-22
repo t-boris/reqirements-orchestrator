@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 25-workitem-centric
-Plan: 1 of 5 plans complete
+Plan: 4 of 5 plans complete (Wave 1 complete)
 Status: In progress
-Last activity: 2026-01-22 — Completed 25-01-PLAN.md
+Last activity: 2026-01-22 — Completed 25-04-PLAN.md (Review artifact persistence)
 
-Progress: ██░░░░░░░░ 20% (v1.2 Phase 25)
+Progress: ████████░░ 80% (v1.2 Phase 25)
 
 ## Milestones Summary
 
@@ -73,9 +73,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 25-01-PLAN.md (documentation rewrite)
+Stopped at: Completed 25-04-PLAN.md (review artifact persistence)
 Resume file: None
-Next action: Continue Wave 1 execution (25-02, 25-03, 25-04 can run in parallel)
+Next action: Execute 25-05-PLAN.md (Wave 2 - state separation + dedupe reorder)
 
 ## What's Next
 
@@ -92,8 +92,8 @@ Discussion document: `.planning/phases/25-workitem-centric/DISCUSSION.md`
 
 **Execution waves:**
 ```
-Wave 1 (parallel): 25.1, 25.2, 25.3, 25.4
-Wave 2: 25.5 (depends on 25.2-25.4)
+Wave 1 (parallel): 25.1, 25.2, 25.3, 25.4 ✅ COMPLETE
+Wave 2: 25.5 (depends on 25.2-25.4) ⏳ READY
 ```
 
-**Next action:** Execute Wave 1 plans (run `/gsd:execute-phase 25`)
+**Next action:** Execute 25-05-PLAN.md (state separation + dedupe reorder)
