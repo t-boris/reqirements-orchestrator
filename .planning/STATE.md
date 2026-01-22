@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 25-workitem-centric
-Plan: 4 of 5 plans complete (Wave 1 complete)
-Status: In progress
-Last activity: 2026-01-22 — Completed 25-04-PLAN.md (Review artifact persistence)
+Plan: 5 of 5 plans complete
+Status: Complete
+Last activity: 2026-01-22 — Completed 25-05-PLAN.md (State separation + dedupe reorder)
 
-Progress: ████████░░ 80% (v1.2 Phase 25)
+Progress: ██████████ 100% (v1.2 Phase 25)
 
 ## Milestones Summary
 
@@ -73,27 +73,26 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 25-02-PLAN.md (OPS intent with DEBUG/EXPLAIN subtypes)
+Stopped at: Completed 25-05-PLAN.md (State separation + dedupe reorder)
 Resume file: None
-Next action: Execute 25-05-PLAN.md (Wave 2 - state separation + dedupe reorder)
+Next action: Phase 25 complete. Create next phase or milestone.
 
 ## What's Next
 
-**Phase 25: WorkItem-Centric Architecture** — ALL PLANS CREATED
+**Phase 25: WorkItem-Centric Architecture** — COMPLETE
 
-Discussion document: `.planning/phases/25-workitem-centric/DISCUSSION.md`
+All 5 plans executed:
+- 25-01-PLAN.md: Documentation rewrite (Git model, system identity) ✅
+- 25-02-PLAN.md: Intent rename + OPS intent (DEBUG/EXPLAIN) ✅
+- 25-03-PLAN.md: CHANGE_REQUEST intent (diff-based updates) ✅
+- 25-04-PLAN.md: ReviewArtifact persistence ✅
+- 25-05-PLAN.md: State separation + dedupe reorder ✅
 
-**Plans:**
-- 25-01-PLAN.md: Documentation rewrite (Git model, system identity)
-- 25-02-PLAN.md: Intent rename + OPS intent (DEBUG/EXPLAIN)
-- 25-03-PLAN.md: CHANGE_REQUEST intent (diff-based updates)
-- 25-04-PLAN.md: ReviewArtifact persistence
-- 25-05-PLAN.md: State separation + dedupe reorder
+**Key accomplishments:**
+- Git model documentation and system identity (Rules 1-20)
+- OPS intent with DEBUG/EXPLAIN subtypes
+- CHANGE_REQUEST intent for diff-based updates
+- ReviewArtifact persistence in database
+- Separated ChannelState/ThreadState with channel-first duplicate detection
 
-**Execution waves:**
-```
-Wave 1 (parallel): 25.1, 25.2, 25.3, 25.4 ✅ COMPLETE
-Wave 2: 25.5 (depends on 25.2-25.4) ⏳ READY
-```
-
-**Next action:** Execute 25-05-PLAN.md (state separation + dedupe reorder)
+**Next action:** Create next phase or milestone
