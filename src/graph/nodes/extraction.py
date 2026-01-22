@@ -572,6 +572,29 @@ Reviewed by: {artifact_persona}
                     existing = getattr(draft, field, [])
                     extracted[field] = existing + extracted[field]
 
+            # Handle issue_type and requested_scope (Phase 26)
+            if "issue_type" in extracted:
+                from src.schemas.draft import IssueType
+                issue_type_raw = extracted.pop("issue_type", None)
+                if issue_type_raw:
+                    issue_type_str = str(issue_type_raw).lower().strip()
+                    try:
+                        draft.issue_type = IssueType(issue_type_str)
+                        logger.info(f"Extracted issue_type: {draft.issue_type}")
+                    except ValueError:
+                        logger.warning(f"Invalid issue_type: {issue_type_str}")
+
+            if "requested_scope" in extracted:
+                from src.schemas.draft import RequestedScope
+                scope_raw = extracted.pop("requested_scope", None)
+                if scope_raw:
+                    scope_str = str(scope_raw).lower().strip()
+                    try:
+                        draft.requested_scope = RequestedScope(scope_str)
+                        logger.info(f"Extracted requested_scope: {draft.requested_scope}")
+                    except ValueError:
+                        logger.warning(f"Invalid requested_scope: {scope_str}")
+
             # Handle constraints specially (list of dicts)
             if "constraints" in extracted:
                 existing_constraints = draft.constraints
