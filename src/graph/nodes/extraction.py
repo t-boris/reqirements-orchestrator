@@ -29,17 +29,24 @@ New message to process:
 Extract any new information that should update the draft. Consider BOTH the conversation context above AND the new message. Return a JSON object with ONLY the fields that have new information. Do not repeat existing values.
 
 Fields you can update:
-- title: Clear, concise ticket title
+- title: Clear, concise ticket title (do NOT prefix with "Epic:", "Story:", etc.)
 - problem: What problem we're solving
 - proposed_solution: How we'll solve it
 - acceptance_criteria: List of testable criteria (append new ones)
 - constraints: List of {{"key", "value"}} technical decisions
 - dependencies: List of external dependencies
 - risks: List of potential risks
+- issue_type: Type of work item (epic, story, task, bug)
+  Only set if user explicitly mentions type: "create an epic", "make a story", "this is a bug"
+- requested_scope: What to generate (epics_only, full_plan, single_item)
+  - epics_only: User says "only epic(s)", "just epics", "epic-level only"
+  - full_plan: User says "full breakdown", "complete plan", "with stories"
+  - single_item: Default for normal requests
 
 Return empty object {{}} if no new information to extract.
 
 IMPORTANT: Only extract factual information stated in the message. Do not invent or assume.
+IMPORTANT: Do NOT put "Epic:" or "Story:" prefixes in the title. Use issue_type field instead.
 
 JSON response:'''
 
