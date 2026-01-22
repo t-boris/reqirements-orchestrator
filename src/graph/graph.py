@@ -113,7 +113,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
@@ -175,6 +175,10 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         # Diff-based updates to existing truth
         logger.info("Intent router: routing to change_request_flow")
         return "change_request_flow"
+    elif intent_upper == "DRAFT_REFINE":
+        # Refinement questions about active draft - stays in ticket flow
+        logger.info("Intent router: routing DRAFT_REFINE to ticket_flow")
+        return "ticket_flow"
     elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
