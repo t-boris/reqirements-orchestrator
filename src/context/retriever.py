@@ -13,10 +13,22 @@ from src.db.models import (
     ChannelActivitySnapshot,
     EpicSummary,
     WorkItemSummary,
+    ReviewArtifact,
 )
 from src.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ArtifactSummary:
+    """Summary of a review artifact for context."""
+
+    artifact_id: str
+    kind: str
+    summary: str
+    decisions: list[str]
+    approved: bool
 
 
 async def build_channel_snapshot(
@@ -150,6 +162,9 @@ class ChannelContextResult:
     active_epics: list[str] = field(default_factory=list)
     recent_tickets: list[str] = field(default_factory=list)
 
+    # Recent artifacts (Phase 25)
+    recent_artifacts: list[ArtifactSummary] = field(default_factory=list)
+
     # Source tracking (for explainability)
     sources: list[ContextSource] = field(default_factory=list)
 
@@ -169,6 +184,16 @@ class ChannelContextResult:
             "definition_of_done": self.definition_of_done,
             "active_epics": self.active_epics,
             "recent_tickets": self.recent_tickets,
+            "recent_artifacts": [
+                {
+                    "artifact_id": a.artifact_id,
+                    "kind": a.kind,
+                    "summary": a.summary,
+                    "decisions": a.decisions[:3],  # Top 3
+                    "approved": a.approved,
+                }
+                for a in self.recent_artifacts
+            ],
             "retrieved_at": self.retrieved_at.isoformat(),
             "mode": self.mode.value,
         }
@@ -214,12 +239,25 @@ class ChannelContextRetriever:
                 mode=mode,
             )
 
+        # Get recent artifacts (Phase 25)
+        recent_artifacts = await self.get_recent_artifacts(channel_id, limit=10)
+
         if mode == RetrievalMode.RAW:
-            return self._to_raw_result(ctx)
+            result = self._to_raw_result(ctx)
         elif mode == RetrievalMode.DEBUG:
-            return self._to_debug_result(ctx)
+            result = self._to_debug_result(ctx)
         else:
-            return self._to_compact_result(ctx)
+            result = self._to_compact_result(ctx)
+
+        # Attach artifacts to result
+        result.recent_artifacts = recent_artifacts
+
+        # Add artifact summary to bullets if any
+        if recent_artifacts and mode == RetrievalMode.COMPACT:
+            approved_count = sum(1 for a in recent_artifacts if a.approved)
+            result.bullets.append(f"Recent reviews: {len(recent_artifacts)} ({approved_count} approved)")
+
+        return result
 
     def _to_compact_result(self, ctx: ChannelContext) -> ChannelContextResult:
         """Convert to compact mode (10-20 bullets max)."""
@@ -362,3 +400,39 @@ class ChannelContextRetriever:
             ChannelActivitySnapshot with all active items.
         """
         return await build_channel_snapshot(self._conn, channel_id)
+
+    async def get_recent_artifacts(
+        self,
+        channel_id: str,
+        limit: int = 10,
+    ) -> list[ArtifactSummary]:
+        """Get recent review artifacts for a channel.
+
+        Phase 25: Include recent artifacts in channel context.
+
+        Args:
+            channel_id: Slack channel ID.
+            limit: Maximum number of artifacts to return.
+
+        Returns:
+            List of ArtifactSummary objects.
+        """
+        from src.db.artifact_store import ArtifactStore
+
+        try:
+            store = ArtifactStore(self._conn)
+            artifacts = await store.get_by_channel(channel_id, limit=limit)
+
+            return [
+                ArtifactSummary(
+                    artifact_id=a.artifact_id,
+                    kind=a.kind.value,
+                    summary=a.summary,
+                    decisions=a.decisions[:3] if a.decisions else [],
+                    approved=a.approved_at is not None,
+                )
+                for a in artifacts
+            ]
+        except Exception as e:
+            logger.warning(f"Failed to get recent artifacts: {e}")
+            return []
