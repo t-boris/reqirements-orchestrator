@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 25-workitem-centric
-Plan: 5 of 5 plans complete
-Status: Complete
-Last activity: 2026-01-22 — Completed 25-05-PLAN.md (State separation + dedupe reorder)
+Phase: 26-context-aware-intent
+Plan: 0 of 4 plans
+Status: Planned (ready to execute)
+Last activity: 2026-01-22 — Phase 26 plans created
 
-Progress: ██████████ 100% (v1.2 Phase 25)
+Progress: ░░░░░░░░░░ 0% (v1.2 Phase 26)
 
 ## Milestones Summary
 
@@ -79,20 +79,16 @@ Next action: Phase 25 complete. Create next phase or milestone.
 
 ## What's Next
 
-**Phase 25: WorkItem-Centric Architecture** — COMPLETE
+**Phase 26: Context-Aware Intent Classification** — NOT STARTED
 
-All 5 plans executed:
-- 25-01-PLAN.md: Documentation rewrite (Git model, system identity) ✅
-- 25-02-PLAN.md: Intent rename + OPS intent (DEBUG/EXPLAIN) ✅
-- 25-03-PLAN.md: CHANGE_REQUEST intent (diff-based updates) ✅
-- 25-04-PLAN.md: ReviewArtifact persistence ✅
-- 25-05-PLAN.md: State separation + dedupe reorder ✅
+**Problem discovered:** Bot doesn't understand issue types structurally and confuses meta-questions about drafts with REVIEW mode.
 
-**Key accomplishments:**
-- Git model documentation and system identity (Rules 1-20)
-- OPS intent with DEBUG/EXPLAIN subtypes
-- CHANGE_REQUEST intent for diff-based updates
-- ReviewArtifact persistence in database
-- Separated ChannelState/ThreadState with channel-first duplicate detection
+**Components:**
+- A: Add `issue_type`, `requested_scope` to TicketDraft schema
+- B: Context-aware intent routing (message + state → intent)
+- C: Extract issue_type and scope from user requests
+- D: Draft continuity rule in decision node
 
-**Next action:** Create next phase or milestone
+**New Intent:** `DRAFT_REFINE` for refinement questions about active draft
+
+**Next action:** Run `/gsd:execute-phase 26` to execute the 4 plans

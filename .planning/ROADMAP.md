@@ -61,6 +61,43 @@
 - 25.1 parallel with 25.2-25.4
 - 25.5 depends on 25.2-25.4
 
+### Phase 26: Context-Aware Intent Classification
+
+**Status:** Not started
+
+**Objective:** Make intent classification context-aware so MARO understands issue types structurally and doesn't confuse meta-questions about drafts with REVIEW requests.
+
+**Problem:**
+1. No `issue_type` field in draft — "only epics" becomes "Epic:" in title
+2. Intent router ignores active draft context — "one epic enough?" routes to REVIEW
+3. LLM classifies message text only, not message + state
+
+**Components:**
+
+| Component | Focus | Changes |
+|-----------|-------|---------|
+| A | Draft Schema | Add `issue_type`, `requested_scope` to TicketDraft |
+| B | Intent Router | Context-aware classification: message + state → intent + relation |
+| C | Extraction | Extract `issue_type` and `scope` from user requests |
+| D | Decision | Draft continuity rule to prevent premature mode switch |
+
+**New Intent:**
+- `DRAFT_REFINE` — Refinement questions about active draft structure
+
+**Key Rule:**
+When active draft exists and user asks "Do you think X is enough?", classify as `DRAFT_REFINE` (not REVIEW).
+
+**Expected Behavior After Fix:**
+```
+User: "formulate only epic(s) for this task"
+→ issue_type=EPIC, requested_scope=EPICS_ONLY
+→ draft.title = "Voice-controlled Remote Command Execution System" (clean, no "Epic:" prefix)
+
+User: "Do you think only one epic is enough?"
+→ intent=DRAFT_REFINE (not REVIEW)
+→ Bot proposes decomposition options, asks clarifying question
+```
+
 ## Completed Milestones
 
 <details>
@@ -157,3 +194,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 25.3 CHANGE_REQUEST | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.4 ReviewArtifact | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
+| 26. Context-Aware Intent | v1.2 | 0/4 | Planned | - |
