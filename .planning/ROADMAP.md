@@ -12,7 +12,7 @@
 
 **Goal:** Improve debugging and observability for bot operators.
 
-### Phase 24: Debug Mode
+### Phase 24: Debug Mode (COMPLETE)
 
 **Objective:** Per-channel debug mode that shows internal processing details.
 
@@ -33,6 +33,33 @@
 2. `DebugCollector` - Accumulate debug data during processing
 3. `/maro debug` handler - Slash command for on/off/status/state
 4. Dispatch integration - Post debug output after processing
+
+### Phase 25: WorkItem-Centric Architecture
+
+**Status:** COMPLETE → [Discussion Doc](phases/25-workitem-centric/DISCUSSION.md)
+
+**Objective:** Shift from Jira-centric to WorkItem-centric model.
+
+**Mantra:** "Threads propose. Channels decide. Jira executes."
+
+**Decisions:**
+- `OPS` intent with `subtype: DEBUG | EXPLAIN` (not two separate intents)
+- `TICKET` → `WORKITEM_CREATE` rename with dual-stack migration
+- All 5 sub-phases in scope for v1.2
+
+**Sub-phases:**
+
+| Phase | Focus | Risk |
+|-------|-------|------|
+| 25.1 | Documentation rewrite (Git model, system identity) | Low |
+| 25.2 | Intent rename + OPS intent (DEBUG/EXPLAIN subtypes) | Medium |
+| 25.3 | CHANGE_REQUEST intent (diff-based updates) | Medium |
+| 25.4 | ReviewArtifact persistence | Medium |
+| 25.5 | State separation + dedupe reorder | High |
+
+**Dependencies:**
+- 25.1 parallel with 25.2-25.4
+- 25.5 depends on 25.2-25.4
 
 ## Completed Milestones
 
@@ -125,3 +152,8 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 23.4 Jira Sync Engine | v1.1 | 6/6 | Complete | 2026-01-20 |
 | 23.5 Integration | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 24. Debug Mode | v1.2 | 3/3 | Complete | 2026-01-22 |
+| 25.1 Documentation | v1.2 | 1/1 | Complete | 2026-01-22 |
+| 25.2 Intent Rename + OPS | v1.2 | 1/1 | Complete | 2026-01-22 |
+| 25.3 CHANGE_REQUEST | v1.2 | 1/1 | Complete | 2026-01-22 |
+| 25.4 ReviewArtifact | v1.2 | 1/1 | Complete | 2026-01-22 |
+| 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
