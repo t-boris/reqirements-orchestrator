@@ -192,12 +192,43 @@ def get_help_blocks() -> list[dict]:
                 },
             ]
         },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*Slash Commands*\n\n"
+                    "*Getting Started*\n"
+                    "`/maro help` - Show this help\n"
+                    "`/maro enable` - Enable listening in channel\n"
+                    "`/maro disable` - Disable listening\n"
+                    "`/maro status` - Show listening status\n\n"
+                    "*Issue Tracking*\n"
+                    "`/maro track PROJ-123` - Track Jira issue\n"
+                    "`/maro untrack PROJ-123` - Remove from tracked\n"
+                    "`/maro tracked` - List tracked issues\n"
+                    "`/maro board` - Show/update pinned board\n"
+                    "`/maro board hide` - Remove pinned board\n\n"
+                    "*Sync*\n"
+                    "`/maro sync` - Show pending Jira sync\n"
+                    "`/maro sync --auto` - Auto-apply changes\n\n"
+                    "*Configuration*\n"
+                    "`/maro mode` - Show channel mode\n"
+                    "`/maro mode project|feature|bugs|ops` - Set mode\n\n"
+                    "*Debugging*\n"
+                    "`/maro debug` - Show debug status\n"
+                    "`/maro debug on|off` - Enable/disable debug\n"
+                    "`/maro debug state` - Full internal state"
+                )
+            }
+        },
         {
             "type": "context",
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "Click a button to see an example conversation"
+                    "text": "Click a button above to see example conversations"
                 }
             ]
         }
