@@ -40,6 +40,21 @@ def _get_confidence_emoji(match_state: DuplicateMatch) -> str:
     return ":information_source:"
 
 
+def _get_source_indicator(source: str) -> tuple[str, str]:
+    """Get emoji and label for match source.
+
+    Args:
+        source: Source of the match - 'channel' or 'jira'
+
+    Returns:
+        Tuple of (emoji, label) for display.
+    """
+    if source == "channel":
+        return ":file_folder:", "Channel Registry"
+    else:
+        return ":jira:", "Jira"
+
+
 def build_preflight_blocks(
     preflight_result: dict,
     session_id: str,
@@ -79,6 +94,7 @@ def build_preflight_blocks(
         assignee = best_match.get("assignee", "Unassigned") or "Unassigned"
         confidence = best_match.get("confidence", 0.0)
         match_reason = best_match.get("match_reason", "")
+        source = best_match.get("source", "jira")
     else:
         # Fallback to first duplicate
         dup = duplicates[0]
@@ -89,17 +105,26 @@ def build_preflight_blocks(
         assignee = dup.get("assignee", "Unassigned") or "Unassigned"
         confidence = dup.get("confidence", 0.0)
         match_reason = dup.get("match_reason", "")
+        source = dup.get("source", "jira")
 
     emoji = _get_confidence_emoji(match_state)
     confidence_label = _get_confidence_label(confidence)
+    source_emoji, source_label = _get_source_indicator(source)
 
-    # Header based on match state
+    # Header based on match state and source
     if match_state == DuplicateMatch.EXACT_MATCH:
         header_text = f"{emoji} *EXACT MATCH FOUND* ({confidence_label})"
-        subtext = "This appears to be an existing task. Please choose how to proceed."
+        if source == "channel":
+            subtext = f"{source_emoji} _This item is already in your channel registry._"
+        else:
+            subtext = f"{source_emoji} _Found in Jira (not yet in channel registry)._"
     else:
-        header_text = f"{emoji} *Possible existing ticket found* ({confidence_label})"
-        subtext = "I found a similar ticket. You may want to link to it instead of creating a duplicate."
+        if source == "channel":
+            header_text = f"{source_emoji} *Existing Work Item Found* ({confidence_label})"
+            subtext = "_This item is already in your channel registry._"
+        else:
+            header_text = f":mag: *Similar Jira Issue Found* ({confidence_label})"
+            subtext = "_Found in Jira (not yet in channel registry)._"
 
     blocks.append({
         "type": "section",
@@ -119,13 +144,13 @@ def build_preflight_blocks(
 
     blocks.append({"type": "divider"})
 
-    # Main ticket info
+    # Main ticket info with source indicator
     blocks.append({
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": f"*<{url}|{key}>*: {summary}\n"
-                    f"Status: *{status}* | Assignee: {assignee}"
+            "text": f"{source_emoji} *<{url}|{key}>*: {summary}\n"
+                    f"Status: *{status}* | Assignee: {assignee} | Source: {source_label}"
         }
     })
 
@@ -277,15 +302,6 @@ def build_duplicate_blocks(
 
     blocks = []
 
-    # Header
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": ":mag: *Possible existing ticket found*"
-        }
-    })
-
     # Best match (first duplicate)
     best = potential_duplicates[0]
     key = best.get("key", "Unknown")
@@ -298,11 +314,38 @@ def build_duplicate_blocks(
     updated = best.get("updated", "Unknown")
     match_reason = best.get("match_reason", "")
     confidence = best.get("confidence", 0.0)
+    source = best.get("source", "jira")
 
-    # Main ticket info with confidence if available
-    info_text = f"I found a Jira ticket that looks very similar:\n\n"
-    info_text += f"*<{url}|{key}>* - \"{summary}\"\n"
-    info_text += f"Status: {status} | Assignee: {assignee} | Updated: {updated}"
+    # Get source indicator
+    source_emoji, source_label = _get_source_indicator(source)
+
+    # Header based on source
+    if source == "channel":
+        header_text = f"{source_emoji} *Existing Work Item Found*"
+        intro_text = "_This item is already in your channel registry._"
+    else:
+        header_text = ":mag: *Similar Jira Issue Found*"
+        intro_text = "_Found in Jira (not yet in channel registry)._"
+
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": header_text,
+        }
+    })
+
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": intro_text,
+        }]
+    })
+
+    # Main ticket info with confidence and source
+    info_text = f"{source_emoji} *<{url}|{key}>* - \"{summary}\"\n"
+    info_text += f"Status: {status} | Assignee: {assignee} | Source: {source_label}"
     if confidence > 0:
         info_text += f" | Confidence: {int(confidence * 100)}%"
 
