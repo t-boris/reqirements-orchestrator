@@ -457,6 +457,18 @@ async def _dispatch_result(
         # Jira search - search for existing issues
         await _handle_jira_search(result, identity, client)
 
+    elif action == "change_request_preview":
+        # Change request - diff-based updates (Phase 25.3)
+        await _handle_change_request_preview(client, identity.channel_id, identity.thread_ts, result)
+
+    elif action == "change_request_error":
+        # Change request error
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f":warning: {result.get('error', 'Unknown error')}",
+        )
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -1261,3 +1273,26 @@ async def _handle_jira_search(
         )
     finally:
         await jira_service.close()
+
+
+async def _handle_change_request_preview(
+    client: WebClient,
+    channel_id: str,
+    thread_ts: str,
+    result: dict,
+) -> None:
+    """Handle change request preview display."""
+    from src.slack.blocks.change_request import build_change_preview_blocks
+    from src.schemas.change_request import ChangePreview, ChangeRequest
+
+    preview = ChangePreview(**result["preview"])
+    request = ChangeRequest(**result["request"])
+
+    blocks = build_change_preview_blocks(preview, request)
+
+    client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        blocks=blocks,
+        text="Change request preview",
+    )
