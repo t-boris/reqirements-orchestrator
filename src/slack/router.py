@@ -37,6 +37,9 @@ from src.slack.handlers import (
     handle_scope_gate_submit,
     # Architecture approval (Phase 20)
     handle_approve_architecture,
+    # Review artifact actions (Phase 25)
+    handle_review_approve,
+    handle_turn_into_workitem,
     # Decision linking (Phase 21-05)
     handle_link_decision,
     handle_skip_decision_link,
@@ -144,6 +147,12 @@ def register_handlers(app: App) -> None:
 
     # Architecture approval (Phase 20)
     app.action("approve_architecture")(handle_approve_architecture)
+
+    # Review artifact actions (Phase 25)
+    app.action("review_approve")(handle_review_approve)
+    app.action("review_to_workitem")(handle_turn_into_workitem)
+    # Dismiss is a no-op (ack only)
+    app.action("review_dismiss")(lambda ack, body, client: ack())
 
     # Scope gate modal submission (Phase 13)
     app.view("review_scope_gate")(handle_scope_gate_submit)

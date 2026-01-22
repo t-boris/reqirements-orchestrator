@@ -67,6 +67,9 @@ from src.slack.handlers.review import (
     handle_review_to_ticket,
     handle_scope_gate_submit,
     handle_approve_architecture,
+    # Artifact handlers (Phase 25)
+    handle_review_approve,
+    handle_turn_into_workitem,
 )
 
 # Scope gate handlers (AMBIGUOUS intent)
@@ -173,6 +176,9 @@ __all__ = [
     "handle_review_to_ticket",
     "handle_scope_gate_submit",
     "handle_approve_architecture",
+    # Artifact handlers (Phase 25)
+    "handle_review_approve",
+    "handle_turn_into_workitem",
     # Scope Gate (AMBIGUOUS intent)
     "handle_scope_gate_review",
     "handle_scope_gate_ticket",
