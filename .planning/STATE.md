@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 26-context-aware-intent
-Plan: 1 of 4 plans
+Plan: 3 of 4 plans
 Status: In progress
-Last activity: 2026-01-22 — Completed 26-01-PLAN.md
+Last activity: 2026-01-22 — Completed 26-03-PLAN.md
 
-Progress: ██░░░░░░░░ 25% (v1.2 Phase 26)
+Progress: ███████░░░ 75% (v1.2 Phase 26)
 
 ## Milestones Summary
 
@@ -73,22 +73,22 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 26-01-PLAN.md (Draft schema type fields)
+Stopped at: Completed 26-03-PLAN.md (Extraction scope signals)
 Resume file: None
-Next action: Execute 26-02-PLAN.md (Context-aware intent routing)
+Next action: Execute 26-04-PLAN.md (Draft continuity rule in decision node)
 
 ## What's Next
 
-**Phase 26: Context-Aware Intent Classification** — IN PROGRESS (1/4 plans)
+**Phase 26: Context-Aware Intent Classification** — IN PROGRESS (3/4 plans)
 
 **Completed:**
 - Plan 01: Added IssueType/RequestedScope enums and type fields to TicketDraft
+- Plan 02: Context-aware intent routing (message + state -> intent)
+- Plan 03: Extract issue_type and scope from user requests
 
 **Remaining:**
-- Plan 02: Context-aware intent routing (message + state → intent)
-- Plan 03: Extract issue_type and scope from user requests
 - Plan 04: Draft continuity rule in decision node
 
 **New Intent:** `DRAFT_REFINE` for refinement questions about active draft
 
-**Next action:** Run `/gsd:execute-plan 26-02` to execute context-aware routing
+**Next action:** Run `/gsd:execute-plan 26-04` to complete phase

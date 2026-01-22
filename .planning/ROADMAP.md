@@ -194,4 +194,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 25.3 CHANGE_REQUEST | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.4 ReviewArtifact | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
-| 26. Context-Aware Intent | v1.2 | 1/4 | In progress | - |
+| 26. Context-Aware Intent | v1.2 | 3/4 | In progress | - |
