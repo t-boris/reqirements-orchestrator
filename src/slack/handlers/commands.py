@@ -221,6 +221,7 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro debug off - Disable debug mode
     - /maro debug status - Quick health check
     - /maro debug state - Full internal state dump
+    - /maro explain - Explain MARO's last action/decision (OPS:EXPLAIN)
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -275,6 +276,10 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
         # /maro debug [on|off|status|state]
         debug_action = args[0].lower() if args else "status"
         await _handle_maro_debug(channel, user_id, debug_action, client, say)
+    elif subcommand == "explain":
+        # /maro explain - Trigger OPS:EXPLAIN flow
+        thread_ts = command.get("thread_ts")
+        await _handle_maro_explain(channel, team_id, user_id, thread_ts, client, say)
     else:
         # Default to help for empty or unknown
         await _handle_maro_help(channel, client)
@@ -1196,3 +1201,89 @@ async def _build_debug_state_blocks(channel_id: str, conn) -> list[dict]:
     })
 
     return blocks
+
+
+# --- OPS Commands (Phase 25.2) ---
+
+async def _handle_maro_explain(
+    channel_id: str,
+    team_id: str,
+    user_id: str,
+    thread_ts: str | None,
+    client: WebClient,
+    say,
+):
+    """Handle /maro explain - trigger OPS:EXPLAIN flow.
+
+    Forces OPS intent with EXPLAIN subtype to explain the last action.
+    Runs the graph with forced intent.
+    """
+    from src.slack.session import SessionIdentity
+    from src.graph.runner import get_runner
+    from src.schemas.intent import Intent, OpsSubtype
+
+    # Build message to process
+    explain_message = "Explain your last decision."
+
+    # Get or create thread_ts for session identity
+    if not thread_ts:
+        # Post initial message in channel to create thread
+        result = client.chat_postMessage(
+            channel=channel_id,
+            text="Analyzing my recent decisions...",
+        )
+        thread_ts = result["ts"]
+
+    # Build session identity
+    identity = SessionIdentity(
+        team_id=team_id or "default",
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+
+    # Get runner for this session
+    runner = get_runner(identity)
+
+    try:
+        # Force OPS:EXPLAIN intent
+        forced_intent = {
+            "intent": Intent.OPS.value,
+            "confidence": 1.0,
+            "ops_subtype": OpsSubtype.EXPLAIN.value,
+            "reasons": ["forced by /maro explain command"],
+        }
+
+        # Run graph with forced intent
+        result_state = await runner.run(
+            explain_message,
+            user_id=user_id,
+            intent_result=forced_intent,
+        )
+
+        # Extract response from decision_result
+        decision_result = result_state.get("decision_result", {})
+        response_text = decision_result.get("message", "I couldn't generate an explanation.")
+
+        # Send response in thread
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=response_text,
+        )
+
+        logger.info(
+            "OPS:EXPLAIN completed",
+            extra={
+                "channel_id": channel_id,
+                "user_id": user_id,
+                "thread_ts": thread_ts,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to run OPS:EXPLAIN: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text="Sorry, I couldn't explain my decisions right now. Please try again.",
+        )
