@@ -86,21 +86,21 @@ def build_welcome_blocks() -> list[dict]:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*MARO is active in this channel*\n\nI help turn discussions into Jira tickets and keep context in sync."
+                "text": "*MARO is active in this channel*\n\nI help turn discussions into Jira tickets, review requirements, and keep context in sync with Jira."
             }
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Try:*\n* `@MARO Create a Jira story for...`\n* `@MARO What do you think about this?`\n* `@MARO Review this as security`"
+                "text": "*Try:*\n* `@MARO Create a Jira story for...`\n* `@MARO Review this as security`\n* `@MARO Explain your last decision`"
             }
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Commands:*\n* `/maro status` - show channel settings\n* `/maro help` - quick help\n* `/persona pm | architect | security`"
+                "text": "*Commands:*\n* `/maro enable` - start listening in channel\n* `/maro help` - full command reference\n* `/maro track PROJ-123` - track a Jira issue\n* `/maro sync` - show pending Jira changes"
             }
         },
         {
@@ -108,7 +108,7 @@ def build_welcome_blocks() -> list[dict]:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "I stay silent unless you mention me."
+                    "text": "I stay silent unless you mention me or use a command."
                 }
             ]
         }
