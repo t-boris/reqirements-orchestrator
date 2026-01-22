@@ -124,4 +124,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 23.3 Commit Semantics | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 23.4 Jira Sync Engine | v1.1 | 6/6 | Complete | 2026-01-20 |
 | 23.5 Integration | v1.1 | 5/5 | Complete | 2026-01-20 |
-| 24. Debug Mode | v1.2 | 1/3 | In progress | - |
+| 24. Debug Mode | v1.2 | 2/3 | In progress | - |
