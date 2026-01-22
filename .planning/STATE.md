@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 25: WorkItem-Centric Architecture
+**Current focus:** v1.2 Developer Experience — Phase 26: Context-Aware Intent
 
 ## Current Position
 
 Phase: 26-context-aware-intent
-Plan: 0 of 4 plans
-Status: Planned (ready to execute)
-Last activity: 2026-01-22 — Phase 26 plans created
+Plan: 1 of 4 plans
+Status: In progress
+Last activity: 2026-01-22 — Completed 26-01-PLAN.md
 
-Progress: ░░░░░░░░░░ 0% (v1.2 Phase 26)
+Progress: ██░░░░░░░░ 25% (v1.2 Phase 26)
 
 ## Milestones Summary
 
@@ -73,22 +73,22 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-22
-Stopped at: Completed 25-05-PLAN.md (State separation + dedupe reorder)
+Stopped at: Completed 26-01-PLAN.md (Draft schema type fields)
 Resume file: None
-Next action: Phase 25 complete. Create next phase or milestone.
+Next action: Execute 26-02-PLAN.md (Context-aware intent routing)
 
 ## What's Next
 
-**Phase 26: Context-Aware Intent Classification** — NOT STARTED
+**Phase 26: Context-Aware Intent Classification** — IN PROGRESS (1/4 plans)
 
-**Problem discovered:** Bot doesn't understand issue types structurally and confuses meta-questions about drafts with REVIEW mode.
+**Completed:**
+- Plan 01: Added IssueType/RequestedScope enums and type fields to TicketDraft
 
-**Components:**
-- A: Add `issue_type`, `requested_scope` to TicketDraft schema
-- B: Context-aware intent routing (message + state → intent)
-- C: Extract issue_type and scope from user requests
-- D: Draft continuity rule in decision node
+**Remaining:**
+- Plan 02: Context-aware intent routing (message + state → intent)
+- Plan 03: Extract issue_type and scope from user requests
+- Plan 04: Draft continuity rule in decision node
 
 **New Intent:** `DRAFT_REFINE` for refinement questions about active draft
 
-**Next action:** Run `/gsd:execute-phase 26` to execute the 4 plans
+**Next action:** Run `/gsd:execute-plan 26-02` to execute context-aware routing
