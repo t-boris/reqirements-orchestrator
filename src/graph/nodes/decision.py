@@ -718,7 +718,7 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready", "preflight"]:
+def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready", "preflight", "draft_refine"]:
     """Get decision action from state for routing.
 
     Use in graph conditional edges.
@@ -729,4 +729,6 @@ def get_decision_action(state: AgentState) -> Literal["ask", "preview", "ready",
         return "ready"
     if action == "preflight_required":
         return "preflight"
+    if action == "draft_refine":
+        return "draft_refine"
     return action
