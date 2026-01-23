@@ -50,7 +50,7 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
             "channel": channel,
             "user": user,
             "subcommand": subcommand,
-            "args": args,
+            "command_args": args,
         }
     )
 
@@ -78,110 +78,6 @@ def handle_jira_command(ack: Ack, command: dict, say, client: WebClient):
             text="Available commands:\n* `/jira create [type]` - Start new ticket\n* `/jira search <query>` - Search tickets\n* `/jira status` - Session status",
             channel=channel,
         )
-
-
-def handle_persona_command(ack: Ack, command: dict, say, client: WebClient):
-    """Handle /persona slash command (sync wrapper).
-
-    Delegates to async implementation via _run_async().
-    """
-    ack()  # Ack immediately
-    _run_async(_handle_persona_command_async(command, say, client))
-
-
-async def _handle_persona_command_async(command: dict, say, client: WebClient):
-    """Async implementation of /persona slash command.
-
-    Commands:
-    - /persona [name] - Switch to persona (pm, security, architect)
-    - /persona lock - Lock current persona for thread
-    - /persona unlock - Allow persona switching again
-    - /persona status - Show current persona and validators
-    - /persona list - Show available personas
-    """
-    channel = command.get("channel_id")
-    thread_ts = command.get("thread_ts") or command.get("ts", "")
-    user = command.get("user_id")
-    text = command.get("text", "").strip()
-
-    logger.info(
-        "Persona command received",
-        extra={
-            "channel": channel,
-            "thread_ts": thread_ts,
-            "user": user,
-            "command_text": text,
-        }
-    )
-
-    # Get session state if we have a thread
-    from src.personas.commands import handle_persona_command as exec_persona_cmd
-
-    # Build minimal state if no session exists
-    state = {
-        "persona": "pm",
-        "persona_lock": False,
-        "persona_reason": "default",
-    }
-
-    # Try to get actual session state
-    if thread_ts:
-        try:
-            identity = SessionIdentity(
-                team_id=command.get("team_id", "default"),
-                channel_id=channel,
-                thread_ts=thread_ts,
-            )
-            # Check if runner exists for this session
-            from src.graph.runner import _runners
-            if identity.session_id in _runners:
-                runner = get_runner(identity)
-                current_state = await runner._get_current_state()
-                state = {
-                    "persona": current_state.get("persona", "pm"),
-                    "persona_lock": current_state.get("persona_lock", False),
-                    "persona_reason": current_state.get("persona_reason", "default"),
-                    "persona_confidence": current_state.get("persona_confidence"),
-                }
-        except Exception as e:
-            logger.warning(f"Could not get session state: {e}")
-
-    # Execute command
-    result = exec_persona_cmd(text, state)
-
-    # Send response
-    response_kwargs = {
-        "channel": channel,
-        "text": result.message,
-    }
-    if thread_ts:
-        response_kwargs["thread_ts"] = thread_ts
-
-    client.chat_postMessage(**response_kwargs)
-
-    # Update session if state changed and we have a runner
-    if result.state_update and thread_ts:
-        try:
-            identity = SessionIdentity(
-                team_id=command.get("team_id", "default"),
-                channel_id=channel,
-                thread_ts=thread_ts,
-            )
-            from src.graph.runner import _runners
-            if identity.session_id in _runners:
-                runner = get_runner(identity)
-                current_state = await runner._get_current_state()
-                new_state = {**current_state, **result.state_update}
-                await runner._update_state(new_state)
-                logger.info(
-                    "Persona state updated",
-                    extra={
-                        "session_id": identity.session_id,
-                        "state_update": result.state_update,
-                    }
-                )
-        except Exception as e:
-            logger.warning(f"Could not update session state: {e}")
 
 
 # --- MARO Slash Command Handlers ---
@@ -240,7 +136,7 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
             "team_id": team_id,
             "user_id": user_id,
             "subcommand": subcommand,
-            "args": args,
+            "command_args": args,
         }
     )
 
@@ -275,7 +171,7 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     elif subcommand == "debug":
         # /maro debug [on|off|status|state]
         debug_action = args[0].lower() if args else "status"
-        await _handle_maro_debug(channel, user_id, debug_action, client, say)
+        await _handle_maro_debug(channel, team_id, user_id, debug_action, client, say)
     elif subcommand == "explain":
         # /maro explain - Trigger OPS:EXPLAIN flow
         thread_ts = command.get("thread_ts")
@@ -416,13 +312,24 @@ async def _handle_maro_help(channel: str, client: WebClient):
     """Handle /maro help - show interactive help with example buttons."""
     from src.slack.onboarding import get_help_blocks
 
-    blocks = get_help_blocks()
+    try:
+        blocks = get_help_blocks()
 
-    client.chat_postMessage(
-        channel=channel,
-        text="What MARO can do",
-        blocks=blocks,
-    )
+        client.chat_postMessage(
+            channel=channel,
+            text="What MARO can do",
+            blocks=blocks,
+        )
+    except Exception as e:
+        logger.error(f"Failed to show help: {e}", exc_info=True)
+        # Fallback to simple text message
+        try:
+            client.chat_postMessage(
+                channel=channel,
+                text="MARO Help: Use `/maro enable` to enable listening, `/maro help` for full help.",
+            )
+        except Exception:
+            logger.exception("Failed to post fallback help message")
 
 
 # --- Jira Issue Tracking Commands (Phase 21) ---
@@ -882,6 +789,7 @@ def _get_mode_description(mode: "ChannelMode") -> str:
 
 async def _handle_maro_debug(
     channel_id: str,
+    team_id: str,
     user_id: str,
     action: str,
     client: WebClient,
@@ -933,7 +841,7 @@ async def _handle_maro_debug(
 
             elif action == "state":
                 # Full internal state dump
-                blocks = await _build_debug_state_blocks(channel_id, conn)
+                blocks = await _build_debug_state_blocks(channel_id, team_id, conn)
                 client.chat_postMessage(
                     channel=channel_id,
                     text="Debug State",
@@ -1079,7 +987,7 @@ async def _build_debug_status_blocks(channel_id: str, conn) -> list[dict]:
     return blocks
 
 
-async def _build_debug_state_blocks(channel_id: str, conn) -> list[dict]:
+async def _build_debug_state_blocks(channel_id: str, team_id: str, conn) -> list[dict]:
     """Build debug state blocks showing full internal state dump."""
     from src.db.debug_store import DebugStore
     from src.db.channel_mode_store import ChannelModeStore
@@ -1098,7 +1006,7 @@ async def _build_debug_state_blocks(channel_id: str, conn) -> list[dict]:
     # === Channel Context ===
     try:
         ctx_store = ChannelContextStore(conn)
-        ctx = await ctx_store.get_by_channel(channel_id)
+        ctx = await ctx_store.get_by_channel(team_id, channel_id)
         if ctx:
             ctx_data = {
                 "version": ctx.version,
@@ -1190,6 +1098,45 @@ async def _build_debug_state_blocks(channel_id: str, conn) -> list[dict]:
         "text": {"type": "mrkdwn", "text": f"```{jira_str}```"}
     })
 
+    # === Decisions ===
+    try:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT topic, decision_ts, synced_to_jira, created_at
+                FROM channel_decisions
+                WHERE channel_id = %s
+                ORDER BY created_at DESC
+                LIMIT 15
+                """,
+                (channel_id,),
+            )
+            decisions = await cur.fetchall()
+
+        if decisions:
+            decision_lines = [f"Decisions ({len(decisions)}):"]
+            for d in decisions[:10]:
+                topic = d[0][:40] if d[0] else "?"
+                synced = "✓" if d[2] else "○"
+                decision_lines.append(f"  {synced} {topic}")
+            if len(decisions) > 10:
+                decision_lines.append(f"  ... and {len(decisions) - 10} more")
+            decision_str = "\n".join(decision_lines)
+        else:
+            decision_str = "No decisions recorded"
+    except Exception as e:
+        decision_str = f"Error: {e}"
+
+    blocks.append({"type": "divider"})
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "*=== Decisions ===*"}
+    })
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"```{decision_str}```"}
+    })
+
     # Footer with timestamp
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1213,62 +1160,93 @@ async def _handle_maro_explain(
     client: WebClient,
     say,
 ):
-    """Handle /maro explain - trigger OPS:EXPLAIN flow.
+    """Handle /maro explain - show explanation of last decisions.
 
-    Forces OPS intent with EXPLAIN subtype to explain the last action.
-    Runs the graph with forced intent.
+    Gets current session state and formats an explanation of:
+    - Last intent classification
+    - Current draft status
+    - Recent decision actions
+
+    If no thread_ts, finds most recent active session in the channel.
     """
     from src.slack.session import SessionIdentity
-    from src.graph.runner import get_runner
-    from src.schemas.intent import Intent, OpsSubtype
+    from src.graph.runner import get_runner, _runners
 
-    # Build message to process
-    explain_message = "Explain your last decision."
+    # Find session - either from thread or most recent in channel
+    identity = None
 
-    # Get or create thread_ts for session identity
-    if not thread_ts:
-        # Post initial message in channel to create thread
-        result = client.chat_postMessage(
-            channel=channel_id,
-            text="Analyzing my recent decisions...",
+    if thread_ts:
+        # Direct thread context
+        identity = SessionIdentity(
+            team_id=team_id or "default",
+            channel_id=channel_id,
+            thread_ts=thread_ts,
         )
-        thread_ts = result["ts"]
+        if identity.session_id not in _runners:
+            identity = None
 
-    # Build session identity
-    identity = SessionIdentity(
-        team_id=team_id or "default",
-        channel_id=channel_id,
-        thread_ts=thread_ts,
-    )
+    # If no thread or session not found, look for any active session in this channel
+    if identity is None:
+        for session_id, runner in _runners.items():
+            if runner.identity.channel_id == channel_id:
+                identity = runner.identity
+                break
 
-    # Get runner for this session
-    runner = get_runner(identity)
+    if identity is None:
+        say(
+            text="No active MARO sessions in this channel. Start a conversation by mentioning @MARO.",
+            channel=channel_id,
+        )
+        return
 
     try:
-        # Force OPS:EXPLAIN intent
-        forced_intent = {
-            "intent": Intent.OPS.value,
-            "confidence": 1.0,
-            "ops_subtype": OpsSubtype.EXPLAIN.value,
-            "reasons": ["forced by /maro explain command"],
-        }
 
-        # Run graph with forced intent
-        result_state = await runner.run(
-            explain_message,
-            user_id=user_id,
-            intent_result=forced_intent,
-        )
+        # Get runner and current state
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
 
-        # Extract response from decision_result
-        decision_result = result_state.get("decision_result", {})
-        response_text = decision_result.get("message", "I couldn't generate an explanation.")
+        # Build explanation
+        parts = [":brain: *MARO Explain*\n"]
 
-        # Send response in thread
+        # Intent info
+        intent_result = state.get("intent_result", {})
+        if intent_result:
+            intent = intent_result.get("intent", "unknown")
+            confidence = intent_result.get("confidence", 0)
+            reasons = intent_result.get("reasons", [])
+            parts.append(f"*Last Intent:* `{intent}` ({confidence:.0%} confidence)")
+            if reasons:
+                parts.append(f"_Reason: {reasons[0][:100]}_")
+
+        # Draft info
+        draft = state.get("draft")
+        if draft:
+            draft_title = draft.get("title", "Untitled") if isinstance(draft, dict) else getattr(draft, "title", "Untitled")
+            draft_type = draft.get("issue_type", "Story") if isinstance(draft, dict) else getattr(draft, "issue_type", "Story")
+            parts.append(f"\n*Current Draft:* {draft_type} - \"{draft_title[:50]}\"")
+
+        # Decision info
+        decision_result = state.get("decision_result", {})
+        if decision_result:
+            action = decision_result.get("action", "unknown")
+            reason = decision_result.get("reason", "")
+            parts.append(f"\n*Last Decision:* `{action}`")
+            if reason:
+                parts.append(f"_Reason: {reason[:100]}_")
+
+        # Phase info
+        phase = state.get("phase", "unknown")
+        parts.append(f"\n*Phase:* `{phase}`")
+
+        explanation = "\n".join(parts)
+
+        # Post to the channel where command was run (with link to session thread)
+        thread_link = f"<https://slack.com/archives/{identity.channel_id}/p{identity.thread_ts.replace('.', '')}|View thread>"
+        explanation_with_link = explanation + f"\n\n{thread_link}"
+
         client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=response_text,
+            channel=channel_id,  # Post to command channel, not session channel
+            text=explanation_with_link,
         )
 
         logger.info(
@@ -1276,14 +1254,13 @@ async def _handle_maro_explain(
             extra={
                 "channel_id": channel_id,
                 "user_id": user_id,
-                "thread_ts": thread_ts,
+                "session_thread_ts": identity.thread_ts,
             }
         )
 
     except Exception as e:
         logger.error(f"Failed to run OPS:EXPLAIN: {e}", exc_info=True)
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
+        say(
             text="Sorry, I couldn't explain my decisions right now. Please try again.",
+            channel=channel_id,
         )

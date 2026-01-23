@@ -4,12 +4,6 @@ Captured from codebase during Phase 18 (Clean Code).
 
 ## Open Issues
 
-### Bug: Slash Commands Not Working (Reported 2026-01-22)
-
-| ID | Description | Symptoms | Notes |
-|----|-------------|----------|-------|
-| ISS-012 | `/maro help` disappears, no response | Command runs but returns nothing, no errors in logs | Needs investigation - likely Slack response issue |
-
 ### Feature Group: Epic/Session Management — Phase 23
 
 **Status:** Promoted to Phase 23 (2026-01-20)
@@ -42,6 +36,7 @@ Relates to constraint tracking and contradiction resolution. Handlers exist and 
 |----|-------------|------------|-------|
 | ISS-002 | Implement Jira search in Phase 7 | Implemented | Phase 7 |
 | - | Intent detection for review vs ticket | Implemented | Phase 13 |
+| ISS-012 | `/maro help` disappears, no response | Fixed: `_run_async` now logs exceptions; added try/except to `_handle_maro_help` and `/persona` handler | v1.2 |
 
 ## Accepted Complexity (Long Functions)
 
@@ -98,4 +93,4 @@ The following functions exceed 100 lines but are considered acceptable complexit
 
 ---
 
-*Last updated: 2026-01-22 (Added ISS-012 slash command bug)*
+*Last updated: 2026-01-22 (Resolved ISS-012 slash command bug)*

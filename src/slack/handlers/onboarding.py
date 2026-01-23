@@ -50,17 +50,21 @@ def handle_member_joined_channel(event: dict, client: WebClient, context: BoltCo
 
     channel = event.get("channel")
 
+    team_id = event.get("team") or context.get("team_id") or ""
+
     logger.info(
         "Bot joined channel, posting quick-reference",
-        extra={"channel": channel, "channel_type": event.get("channel_type")}
+        extra={"channel": channel, "channel_type": event.get("channel_type"), "team_id": team_id}
     )
 
-    _run_async(_handle_channel_join_async(channel, client))
+    _run_async(_handle_channel_join_async(channel, team_id, client))
 
 
-async def _handle_channel_join_async(channel: str, client: WebClient):
-    """Async handler for channel join - posts and pins welcome message."""
+async def _handle_channel_join_async(channel: str, team_id: str, client: WebClient):
+    """Async handler for channel join - posts and pins welcome message, creates channel context."""
     from src.slack.blocks import build_welcome_blocks
+    from src.db import get_connection
+    from src.db.channel_context_store import ChannelContextStore
 
     logger.info(
         "Building welcome blocks",
@@ -68,6 +72,18 @@ async def _handle_channel_join_async(channel: str, client: WebClient):
     )
 
     blocks = build_welcome_blocks()
+
+    # Create channel context if it doesn't exist
+    try:
+        async with get_connection() as conn:
+            ctx_store = ChannelContextStore(conn)
+            await ctx_store.get_or_create(team_id, channel)
+            logger.info(
+                "Channel context created/verified",
+                extra={"channel": channel, "team_id": team_id}
+            )
+    except Exception as e:
+        logger.warning(f"Could not create channel context: {e}")
 
     try:
         # Post the quick-reference message

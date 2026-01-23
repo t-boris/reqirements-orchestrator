@@ -76,6 +76,9 @@ class GraphRunner:
                 # Get current state or initialize
                 state = await self._get_current_state()
 
+                # Reset step_count for new message (loop protection is per-invocation, not per-thread)
+                state["step_count"] = 0
+
                 # Add new message
                 new_message = HumanMessage(
                     content=message_text,
@@ -339,6 +342,11 @@ class GraphRunner:
                 "action": "scope_gate",
                 "message_preview": decision_result.get("message_preview", ""),
                 "intent_reason": decision_result.get("intent_reason", ""),
+            }
+        elif action == "draft_refine":
+            return {
+                "action": "draft_refine",
+                "decision_result": decision_result,
             }
         else:
             return {"action": "continue"}

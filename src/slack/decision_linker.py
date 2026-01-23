@@ -448,3 +448,160 @@ class DecisionLinker:
         except Exception as e:
             logger.warning(f"Failed to record decision: {e}")
             return False
+
+    async def find_conflicting_decisions(
+        self,
+        channel_id: str,
+        new_topic: str,
+        new_decision: str,
+    ) -> list[dict]:
+        """Find existing decisions that may conflict with a new decision.
+
+        Uses semantic similarity to detect decisions on similar topics
+        and LLM to check for actual contradictions.
+
+        Args:
+            channel_id: Slack channel ID
+            new_topic: Topic of the new decision
+            new_decision: Full text of the new decision
+
+        Returns:
+            List of conflicting decisions with keys:
+            - topic, decision_text, decision_ts, conflict_reason
+        """
+        try:
+            from src.db import get_connection
+
+            # Get existing decisions in this channel
+            async with get_connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        """
+                        SELECT topic, decision_text, decision_ts, created_at
+                        FROM channel_decisions
+                        WHERE channel_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 20
+                        """,
+                        (channel_id,),
+                    )
+                    rows = await cur.fetchall()
+
+            if not rows:
+                return []
+
+            existing_decisions = [
+                {
+                    "topic": row[0],
+                    "decision_text": row[1],
+                    "decision_ts": row[2],
+                    "created_at": row[3],
+                }
+                for row in rows
+            ]
+
+            # Use LLM to check for conflicts
+            conflicts = await self._check_decision_conflicts(
+                new_topic=new_topic,
+                new_decision=new_decision,
+                existing_decisions=existing_decisions,
+            )
+
+            if conflicts:
+                logger.warning(
+                    "Found conflicting decisions",
+                    extra={
+                        "channel_id": channel_id,
+                        "new_topic": new_topic,
+                        "conflict_count": len(conflicts),
+                    },
+                )
+
+            return conflicts
+
+        except Exception as e:
+            logger.warning(f"Failed to check for conflicting decisions: {e}")
+            return []
+
+    async def _check_decision_conflicts(
+        self,
+        new_topic: str,
+        new_decision: str,
+        existing_decisions: list[dict],
+    ) -> list[dict]:
+        """Use LLM to check if new decision contradicts existing ones.
+
+        Args:
+            new_topic: Topic of the new decision
+            new_decision: Full text of the new decision
+            existing_decisions: List of existing decisions
+
+        Returns:
+            List of conflicting decisions with conflict_reason added
+        """
+        if not existing_decisions:
+            return []
+
+        from src.llm import get_llm
+        import json
+        import re
+
+        try:
+            llm = get_llm()
+
+            # Format existing decisions for the prompt
+            existing_formatted = "\n\n".join([
+                f"Decision {i+1}:\nTopic: {d['topic']}\nDecision: {d['decision_text'][:500]}"
+                for i, d in enumerate(existing_decisions[:10])  # Limit to 10
+            ])
+
+            prompt = f'''Analyze if a new decision contradicts any existing decisions.
+
+NEW DECISION:
+Topic: {new_topic}
+Decision: {new_decision[:1000]}
+
+EXISTING DECISIONS:
+{existing_formatted}
+
+Check for DIRECT CONTRADICTIONS only - where decisions make incompatible choices.
+Similar topics with different aspects are NOT contradictions.
+
+Return JSON:
+{{
+    "conflicts": [
+        {{"index": 1, "reason": "Why it contradicts (1 sentence)"}},
+        ...
+    ]
+}}
+
+Return {{"conflicts": []}} if no contradictions found.
+Be conservative - only flag clear contradictions, not related decisions.'''
+
+            result = await llm.chat(prompt)
+
+            # Parse JSON response
+            json_match = re.search(r'\{[^{}]*"conflicts"[^{}]*\[.*?\][^{}]*\}', result, re.DOTALL)
+            if not json_match:
+                return []
+
+            data = json.loads(json_match.group())
+            conflict_indices = data.get("conflicts", [])
+
+            if not conflict_indices:
+                return []
+
+            # Map indices back to decisions
+            conflicts = []
+            for conflict in conflict_indices:
+                idx = conflict.get("index", 0) - 1  # Convert to 0-indexed
+                if 0 <= idx < len(existing_decisions):
+                    decision = existing_decisions[idx].copy()
+                    decision["conflict_reason"] = conflict.get("reason", "Contradicts new decision")
+                    conflicts.append(decision)
+
+            return conflicts
+
+        except Exception as e:
+            logger.warning(f"LLM conflict check failed: {e}")
+            return []

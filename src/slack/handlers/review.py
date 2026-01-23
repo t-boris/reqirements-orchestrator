@@ -373,60 +373,128 @@ async def _handle_approve_architecture_async(body, client: WebClient):
             review_context.get("review_summary", "Architecture approved")
         )
 
-    # Extract decision using LLM
+    # Extract ALL decisions using LLM
     from src.llm import get_llm
+    from src.slack.decision_linker import DecisionLinker
     import re
 
     try:
         llm = get_llm()
-        extraction_prompt = f'''Based on this architecture review, extract the decision:
+        extraction_prompt = f'''Based on this architecture review, extract ALL distinct decisions made.
 
-Review: {review_summary[:2000]}
+Review: {review_summary[:3000]}
 
-Return a JSON object:
+Return a JSON object with array of decisions:
 {{
-    "topic": "What was being decided (1 line)",
-    "decision": "The chosen approach (1-2 sentences)"
+    "decisions": [
+        {{"topic": "What was decided (1 line)", "decision": "The chosen approach (1-2 sentences)"}},
+        {{"topic": "Another decision topic", "decision": "Another chosen approach"}}
+    ]
 }}
 
-Be concise. This will be posted to the channel as a permanent record.
+Rules:
+- Extract EACH distinct decision as a separate item
+- A decision is a concrete choice about technology, architecture, or approach
+- If only one decision was made, return array with one item
+- Be concise - this will be posted to the channel as permanent record
 '''
         extraction_result = await llm.chat(extraction_prompt)
 
-        # Parse JSON response
-        json_match = re.search(r'\{[^{}]*\}', extraction_result, re.DOTALL)
+        # Parse JSON response - look for decisions array
+        json_match = re.search(r'\{[^{}]*"decisions"\s*:\s*\[.*?\][^{}]*\}', extraction_result, re.DOTALL)
         if json_match:
             decision_data = json.loads(json_match.group())
+            decisions = decision_data.get("decisions", [])
         else:
-            decision_data = {"topic": topic, "decision": "Approved"}
+            # Fallback: try single decision format
+            single_match = re.search(r'\{[^{}]*"topic"[^{}]*\}', extraction_result, re.DOTALL)
+            if single_match:
+                decisions = [json.loads(single_match.group())]
+            else:
+                decisions = [{"topic": topic, "decision": "Approved"}]
 
-        extracted_topic = decision_data.get("topic", topic)
-        decision_text = decision_data.get("decision", "Approved")
+        if not decisions:
+            decisions = [{"topic": topic, "decision": "Approved"}]
 
-        # Build and post decision blocks to CHANNEL (not thread!)
-        decision_blocks = build_decision_blocks(
-            topic=extracted_topic,
-            decision=decision_text,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-            user_id=user_id,
+        logger.info(
+            f"Extracted {len(decisions)} decision(s) from review",
+            extra={"channel_id": channel_id, "decision_count": len(decisions)},
         )
 
-        # Post to channel root (no thread_ts)
-        client.chat_postMessage(
-            channel=channel_id,
-            blocks=decision_blocks,
-            text=f"Architecture Decision: {extracted_topic}",
-        )
+        # Check for conflicts and post each decision
+        conflict_linker = DecisionLinker()
+        all_conflicts = []
+
+        for i, dec in enumerate(decisions):
+            extracted_topic = dec.get("topic", topic)
+            decision_text = dec.get("decision", "Approved")
+
+            # Check for conflicting decisions
+            conflicts = await conflict_linker.find_conflicting_decisions(
+                channel_id=channel_id,
+                new_topic=extracted_topic,
+                new_decision=decision_text,
+            )
+            if conflicts:
+                all_conflicts.extend([(extracted_topic, c) for c in conflicts])
+
+            # Build and post decision blocks to CHANNEL
+            decision_blocks = build_decision_blocks(
+                topic=extracted_topic,
+                decision=decision_text,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                user_id=user_id,
+            )
+
+            client.chat_postMessage(
+                channel=channel_id,
+                blocks=decision_blocks,
+                text=f"Architecture Decision: {extracted_topic}",
+            )
+
+        # Warn about all conflicts in thread (after posting decisions)
+        if all_conflicts:
+            conflict_lines = [f":warning: *Potential conflicts detected ({len(all_conflicts)}):*\n"]
+            for new_topic, c in all_conflicts[:5]:  # Show max 5
+                conflict_lines.append(
+                    f"• *{new_topic}* may conflict with *{c['topic']}*\n  _{c.get('conflict_reason', 'Check for contradiction')}_"
+                )
+            if len(all_conflicts) > 5:
+                conflict_lines.append(f"  _...and {len(all_conflicts) - 5} more_")
+            conflict_msg = "\n".join(conflict_lines)
+            conflict_msg += "\n\n_Decisions recorded. Consider reviewing for contradictions._"
+
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=conflict_msg,
+            )
+            logger.warning(
+                "Conflicting decisions detected",
+                extra={
+                    "channel_id": channel_id,
+                    "conflict_count": len(all_conflicts),
+                },
+            )
 
         # Confirm in thread
+        decision_count = len(decisions)
+        if decision_count == 1:
+            confirm_msg = "Decision recorded in channel."
+        else:
+            confirm_msg = f"{decision_count} decisions recorded in channel."
+        if all_conflicts:
+            confirm_msg += " ⚠️ Check conflict warning above."
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="Decision recorded in channel.",
+            text=confirm_msg,
         )
 
         # Freeze review_context to review_artifact (Phase 20)
+        # Use first decision as primary topic for artifact
+        primary_topic = decisions[0].get("topic", topic) if decisions else topic
         if review_context:
             import hashlib
             from datetime import datetime, timezone
@@ -439,7 +507,8 @@ Be concise. This will be posted to the channel as a permanent record.
                 "version": review_context.get("version", 1),
                 "summary": review_context.get("review_summary", ""),
                 "updated_summary": review_context.get("updated_recommendation"),
-                "topic": extracted_topic,
+                "topic": primary_topic,
+                "decisions": decisions,  # Store all decisions
                 "persona": persona,
                 "frozen_at": datetime.now(timezone.utc).isoformat(),
                 "thread_ts": thread_ts,
@@ -459,13 +528,13 @@ Be concise. This will be posted to the channel as a permanent record.
             logger.info(
                 "Froze review_context to review_artifact via button",
                 extra={
-                    "topic": extracted_topic,
+                    "topic": primary_topic,
+                    "decision_count": decision_count,
                     "content_hash": review_artifact["content_hash"],
                 }
             )
 
-        # Record decision for sync tracking (Phase 21-04)
-        from src.slack.decision_linker import DecisionLinker
+        # Record ALL decisions for sync tracking (Phase 21-04)
         from src.slack.thread_bindings import get_binding_store
 
         linker = DecisionLinker()
@@ -475,31 +544,37 @@ Be concise. This will be posted to the channel as a permanent record.
         binding = await binding_store.get_binding(channel_id, thread_ts)
         thread_binding = binding.issue_key if binding else None
 
-        # Find related issues
-        related_issues = await linker.find_related_issues(
-            decision_topic=extracted_topic,
-            decision_text=decision_text,
-            channel_id=channel_id,
-            thread_binding=thread_binding,
-        )
+        # Record each decision
+        for i, dec in enumerate(decisions):
+            dec_topic = dec.get("topic", topic)
+            dec_text = dec.get("decision", "Approved")
 
-        # Record decision
-        await linker.record_decision_sync(
-            channel_id=channel_id,
-            decision_ts=thread_ts,
-            topic=extracted_topic,
-            decision_text=decision_text,
-            related_issues=related_issues,
-            synced_to_jira=False,  # User can manually sync via /maro sync
-        )
+            # Find related issues
+            related_issues = await linker.find_related_issues(
+                decision_topic=dec_topic,
+                decision_text=dec_text,
+                channel_id=channel_id,
+                thread_binding=thread_binding,
+            )
+
+            # Record decision with unique timestamp suffix for multiple decisions
+            decision_ts = f"{thread_ts}_{i}" if i > 0 else thread_ts
+            await linker.record_decision_sync(
+                channel_id=channel_id,
+                decision_ts=decision_ts,
+                topic=dec_topic,
+                decision_text=dec_text,
+                related_issues=related_issues,
+                synced_to_jira=False,
+            )
 
         await linker.close()
 
         logger.info(
-            "Decision recorded for sync tracking",
+            "Decisions recorded for sync tracking",
             extra={
-                "topic": extracted_topic,
-                "related_issues": related_issues,
+                "decision_count": decision_count,
+                "primary_topic": primary_topic,
             }
         )
 
