@@ -14,7 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 class ApprovalRecord(BaseModel):
-    """Record of a draft approval."""
+    """Record of a draft approval.
+
+    Enhanced in Phase 27.4 with state binding:
+    - state_version: Version from AgentState.state_version at approval time
+    - ui_version: Version from AgentState.ui_version at approval time
+
+    State binding ensures approvals are tied to exact state version,
+    preventing approval of outdated content.
+    """
 
     id: Optional[str] = Field(default=None, description="UUID of approval record")
     session_id: str = Field(description="Session ID for the approval")
@@ -22,6 +30,10 @@ class ApprovalRecord(BaseModel):
     approved_by: str = Field(description="Slack user ID who approved")
     approved_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = Field(default="approved", description="Status: approved, rejected")
+
+    # State binding (Phase 27.4)
+    state_version: int = Field(default=0, description="State version at approval time")
+    ui_version: int = Field(default=0, description="UI version at approval time")
 
 
 class ApprovalStore:
@@ -35,7 +47,10 @@ class ApprovalStore:
         self.conn = conn
 
     async def create_tables(self) -> None:
-        """Create approval_records table if not exists."""
+        """Create approval_records table if not exists.
+
+        Phase 27.4: Added state_version and ui_version columns for state binding.
+        """
         sql = """
         CREATE TABLE IF NOT EXISTS approval_records (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,6 +59,8 @@ class ApprovalStore:
             approved_by TEXT NOT NULL,
             approved_at TIMESTAMPTZ DEFAULT NOW(),
             status TEXT DEFAULT 'approved',
+            state_version INTEGER DEFAULT 0,
+            ui_version INTEGER DEFAULT 0,
             UNIQUE(session_id, draft_hash)
         );
 
@@ -52,8 +69,26 @@ class ApprovalStore:
         """
         async with self.conn.cursor() as cur:
             await cur.execute(sql)
+            # Add columns if they don't exist (migration for existing tables)
+            await cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'approval_records' AND column_name = 'state_version'
+                    ) THEN
+                        ALTER TABLE approval_records ADD COLUMN state_version INTEGER DEFAULT 0;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'approval_records' AND column_name = 'ui_version'
+                    ) THEN
+                        ALTER TABLE approval_records ADD COLUMN ui_version INTEGER DEFAULT 0;
+                    END IF;
+                END $$;
+            """)
         await self.conn.commit()
-        logger.debug("Created approval_records table")
+        logger.debug("Created/migrated approval_records table")
 
     async def record_approval(
         self,
@@ -61,30 +96,36 @@ class ApprovalStore:
         draft_hash: str,
         approved_by: str,
         status: str = "approved",
+        state_version: int = 0,
+        ui_version: int = 0,
     ) -> bool:
         """Record an approval. Returns True if new, False if duplicate.
 
         Uses INSERT with ON CONFLICT DO NOTHING to handle race conditions.
         First approval wins - subsequent attempts are ignored.
 
+        Phase 27.4: Added state_version and ui_version for state binding.
+
         Args:
             session_id: Session ID for the draft
             draft_hash: Hash of draft content
             approved_by: Slack user ID approving
             status: Status (approved or rejected)
+            state_version: State version at approval time (Phase 27.4)
+            ui_version: UI version at approval time (Phase 27.4)
 
         Returns:
             True if this is a new approval record (first wins)
             False if approval already exists (duplicate)
         """
         sql = """
-        INSERT INTO approval_records (session_id, draft_hash, approved_by, status)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO approval_records (session_id, draft_hash, approved_by, status, state_version, ui_version)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (session_id, draft_hash) DO NOTHING
         RETURNING id;
         """
         async with self.conn.cursor() as cur:
-            await cur.execute(sql, (session_id, draft_hash, approved_by, status))
+            await cur.execute(sql, (session_id, draft_hash, approved_by, status, state_version, ui_version))
             result = await cur.fetchone()
         await self.conn.commit()
 
@@ -95,6 +136,8 @@ class ApprovalStore:
                 "session_id": session_id,
                 "draft_hash": draft_hash,
                 "approved_by": approved_by,
+                "state_version": state_version,
+                "ui_version": ui_version,
             },
         )
         return is_new
@@ -114,7 +157,7 @@ class ApprovalStore:
             ApprovalRecord if exists, None otherwise
         """
         sql = """
-        SELECT id, session_id, draft_hash, approved_by, approved_at, status
+        SELECT id, session_id, draft_hash, approved_by, approved_at, status, state_version, ui_version
         FROM approval_records
         WHERE session_id = %s AND draft_hash = %s;
         """
@@ -132,6 +175,8 @@ class ApprovalStore:
             approved_by=row[3],
             approved_at=row[4],
             status=row[5],
+            state_version=row[6] or 0,
+            ui_version=row[7] or 0,
         )
 
     async def get_approver(
@@ -176,7 +221,7 @@ class ApprovalStore:
             List of ApprovalRecords for the session
         """
         sql = """
-        SELECT id, session_id, draft_hash, approved_by, approved_at, status
+        SELECT id, session_id, draft_hash, approved_by, approved_at, status, state_version, ui_version
         FROM approval_records
         WHERE session_id = %s
         ORDER BY approved_at DESC;
@@ -193,6 +238,8 @@ class ApprovalStore:
                 approved_by=row[3],
                 approved_at=row[4],
                 status=row[5],
+                state_version=row[6] or 0,
+                ui_version=row[7] or 0,
             )
             for row in rows
         ]
