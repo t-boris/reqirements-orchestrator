@@ -123,7 +123,7 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
     team_id = body["team"]["id"]
     user_id = body["user"]["id"]
 
-    # Parse session_id:draft_hash from button value
+    # Parse button payload (Phase 27.4: JSON format with state_version)
     button_value = action.get("value", "")
     action_id = action.get("action_id", "approve_draft")
 
@@ -134,12 +134,23 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
         logger.debug(f"Ignoring duplicate approve click: {button_value}")
         return
 
-    if ":" in button_value:
-        session_id, button_hash = button_value.rsplit(":", 1)
-    else:
-        # Legacy format - just session_id
-        session_id = button_value
-        button_hash = ""
+    # Parse button payload (supports JSON and legacy formats)
+    button_state_version = 0
+    button_ui_version = 0
+    try:
+        # Phase 27.4: New JSON format
+        payload = json.loads(button_value)
+        session_id = payload.get("session_id", "")
+        button_hash = payload.get("draft_hash", "")
+        button_state_version = payload.get("state_version", 0)
+        button_ui_version = payload.get("ui_version", 0)
+    except json.JSONDecodeError:
+        # Legacy format: session_id:draft_hash
+        if ":" in button_value:
+            session_id, button_hash = button_value.rsplit(":", 1)
+        else:
+            session_id = button_value
+            button_hash = ""
 
     identity = SessionIdentity(
         team_id=team_id,
@@ -209,6 +220,30 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
         )
         return
 
+    # Phase 27.4: Validate approval against policy and state version
+    from src.slack.approval_validator import validate_approval, get_creator_user_id
+
+    current_state_version = state.get("state_version", 0)
+    creator_user_id = await get_creator_user_id(state)
+    hash_to_check = current_hash if current_hash else "no-hash"
+
+    is_valid, error = await validate_approval(
+        channel_id=channel,
+        user_id=user_id,
+        creator_user_id=creator_user_id,
+        state_version=button_state_version,
+        current_state_version=current_state_version,
+        draft_hash=hash_to_check,
+    )
+
+    if not is_valid:
+        client.chat_postEphemeral(
+            channel=channel,
+            user=user_id,
+            text=error,
+        )
+        return
+
     # Create progress tracker for Jira creation status
     tracker = ProgressTracker(client, channel, thread_ts)
 
@@ -248,12 +283,14 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             )
             return
 
-        # Record approval (first wins)
+        # Record approval (first wins) - Phase 27.4: include state binding
         is_new = await approval_store.record_approval(
             session_id=session_id,
             draft_hash=hash_to_record,
             approved_by=user_id,
             status="approved",
+            state_version=current_state_version,
+            ui_version=state.get("ui_version", 0),
         )
 
         if not is_new:
