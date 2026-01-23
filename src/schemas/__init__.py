@@ -1,33 +1,42 @@
 """Core schemas for Jira Analyst Bot."""
-from src.schemas.ticket import (
-    JiraTicketBase,
-    EpicSchema,
-    StorySchema,
-    TaskSchema,
-    BugSchema,
-    JiraTicket,
-    create_ticket,
-)
-from src.schemas.state import AgentState, AgentPhase
-from src.schemas.draft import (
-    TicketDraft,
-    DraftConstraint,
-    ConstraintStatus,
-    EvidenceLink,
-)
-from src.schemas.attribution import (
-    MessageAttribution,
-    AttributedContent,
-)
-from src.schemas.conflict import (
-    ConflictType,
-    ConflictSide,
-    DraftConflict,
-)
 from src.schemas.approval import (
     ApprovalPolicy,
     ApprovalRequirement,
     ChannelApprovalConfig,
+)
+from src.schemas.attribution import (
+    AttributedContent,
+    MessageAttribution,
+)
+from src.schemas.conflict import (
+    ConflictSide,
+    ConflictType,
+    DraftConflict,
+)
+from src.schemas.draft import (
+    ConstraintStatus,
+    DraftConstraint,
+    EvidenceLink,
+    TicketDraft,
+)
+from src.schemas.state import AgentPhase, AgentState
+from src.schemas.structured_draft import (
+    DraftChange,
+    DraftItem,
+    DraftItemStatus,
+    DraftKind,
+    DraftLifecycle,
+    DraftScope,
+    StructuredDraft,
+)
+from src.schemas.ticket import (
+    BugSchema,
+    EpicSchema,
+    JiraTicket,
+    JiraTicketBase,
+    StorySchema,
+    TaskSchema,
+    create_ticket,
 )
 
 __all__ = [
@@ -58,4 +67,12 @@ __all__ = [
     "ApprovalPolicy",
     "ApprovalRequirement",
     "ChannelApprovalConfig",
+    # Structured Draft schemas (Phase 28)
+    "StructuredDraft",
+    "DraftKind",
+    "DraftScope",
+    "DraftLifecycle",
+    "DraftItem",
+    "DraftItemStatus",
+    "DraftChange",
 ]

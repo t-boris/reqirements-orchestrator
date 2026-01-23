@@ -1,12 +1,13 @@
 """State schema for the LangGraph agent."""
 from enum import Enum
-from typing import Literal, Optional, Annotated, Any, TYPE_CHECKING
-from typing_extensions import TypedDict
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
 
-from src.schemas.ticket import JiraTicketBase
 from src.schemas.draft import TicketDraft
+from src.schemas.structured_draft import StructuredDraft
 
 # Eviction limits per scope for salient facts
 FACT_LIMITS = {
@@ -31,7 +32,7 @@ class Fact(TypedDict):
 
 
 if TYPE_CHECKING:
-    from src.skills.ask_user import QuestionSet
+    pass
 
 
 class AgentPhase(str, Enum):
@@ -207,6 +208,13 @@ class AgentState(TypedDict):
 
     # Rich ticket draft with evidence tracking
     draft: Optional[TicketDraft]
+
+    # Phase 28 Migration: Structured Draft
+    # - 'draft' (TicketDraft) - legacy, used during transition
+    # - 'structured_draft' (StructuredDraft) - new typed design object
+    # Code should prefer structured_draft when present.
+    # Migration: if draft exists but not structured_draft, convert on first access.
+    structured_draft: Optional[StructuredDraft]
 
     # State machine phase
     phase: AgentPhase
