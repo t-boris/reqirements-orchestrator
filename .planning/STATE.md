@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 27-multi-user-support
-Plan: 2 of 6 in current phase (27.1, 27.2 complete)
+Plan: 3 of 6 in current phase (27.1, 27.2, 27.3 complete)
 Status: In progress
-Last activity: 2026-01-23 — Completed 27.2-PLAN.md (Participant Map & Turn-Taking)
+Last activity: 2026-01-23 — Completed 27.3-PLAN.md (Multi-Author Drafts & Conflict Detection)
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 2/6 sub-phases
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 3/6 sub-phases
 
 ## Milestones Summary
 
@@ -73,6 +73,12 @@ Phase 27.2 decisions:
 - Participation tracking is non-blocking (errors logged, don't fail requests)
 - Max 2 @mentions per message to prevent notification spam
 
+Phase 27.3 decisions:
+- LLM semantic conflict detection (not just string comparison)
+- Block draft updates until conflicts resolved
+- Same-user updates allowed without conflict check
+- ConflictSide stores both content and full attribution
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26 features shipped.
@@ -88,9 +94,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27.2 (Participant Map & Turn-Taking)
+Stopped at: Completed Phase 27.3 (Multi-Author Drafts & Conflict Detection)
 Resume file: None
-Next action: Execute Phase 27.3 (Multi-Author Drafts & Conflict Detection)
+Next action: Execute Phase 27.4 (State-Bound Approvals)
 
 ## What's Next
 
@@ -111,9 +117,9 @@ Next action: Execute Phase 27.3 (Multi-Author Drafts & Conflict Detection)
 | 27.6 | Notifications & Slack UX | Low |
 
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
-**Current sub-phase:** `.planning/phases/27-multi-user-support/27.3-PLAN.md`
+**Current sub-phase:** `.planning/phases/27-multi-user-support/27.4-PLAN.md`
 
-**Next action:** Run `/gsd:execute-plan 27.3` to implement Multi-Author Drafts & Conflict Detection
+**Next action:** Run `/gsd:execute-plan 27.4` to implement State-Bound Approvals
 
 ---
 
