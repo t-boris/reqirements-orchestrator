@@ -35,6 +35,11 @@ class JiraIssueLink:
     linked_by: str
     summary: Optional[str] = None  # Ticket summary/title for name resolution
     issue_type: Optional[str] = None  # epic, story, bug, task
+    # Sync tracking fields for Preflight Sync and /maro sync
+    status: Optional[str] = None  # Jira status (To Do, In Progress, Done, etc.)
+    assignee: Optional[str] = None  # Jira account ID of assignee
+    jira_updated: Optional[datetime] = None  # Jira's updated timestamp (from API)
+    last_synced: Optional[datetime] = None  # When we last fetched from Jira
 
 
 class JiraRegistryStore:
@@ -88,6 +93,20 @@ class JiraRegistryStore:
                 ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS issue_type TEXT
             """)
 
+            # Add sync tracking columns for Preflight Sync and /maro sync
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS status TEXT
+            """)
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS assignee TEXT
+            """)
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS jira_updated TIMESTAMPTZ
+            """)
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS last_synced TIMESTAMPTZ
+            """)
+
             # Index for efficient channel lookups
             await cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_jira_registry_channel
@@ -114,7 +133,8 @@ class JiraRegistryStore:
 
         Args:
             row: Tuple from database query with columns:
-                 id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                 id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by,
+                 summary, issue_type, status, assignee, jira_updated, last_synced
 
         Returns:
             JiraIssueLink dataclass instance.
@@ -129,6 +149,11 @@ class JiraRegistryStore:
             linked_by=row[6],
             summary=row[7] if len(row) > 7 else None,
             issue_type=row[8] if len(row) > 8 else None,
+            # Sync tracking fields (backward compatible)
+            status=row[9] if len(row) > 9 else None,
+            assignee=row[10] if len(row) > 10 else None,
+            jira_updated=row[11] if len(row) > 11 else None,
+            last_synced=row[12] if len(row) > 12 else None,
         )
 
     async def register(
@@ -178,7 +203,7 @@ class JiraRegistryStore:
                     workitem_id = COALESCE(EXCLUDED.workitem_id, jira_registry.workitem_id),
                     summary = COALESCE(EXCLUDED.summary, jira_registry.summary),
                     issue_type = COALESCE(EXCLUDED.issue_type, jira_registry.issue_type)
-                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 """,
                 (channel_id, jira_key, workitem_id, link_type, now, linked_by, summary, issue_type),
             )
@@ -256,7 +281,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 FROM jira_registry
                 WHERE channel_id = %s
                 ORDER BY linked_at DESC
@@ -287,7 +312,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 FROM jira_registry
                 WHERE channel_id = %s AND link_type = %s
                 ORDER BY linked_at DESC
@@ -324,7 +349,7 @@ class JiraRegistryStore:
             if issue_type_filter:
                 await cur.execute(
                     """
-                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                     FROM jira_registry
                     WHERE channel_id = %s
                       AND LOWER(summary) LIKE %s
@@ -337,7 +362,7 @@ class JiraRegistryStore:
             else:
                 await cur.execute(
                     """
-                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                     FROM jira_registry
                     WHERE channel_id = %s
                       AND LOWER(summary) LIKE %s
@@ -418,7 +443,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 FROM jira_registry
                 WHERE channel_id = %s AND jira_key = %s
                 """,
@@ -450,7 +475,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 FROM jira_registry
                 WHERE jira_key = %s
                 ORDER BY linked_at DESC
@@ -485,7 +510,7 @@ class JiraRegistryStore:
                 UPDATE jira_registry
                 SET workitem_id = %s
                 WHERE channel_id = %s AND jira_key = %s
-                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 """,
                 (workitem_id, channel_id, jira_key),
             )
