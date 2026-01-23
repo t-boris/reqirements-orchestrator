@@ -136,20 +136,51 @@ Classify the user's intent into ONE category:
   (Previously called TICKET - still accepted as alias)
   Examples: "create a ticket for X", "file a bug", "make a Jira story"
 
-- DRAFT_REFINE: User is asking about or wants to modify the ACTIVE DRAFT (not create new)
+- DRAFT_REFINE: User is ASKING about the ACTIVE DRAFT structure (not commanding)
   REQUIRES: Active draft must exist in context
-  Key signals:
+  Key signals - INTERROGATIVE form (questions):
   - Questions about draft structure: "is one epic enough?", "should we split this?"
-  - Decomposition requests: "break this down", "make it more granular"
   - Scope clarifications: "do you think this covers everything?"
   - Meta-questions: "what do you think about the structure?"
   Examples:
   - "Do you think only one epic is enough?" -> DRAFT_REFINE (when draft exists)
   - "Should we split this into multiple epics?" -> DRAFT_REFINE
   - "Is this scope appropriate?" -> DRAFT_REFINE
-  - "Can you break this down further?" -> DRAFT_REFINE
   IMPORTANT: Only use DRAFT_REFINE if ACTIVE DRAFT CONTEXT is present above.
   If no active draft, use REVIEW instead.
+  If user is COMMANDING (not asking), use DRAFT_TRANSFORM instead!
+
+- DRAFT_TRANSFORM: User is COMMANDING a structural change to the draft (not asking about it)
+  REQUIRES: Active draft must exist in context
+  IMPORTANT: This is for IMPERATIVE commands, not questions!
+
+  Key signal patterns (imperative/commanding):
+  - "Split into..." / "Split this into..."
+  - "Make this a plan" / "Turn this into..."
+  - "Add stories" / "Add epics"
+  - "Merge these" / "Combine..."
+  - "Only epics" / "Just epics" (scope change)
+  - "Break this down into..."
+  - "Decompose into stories"
+  - "Group them" / "Group these"
+  - "Remove the..." / "Delete..."
+
+  Transform operations:
+  - split_to_plan: "Split into epics", "Make this a plan with multiple items"
+  - add_items: "Add stories", "Add an epic for authentication"
+  - merge_items: "Merge the first two epics", "Combine these"
+  - elevate_to_epic: "Make this an epic", "Promote to epic"
+  - decompose_to_stories: "Break down the epic", "Add stories under this"
+  - change_scope: "Only epics", "Full plan", "Just one ticket"
+  - remove_items: "Remove the third epic", "Delete the auth story"
+
+  Examples:
+  - "Split this into multiple epics" -> DRAFT_TRANSFORM, transform_operation=split_to_plan
+  - "Add a story for login" -> DRAFT_TRANSFORM, transform_operation=add_items
+  - "Only epics, no stories" -> DRAFT_TRANSFORM, transform_operation=change_scope
+  - "Break this epic into stories" -> DRAFT_TRANSFORM, transform_operation=decompose_to_stories
+
+  IMPORTANT: If user is ASKING ("Should we split?", "Is this enough?"), use DRAFT_REFINE instead!
 
 - JIRA_SEARCH: User wants to SEARCH Jira for existing issues
   Key phrases: "check Jira", "search Jira", "look in Jira", "find in Jira", "do we have a ticket",
@@ -217,7 +248,7 @@ IMPORTANT RULES:
 20. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
 
 Respond in this exact format:
-INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|DRAFT_REFINE|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|DRAFT_REFINE|DRAFT_TRANSFORM|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -231,6 +262,7 @@ CHANGE_TARGETS: <comma-separated list of affected keys/ids, or "none">
 CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
 OPS_SUBTYPE: <debug|explain|none>
 CONTEXT_RELATION: <continue|refine|change|new_topic|none>
+TRANSFORM_OPERATION: <split_to_plan|add_items|merge_items|elevate_to_epic|decompose_to_stories|change_scope|remove_items|none>
 REASON: <brief explanation>"""
 
     try:
@@ -251,14 +283,15 @@ REASON: <brief explanation>"""
         search_query = None
         ops_subtype = None
         context_relation = None
+        transform_operation = None
 
         for line in lines:
             line = line.strip()
             if line.upper().startswith("INTENT:"):
                 intent_value = line.split(":", 1)[1].strip().upper()
                 valid_intents = [
-                    "OPS", "TICKET", "WORKITEM_CREATE", "DRAFT_REFINE", "TICKET_ACTION",
-                    "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST",
+                    "OPS", "TICKET", "WORKITEM_CREATE", "DRAFT_REFINE", "DRAFT_TRANSFORM",
+                    "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST",
                     "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"
                 ]
                 if intent_value in valid_intents:
@@ -312,6 +345,14 @@ REASON: <brief explanation>"""
                 relation = line.split(":", 1)[1].strip().lower()
                 if relation in ["continue", "refine", "change", "new_topic"]:
                     context_relation = relation
+            elif line.upper().startswith("TRANSFORM_OPERATION:"):
+                op_value = line.split(":", 1)[1].strip().lower()
+                valid_transform_ops = [
+                    "split_to_plan", "add_items", "merge_items", "elevate_to_epic",
+                    "decompose_to_stories", "change_scope", "remove_items"
+                ]
+                if op_value in valid_transform_ops:
+                    transform_operation = op_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -332,6 +373,7 @@ REASON: <brief explanation>"""
             search_query=search_query,
             ops_subtype=ops_subtype,
             context_relation=context_relation,
+            transform_operation=transform_operation,
             reasons=[reason],
         )
 
