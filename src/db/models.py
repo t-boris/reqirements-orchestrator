@@ -352,6 +352,11 @@ class WorkItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Ownership (Phase 27.5)
+    owners: list[str] = Field(default_factory=list, description="Responsible user IDs")
+    watchers: list[str] = Field(default_factory=list, description="Users to notify on changes")
+    last_updated_by: str | None = Field(default=None, description="Last user to modify")
+
     # Readiness (for drafts)
     readiness_score: float = Field(
         default=0.0, description="0.0-1.0 score for draft completeness"

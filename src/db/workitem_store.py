@@ -5,7 +5,7 @@ Provides database persistence for work items in the channel registry.
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from psycopg import AsyncConnection
 
@@ -61,9 +61,22 @@ class WorkItemStore:
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
+                    -- Ownership (Phase 27.5)
+                    owners TEXT[] DEFAULT '{}',
+                    watchers TEXT[] DEFAULT '{}',
+                    last_updated_by TEXT,
+
                     -- Readiness
                     readiness_score REAL DEFAULT 0.0
                 )
+            """)
+
+            # Migration: Add ownership columns to existing table
+            await cur.execute("""
+                ALTER TABLE work_items
+                ADD COLUMN IF NOT EXISTS owners TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS watchers TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS last_updated_by TEXT
             """)
 
             # Index on channel_id for list queries
@@ -112,21 +125,26 @@ class WorkItemStore:
 
         Returns:
             WorkItem: Newly created work item with DRAFT status.
+            Owner is automatically set to the creator.
         """
         item_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
+        # Creator becomes first owner
+        owners = [created_by]
 
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
                 INSERT INTO work_items (
                     id, channel_id, item_type, status, summary, description,
-                    parent_id, source_thread_ts, created_by, created_at, updated_at
+                    parent_id, source_thread_ts, created_by, created_at, updated_at,
+                    owners, watchers, last_updated_by
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, channel_id, item_type, status, summary, description,
                           facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                          source_thread_ts, created_by, created_at, updated_at, readiness_score
+                          source_thread_ts, created_by, created_at, updated_at,
+                          owners, watchers, last_updated_by, readiness_score
                 """,
                 (
                     item_id,
@@ -140,6 +158,9 @@ class WorkItemStore:
                     created_by,
                     now,
                     now,
+                    owners,
+                    [],  # Empty watchers initially
+                    created_by,  # Creator is last_updated_by
                 ),
             )
             row = await cur.fetchone()
@@ -161,7 +182,8 @@ class WorkItemStore:
                 """
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                       source_thread_ts, created_by, created_at, updated_at, readiness_score
+                       source_thread_ts, created_by, created_at, updated_at,
+                       owners, watchers, last_updated_by, readiness_score
                 FROM work_items
                 WHERE id = %s
                 """,
@@ -188,7 +210,8 @@ class WorkItemStore:
                 """
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                       source_thread_ts, created_by, created_at, updated_at, readiness_score
+                       source_thread_ts, created_by, created_at, updated_at,
+                       owners, watchers, last_updated_by, readiness_score
                 FROM work_items
                 WHERE jira_key = %s
                 """,
@@ -223,7 +246,8 @@ class WorkItemStore:
         query = """
             SELECT id, channel_id, item_type, status, summary, description,
                    facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                   source_thread_ts, created_by, created_at, updated_at, readiness_score
+                   source_thread_ts, created_by, created_at, updated_at,
+                   owners, watchers, last_updated_by, readiness_score
             FROM work_items
             WHERE channel_id = %s
         """
@@ -260,6 +284,7 @@ class WorkItemStore:
         jira_fingerprint: dict[str, str] | None = None,
         facts: dict[str, Any] | None = None,
         readiness_score: float | None = None,
+        last_updated_by: str | None = None,
     ) -> WorkItem:
         """Update work item fields. Only non-None values are updated.
 
@@ -273,6 +298,7 @@ class WorkItemStore:
             jira_fingerprint: New fingerprint if provided.
             facts: New facts dict if provided.
             readiness_score: New readiness score if provided.
+            last_updated_by: User ID who made this update.
 
         Returns:
             WorkItem: Updated work item.
@@ -316,6 +342,10 @@ class WorkItemStore:
             set_clauses.append("readiness_score = %s")
             params.append(readiness_score)
 
+        if last_updated_by is not None:
+            set_clauses.append("last_updated_by = %s")
+            params.append(last_updated_by)
+
         # Always update updated_at
         set_clauses.append("updated_at = %s")
         now = datetime.now(timezone.utc)
@@ -330,7 +360,8 @@ class WorkItemStore:
             WHERE id = %s
             RETURNING id, channel_id, item_type, status, summary, description,
                       facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                      source_thread_ts, created_by, created_at, updated_at, readiness_score
+                      source_thread_ts, created_by, created_at, updated_at,
+                      owners, watchers, last_updated_by, readiness_score
         """
 
         async with self._conn.cursor() as cur:
@@ -376,7 +407,8 @@ class WorkItemStore:
                 """
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
-                       source_thread_ts, created_by, created_at, updated_at, readiness_score
+                       source_thread_ts, created_by, created_at, updated_at,
+                       owners, watchers, last_updated_by, readiness_score
                 FROM work_items
                 WHERE parent_id = %s
                 ORDER BY created_at DESC
@@ -448,6 +480,14 @@ class WorkItemStore:
 
         Args:
             row: Tuple from database query.
+                Expected order (19 columns):
+                0: id, 1: channel_id, 2: item_type, 3: status,
+                4: summary, 5: description, 6: facts,
+                7: jira_key, 8: jira_sync_at, 9: jira_fingerprint,
+                10: parent_id, 11: source_thread_ts, 12: created_by,
+                13: created_at, 14: updated_at,
+                15: owners, 16: watchers, 17: last_updated_by,
+                18: readiness_score
 
         Returns:
             WorkItem model instance.
@@ -455,6 +495,10 @@ class WorkItemStore:
         # Parse JSONB fields
         facts = row[6] if row[6] else {}
         jira_fingerprint = row[9] if row[9] else None
+        # Parse ownership arrays (may be None for older records)
+        owners = list(row[15]) if row[15] else []
+        watchers = list(row[16]) if row[16] else []
+        last_updated_by = row[17] if row[17] else None
 
         return WorkItem(
             id=str(row[0]),
@@ -472,5 +516,209 @@ class WorkItemStore:
             created_by=row[12],
             created_at=row[13],
             updated_at=row[14],
-            readiness_score=row[15],
+            owners=owners,
+            watchers=watchers,
+            last_updated_by=last_updated_by,
+            readiness_score=row[18],
         )
+
+    # -------------------------------------------------------------------------
+    # Ownership operations (Phase 27.5)
+    # -------------------------------------------------------------------------
+
+    async def update_ownership(
+        self,
+        item_id: str,
+        *,
+        owners: list[str] | None = None,
+        watchers: list[str] | None = None,
+        last_updated_by: str | None = None,
+    ) -> WorkItem:
+        """Update ownership fields on a work item.
+
+        Args:
+            item_id: UUID of the work item to update.
+            owners: New owners list if provided (replaces existing).
+            watchers: New watchers list if provided (replaces existing).
+            last_updated_by: User ID who made this update.
+
+        Returns:
+            WorkItem: Updated work item.
+
+        Raises:
+            ValueError: If work item not found.
+        """
+        set_clauses: list[str] = []
+        params: list[Any] = []
+
+        if owners is not None:
+            set_clauses.append("owners = %s")
+            params.append(owners)
+
+        if watchers is not None:
+            set_clauses.append("watchers = %s")
+            params.append(watchers)
+
+        if last_updated_by is not None:
+            set_clauses.append("last_updated_by = %s")
+            params.append(last_updated_by)
+
+        if not set_clauses:
+            # Nothing to update - return current item
+            item = await self.get(item_id)
+            if not item:
+                raise ValueError(f"WorkItem not found: {item_id}")
+            return item
+
+        # Always update updated_at
+        set_clauses.append("updated_at = %s")
+        now = datetime.now(timezone.utc)
+        params.append(now)
+
+        params.append(item_id)
+
+        query = f"""
+            UPDATE work_items
+            SET {', '.join(set_clauses)}
+            WHERE id = %s
+            RETURNING id, channel_id, item_type, status, summary, description,
+                      facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
+                      source_thread_ts, created_by, created_at, updated_at,
+                      owners, watchers, last_updated_by, readiness_score
+        """
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(query, params)
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            raise ValueError(f"WorkItem not found: {item_id}")
+
+        return self._row_to_workitem(row)
+
+    async def add_owner(self, item_id: str, user_id: str) -> WorkItem:
+        """Add a user to owners list (idempotent).
+
+        Args:
+            item_id: UUID of the work item.
+            user_id: User ID to add as owner.
+
+        Returns:
+            WorkItem: Updated work item.
+
+        Raises:
+            ValueError: If work item not found.
+        """
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            # Use array_append with CASE to avoid duplicates
+            await cur.execute(
+                """
+                UPDATE work_items
+                SET owners = CASE
+                        WHEN %s = ANY(owners) THEN owners
+                        ELSE array_append(owners, %s)
+                    END,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING id, channel_id, item_type, status, summary, description,
+                          facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
+                          source_thread_ts, created_by, created_at, updated_at,
+                          owners, watchers, last_updated_by, readiness_score
+                """,
+                (user_id, user_id, now, item_id),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            raise ValueError(f"WorkItem not found: {item_id}")
+
+        return self._row_to_workitem(row)
+
+    async def add_watcher(self, item_id: str, user_id: str) -> WorkItem:
+        """Add a user to watchers list (idempotent).
+
+        Args:
+            item_id: UUID of the work item.
+            user_id: User ID to add as watcher.
+
+        Returns:
+            WorkItem: Updated work item.
+
+        Raises:
+            ValueError: If work item not found.
+        """
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            # Use array_append with CASE to avoid duplicates
+            await cur.execute(
+                """
+                UPDATE work_items
+                SET watchers = CASE
+                        WHEN %s = ANY(watchers) THEN watchers
+                        ELSE array_append(watchers, %s)
+                    END,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING id, channel_id, item_type, status, summary, description,
+                          facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
+                          source_thread_ts, created_by, created_at, updated_at,
+                          owners, watchers, last_updated_by, readiness_score
+                """,
+                (user_id, user_id, now, item_id),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            raise ValueError(f"WorkItem not found: {item_id}")
+
+        return self._row_to_workitem(row)
+
+    async def get_items_for_user(
+        self,
+        channel_id: str,
+        user_id: str,
+        role: Literal["owner", "watcher", "any"] = "any",
+    ) -> list[WorkItem]:
+        """Get work items where user is owner or watcher.
+
+        Args:
+            channel_id: Slack channel ID.
+            user_id: User ID to search for.
+            role: Filter by role - "owner", "watcher", or "any" (default).
+
+        Returns:
+            List of WorkItem objects where user has the specified role.
+        """
+        if role == "owner":
+            where_clause = "channel_id = %s AND %s = ANY(owners)"
+        elif role == "watcher":
+            where_clause = "channel_id = %s AND %s = ANY(watchers)"
+        else:  # any
+            where_clause = "channel_id = %s AND (%s = ANY(owners) OR %s = ANY(watchers))"
+
+        query = f"""
+            SELECT id, channel_id, item_type, status, summary, description,
+                   facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
+                   source_thread_ts, created_by, created_at, updated_at,
+                   owners, watchers, last_updated_by, readiness_score
+            FROM work_items
+            WHERE {where_clause}
+            ORDER BY updated_at DESC
+        """
+
+        if role == "any":
+            params = (channel_id, user_id, user_id)
+        else:
+            params = (channel_id, user_id)
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(query, params)
+            rows = await cur.fetchall()
+
+        return [self._row_to_workitem(row) for row in rows]
