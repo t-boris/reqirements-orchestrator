@@ -56,6 +56,11 @@ from src.slack.blocks.debug import (
     build_debug_state_blocks,
     build_debug_output_blocks,
 )
+from src.slack.blocks.draft_conflict import (
+    build_draft_conflict_blocks,
+    build_draft_conflict_resolved_blocks,
+    build_unresolved_conflicts_notice,
+)
 
 __all__ = [
     # Draft
@@ -98,4 +103,8 @@ __all__ = [
     "build_debug_status_blocks",
     "build_debug_state_blocks",
     "build_debug_output_blocks",
+    # Draft Conflict (27.3)
+    "build_draft_conflict_blocks",
+    "build_draft_conflict_resolved_blocks",
+    "build_unresolved_conflicts_notice",
 ]
