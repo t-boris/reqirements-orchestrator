@@ -274,7 +274,9 @@ Review text:
 Topic: {topic}
 Scope: {scope}
 
-Return a JSON array with ONLY type, title, and parent_index for each item:
+CRITICAL: Return ONLY a valid JSON array. No text before or after. No explanations.
+
+Format (copy this structure exactly):
 [
   {{"type": "epic", "title": "Short title here"}},
   {{"type": "story", "title": "Short title here", "parent_index": 0}}
@@ -285,9 +287,9 @@ Rules:
 - "epic with N stories" = 1 Epic at index 0, N Stories with parent_index: 0
 - parent_index is the array index of the parent Epic (if any)
 - Keep titles SHORT (under 80 chars)
-- Do NOT include descriptions in this response
+- Do NOT include descriptions
 
-Be thorough - list EVERY item mentioned.
+IMPORTANT: Your response must start with [ and end with ]. Nothing else.
 '''
 
 # Phase 2: Get full details for a single item
@@ -340,6 +342,7 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
     try:
         logger.info("Phase 1: Extracting item list from review")
         response_text = await llm.chat(list_prompt)
+        logger.info(f"Phase 1 raw LLM response: {response_text[:500]}")
         item_list = _parse_json_response(response_text)
 
         if not isinstance(item_list, list):
@@ -400,6 +403,7 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
                 )
 
                 detail_response = await llm.chat(detail_prompt)
+                logger.debug(f"Phase 2 raw LLM response for item {i}: {detail_response[:300]}")
                 details = _parse_json_response(detail_response)
 
                 if isinstance(details, dict):
