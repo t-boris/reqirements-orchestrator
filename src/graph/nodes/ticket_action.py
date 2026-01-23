@@ -97,6 +97,8 @@ async def _resolve_ticket_by_name(state: dict, channel_id: str) -> str | None:
     try:
         async with get_connection() as conn:
             registry = JiraRegistryStore(conn)
+
+            # First try to resolve by name if summaries exist
             link = await registry.resolve_by_name(
                 channel_id=channel_id,
                 name_fragment=name_fragment,
@@ -113,10 +115,72 @@ async def _resolve_ticket_by_name(state: dict, channel_id: str) -> str | None:
                     }
                 )
                 return link.jira_key
+
+            # If no match found, try to sync missing summaries from Jira and retry
+            issues = await registry.get_channel_issues(channel_id, limit=50)
+            missing_summary = [i for i in issues if not i.summary]
+
+            if missing_summary:
+                logger.info(f"Syncing {len(missing_summary)} issues with missing summaries")
+                await _sync_missing_summaries(registry, missing_summary)
+
+                # Retry resolution after sync
+                link = await registry.resolve_by_name(
+                    channel_id=channel_id,
+                    name_fragment=name_fragment,
+                    issue_type_filter=issue_type_filter,
+                )
+                if link:
+                    logger.info(
+                        "Resolved ticket by name after sync",
+                        extra={
+                            "name_fragment": name_fragment,
+                            "resolved_key": link.jira_key,
+                            "resolved_summary": link.summary,
+                        }
+                    )
+                    return link.jira_key
+
     except Exception as e:
         logger.warning(f"Failed to resolve ticket by name: {e}")
 
     return None
+
+
+async def _sync_missing_summaries(registry: "JiraRegistryStore", issues: list) -> None:
+    """Fetch missing summaries from Jira and update registry."""
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    jira = JiraService(settings)
+
+    try:
+        for issue_link in issues:
+            try:
+                jira_issue = await jira.get_issue(issue_link.jira_key)
+                if jira_issue:
+                    # Update registry with fetched data
+                    await registry.register(
+                        channel_id=issue_link.channel_id,
+                        jira_key=issue_link.jira_key,
+                        link_type=issue_link.link_type,
+                        linked_by=issue_link.linked_by,
+                        summary=jira_issue.summary,
+                        issue_type=jira_issue.issue_type.lower() if jira_issue.issue_type else None,
+                    )
+                    logger.info(
+                        "Synced issue summary from Jira",
+                        extra={
+                            "jira_key": issue_link.jira_key,
+                            "summary": jira_issue.summary[:50] if jira_issue.summary else None,
+                            "issue_type": jira_issue.issue_type,
+                        }
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to sync issue {issue_link.jira_key}: {e}")
+    finally:
+        await jira.close()
 
 
 async def ticket_action_node(state: AgentState) -> dict[str, Any]:
