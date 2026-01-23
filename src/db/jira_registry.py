@@ -33,6 +33,8 @@ class JiraIssueLink:
     link_type: LinkType
     linked_at: datetime
     linked_by: str
+    summary: Optional[str] = None  # Ticket summary/title for name resolution
+    issue_type: Optional[str] = None  # epic, story, bug, task
 
 
 class JiraRegistryStore:
@@ -71,8 +73,19 @@ class JiraRegistryStore:
                     link_type TEXT NOT NULL,
                     linked_at TIMESTAMPTZ NOT NULL,
                     linked_by TEXT NOT NULL,
+                    summary TEXT,
                     UNIQUE(channel_id, jira_key)
                 )
+            """)
+
+            # Add summary column if it doesn't exist (migration for existing DBs)
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS summary TEXT
+            """)
+
+            # Add issue_type column (epic, story, bug, task)
+            await cur.execute("""
+                ALTER TABLE jira_registry ADD COLUMN IF NOT EXISTS issue_type TEXT
             """)
 
             # Index for efficient channel lookups
@@ -101,7 +114,7 @@ class JiraRegistryStore:
 
         Args:
             row: Tuple from database query with columns:
-                 id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                 id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
 
         Returns:
             JiraIssueLink dataclass instance.
@@ -114,6 +127,8 @@ class JiraRegistryStore:
             link_type=row[4],
             linked_at=row[5],
             linked_by=row[6],
+            summary=row[7] if len(row) > 7 else None,
+            issue_type=row[8] if len(row) > 8 else None,
         )
 
     async def register(
@@ -123,6 +138,8 @@ class JiraRegistryStore:
         link_type: LinkType,
         linked_by: str,
         workitem_id: Optional[str] = None,
+        summary: Optional[str] = None,
+        issue_type: Optional[str] = None,
     ) -> JiraIssueLink:
         """Register a Jira issue in a channel's registry.
 
@@ -134,6 +151,8 @@ class JiraRegistryStore:
             link_type: Type of link (owned, tracked, mentioned).
             linked_by: Slack user ID who triggered registration.
             workitem_id: Optional WorkItem UUID if linked to WorkItem.
+            summary: Optional ticket summary for name-based resolution.
+            issue_type: Optional issue type (epic, story, bug, task).
 
         Returns:
             JiraIssueLink: The registered link record.
@@ -141,22 +160,27 @@ class JiraRegistryStore:
         now = datetime.now(timezone.utc)
         # Normalize issue key to uppercase
         jira_key = jira_key.upper()
+        # Normalize issue_type to lowercase
+        if issue_type:
+            issue_type = issue_type.lower()
 
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
                 INSERT INTO jira_registry (
-                    channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                    channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (channel_id, jira_key) DO UPDATE SET
                     link_type = EXCLUDED.link_type,
                     linked_at = EXCLUDED.linked_at,
                     linked_by = EXCLUDED.linked_by,
-                    workitem_id = COALESCE(EXCLUDED.workitem_id, jira_registry.workitem_id)
-                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                    workitem_id = COALESCE(EXCLUDED.workitem_id, jira_registry.workitem_id),
+                    summary = COALESCE(EXCLUDED.summary, jira_registry.summary),
+                    issue_type = COALESCE(EXCLUDED.issue_type, jira_registry.issue_type)
+                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 """,
-                (channel_id, jira_key, workitem_id, link_type, now, linked_by),
+                (channel_id, jira_key, workitem_id, link_type, now, linked_by, summary, issue_type),
             )
             row = await cur.fetchone()
             await self._conn.commit()
@@ -168,6 +192,8 @@ class JiraRegistryStore:
                 "jira_key": jira_key,
                 "link_type": link_type,
                 "linked_by": linked_by,
+                "summary": summary[:50] if summary else None,
+                "issue_type": issue_type,
             },
         )
 
@@ -230,7 +256,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 FROM jira_registry
                 WHERE channel_id = %s
                 ORDER BY linked_at DESC
@@ -261,7 +287,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 FROM jira_registry
                 WHERE channel_id = %s AND link_type = %s
                 ORDER BY linked_at DESC
@@ -272,6 +298,78 @@ class JiraRegistryStore:
             rows = await cur.fetchall()
 
         return [self._row_to_link(row) for row in rows]
+
+    async def resolve_by_name(
+        self,
+        channel_id: str,
+        name_fragment: str,
+        issue_type_filter: Optional[str] = None,
+    ) -> Optional[JiraIssueLink]:
+        """Resolve a Jira issue by partial name match.
+
+        Used for contextual references like "Content Layer epic" -> SCRUM-163.
+
+        Args:
+            channel_id: Slack channel ID.
+            name_fragment: Partial name to search for (case-insensitive).
+            issue_type_filter: Optional filter by issue type (epic, story, etc.).
+
+        Returns:
+            Best matching JiraIssueLink, or None if no match.
+        """
+        name_fragment = name_fragment.lower()
+
+        async with self._conn.cursor() as cur:
+            # Build query with optional issue_type filter
+            if issue_type_filter:
+                await cur.execute(
+                    """
+                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                    FROM jira_registry
+                    WHERE channel_id = %s
+                      AND LOWER(summary) LIKE %s
+                      AND issue_type = %s
+                    ORDER BY linked_at DESC
+                    LIMIT 1
+                    """,
+                    (channel_id, f"%{name_fragment}%", issue_type_filter.lower()),
+                )
+            else:
+                await cur.execute(
+                    """
+                    SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                    FROM jira_registry
+                    WHERE channel_id = %s
+                      AND LOWER(summary) LIKE %s
+                    ORDER BY linked_at DESC
+                    LIMIT 1
+                    """,
+                    (channel_id, f"%{name_fragment}%"),
+                )
+            row = await cur.fetchone()
+
+        if not row:
+            logger.debug(
+                "No issue found by name",
+                extra={
+                    "channel_id": channel_id,
+                    "name_fragment": name_fragment,
+                    "issue_type_filter": issue_type_filter,
+                },
+            )
+            return None
+
+        link = self._row_to_link(row)
+        logger.info(
+            "Resolved issue by name",
+            extra={
+                "channel_id": channel_id,
+                "name_fragment": name_fragment,
+                "resolved_key": link.jira_key,
+                "resolved_summary": link.summary,
+            },
+        )
+        return link
 
     async def is_registered(
         self,
@@ -320,7 +418,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 FROM jira_registry
                 WHERE channel_id = %s AND jira_key = %s
                 """,
@@ -352,7 +450,7 @@ class JiraRegistryStore:
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 FROM jira_registry
                 WHERE jira_key = %s
                 ORDER BY linked_at DESC
@@ -387,7 +485,7 @@ class JiraRegistryStore:
                 UPDATE jira_registry
                 SET workitem_id = %s
                 WHERE channel_id = %s AND jira_key = %s
-                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by
+                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
                 """,
                 (workitem_id, channel_id, jira_key),
             )

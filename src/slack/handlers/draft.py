@@ -431,6 +431,12 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             try:
                 from src.db.jira_registry import JiraRegistryStore
 
+                # Get summary and issue_type from draft
+                draft_title = draft.title if draft else None
+                draft_issue_type = None
+                if draft and hasattr(draft, 'issue_type') and draft.issue_type:
+                    draft_issue_type = draft.issue_type.value if hasattr(draft.issue_type, 'value') else str(draft.issue_type)
+
                 async with get_connection() as conn:
                     registry = JiraRegistryStore(conn)
                     await registry.create_tables()
@@ -439,10 +445,17 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                         jira_key=create_result.jira_key,
                         link_type="owned",
                         linked_by=user_id,
+                        summary=draft_title,
+                        issue_type=draft_issue_type,
                     )
                 logger.info(
                     "Registered created ticket in channel registry",
-                    extra={"jira_key": create_result.jira_key, "channel": channel},
+                    extra={
+                        "jira_key": create_result.jira_key,
+                        "channel": channel,
+                        "summary": draft_title[:50] if draft_title else None,
+                        "issue_type": draft_issue_type,
+                    },
                 )
             except Exception as e:
                 logger.warning(f"Failed to register ticket in registry: {e}")

@@ -530,8 +530,8 @@ async def _track_created_tickets(
 ) -> None:
     """Auto-track all created tickets in channel.
 
-    Integrates with Phase 21's channel tracking. Non-blocking - failures
-    are logged but don't interrupt the user-facing operation.
+    Integrates with Phase 21's channel tracking and Jira Registry.
+    Non-blocking - failures are logged but don't interrupt the user-facing operation.
 
     Args:
         results: Creation results with jira_key, title, type, success
@@ -540,13 +540,18 @@ async def _track_created_tickets(
     """
     from src.db import get_connection
     from src.slack.channel_tracker import ChannelIssueTracker
+    from src.db.jira_registry import JiraRegistryStore
 
     try:
         async with get_connection() as conn:
             tracker = ChannelIssueTracker(conn)
             await tracker.create_tables()
 
+            registry = JiraRegistryStore(conn)
+            await registry.create_tables()
+
             tracked_count = 0
+            registered_count = 0
             for result in results:
                 if not result.get("success"):
                     continue
@@ -555,6 +560,7 @@ async def _track_created_tickets(
                 if not jira_key:
                     continue
 
+                # Track in ChannelIssueTracker
                 try:
                     await tracker.track(
                         channel_id=channel_id,
@@ -565,11 +571,26 @@ async def _track_created_tickets(
                 except Exception as e:
                     logger.warning(f"Failed to track issue {jira_key}: {e}")
 
+                # Register in JiraRegistry with summary and issue_type
+                try:
+                    await registry.register(
+                        channel_id=channel_id,
+                        jira_key=jira_key,
+                        link_type="owned",
+                        linked_by=user_id,
+                        summary=result.get("title", ""),
+                        issue_type=result.get("type", ""),
+                    )
+                    registered_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to register issue {jira_key} in registry: {e}")
+
             logger.info(
                 "Auto-tracked created tickets",
                 extra={
                     "channel_id": channel_id,
                     "tracked_count": tracked_count,
+                    "registered_count": registered_count,
                 },
             )
 

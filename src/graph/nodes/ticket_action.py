@@ -20,6 +20,105 @@ from src.schemas.state import AgentState
 logger = logging.getLogger(__name__)
 
 
+async def _resolve_ticket_by_name(state: dict, channel_id: str) -> str | None:
+    """Resolve ticket from natural language reference in user message.
+
+    Looks for patterns like "Content Layer epic" and matches against
+    Jira Registry entries by summary.
+
+    Args:
+        state: Current agent state with messages.
+        channel_id: Slack channel ID for registry lookup.
+
+    Returns:
+        Resolved ticket key or None.
+    """
+    from src.db import get_connection
+    from src.db.jira_registry import JiraRegistryStore
+    import re
+
+    # Get latest human message
+    messages = state.get("messages", [])
+    user_message = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            user_message = msg.content if isinstance(msg.content, str) else str(msg.content)
+            break
+
+    if not user_message:
+        return None
+
+    user_message_lower = user_message.lower()
+
+    # Extract potential name fragment and issue type hint
+    # Patterns: "Content Layer epic", "the auth story", "for X epic"
+    issue_type_filter = None
+    name_fragment = None
+
+    # Check for issue type hints
+    if "epic" in user_message_lower:
+        issue_type_filter = "epic"
+    elif "story" in user_message_lower or "stories" in user_message_lower:
+        issue_type_filter = "story"
+    elif "task" in user_message_lower:
+        issue_type_filter = "task"
+    elif "bug" in user_message_lower:
+        issue_type_filter = "bug"
+
+    # Extract name fragment - look for phrases before "epic/story/task/bug"
+    # e.g., "Content Layer epic" -> "Content Layer"
+    patterns = [
+        r"for\s+(?:the\s+)?(.+?)\s+(?:epic|story|task|bug)",
+        r"(?:the\s+)?(.+?)\s+(?:epic|story|task|bug)",
+        r"for\s+(.+?)$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, user_message, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip()
+            # Skip generic words
+            if candidate.lower() not in ("the", "this", "that", "a", "an"):
+                name_fragment = candidate
+                break
+
+    if not name_fragment:
+        logger.debug("Could not extract name fragment from user message")
+        return None
+
+    logger.info(
+        "Attempting to resolve ticket by name",
+        extra={
+            "name_fragment": name_fragment,
+            "issue_type_filter": issue_type_filter,
+        }
+    )
+
+    try:
+        async with get_connection() as conn:
+            registry = JiraRegistryStore(conn)
+            link = await registry.resolve_by_name(
+                channel_id=channel_id,
+                name_fragment=name_fragment,
+                issue_type_filter=issue_type_filter,
+            )
+
+            if link:
+                logger.info(
+                    "Resolved ticket by name",
+                    extra={
+                        "name_fragment": name_fragment,
+                        "resolved_key": link.jira_key,
+                        "resolved_summary": link.summary,
+                    }
+                )
+                return link.jira_key
+    except Exception as e:
+        logger.warning(f"Failed to resolve ticket by name: {e}")
+
+    return None
+
+
 async def ticket_action_node(state: AgentState) -> dict[str, Any]:
     """Handle ticket action intent.
 
@@ -27,7 +126,7 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
     decision_result for the handler to process.
 
     If ticket_key is None (contextual reference like "the epic"), resolves
-    from thread binding.
+    from thread binding or by name search in Jira Registry.
 
     Returns partial state update with decision_result containing:
     - action: "ticket_action"
@@ -60,6 +159,10 @@ async def ticket_action_node(state: AgentState) -> dict[str, Any]:
                     "action_type": action_type,
                 }
             )
+
+        # If still no ticket_key, try to resolve by name from user message
+        if not ticket_key and channel_id:
+            ticket_key = await _resolve_ticket_by_name(state, channel_id)
 
         if binding and binding.issue_key == ticket_key:
             # Thread already bound to the SAME ticket - do action, don't re-link
