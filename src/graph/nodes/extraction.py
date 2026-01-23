@@ -618,17 +618,50 @@ Reviewed by: {artifact_persona}
                         ))
                 extracted["constraints"] = existing_constraints
 
-            # Patch draft
-            draft.patch(**{k: v for k, v in extracted.items() if k not in ["constraints"] or k == "constraints"})
+            # Get user_id from state for attribution (Phase 27.1)
+            user_id = state.get("user_id", "")
+            message_ts = getattr(latest_human, "id", "") or thread_ts
 
-            # Add evidence link
+            # Patch draft with attribution for attributable fields
+            attributable_fields = ["title", "problem", "proposed_solution"]
+            for field, value in extracted.items():
+                if field in attributable_fields and value and user_id:
+                    # Use attribution-aware setter for key fields
+                    draft.set_with_attribution(
+                        field=field,
+                        value=value,
+                        author_user_id=user_id,
+                        source_message_ts=message_ts,
+                    )
+                elif field not in attributable_fields:
+                    # Regular patch for other fields
+                    if hasattr(draft, field) and value is not None:
+                        setattr(draft, field, value)
+
+            # Increment version and timestamp after all updates
+            from datetime import datetime
+            draft.updated_at = datetime.utcnow()
+            draft.version += 1
+
+            # Add evidence links for all extracted fields
             for field in extracted.keys():
                 draft.add_evidence(
-                    message_ts=getattr(latest_human, "id", "") or "",
+                    message_ts=message_ts,
                     thread_ts=thread_ts,
                     channel_id=channel_id,
                     field_updated=field,
                     text_preview=message_text[:100],
+                )
+
+            # Log attribution tracking
+            if user_id:
+                logger.debug(
+                    "Attribution tracked for extraction",
+                    extra={
+                        "user_id": user_id,
+                        "fields_attributed": [f for f in extracted.keys() if f in attributable_fields],
+                        "source_message_ts": message_ts,
+                    }
                 )
         else:
             logger.debug("No new information extracted")
