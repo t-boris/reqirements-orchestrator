@@ -116,30 +116,20 @@ async def _resolve_ticket_by_name(state: dict, channel_id: str) -> str | None:
                 )
                 return link.jira_key
 
-            # If no match found, try to sync missing summaries from Jira and retry
+            # If no match in cache, search Jira directly for registered tickets
+            # (handles case when ticket was renamed in Jira)
             issues = await registry.get_channel_issues(channel_id, limit=50)
-            missing_summary = [i for i in issues if not i.summary]
-
-            if missing_summary:
-                logger.info(f"Syncing {len(missing_summary)} issues with missing summaries")
-                await _sync_missing_summaries(registry, missing_summary)
-
-                # Retry resolution after sync
-                link = await registry.resolve_by_name(
-                    channel_id=channel_id,
+            if issues:
+                logger.info(f"Searching Jira for '{name_fragment}' among {len(issues)} registered tickets")
+                resolved_key = await _search_jira_by_name(
+                    issues=[i.jira_key for i in issues],
                     name_fragment=name_fragment,
                     issue_type_filter=issue_type_filter,
+                    registry=registry,
+                    channel_id=channel_id,
                 )
-                if link:
-                    logger.info(
-                        "Resolved ticket by name after sync",
-                        extra={
-                            "name_fragment": name_fragment,
-                            "resolved_key": link.jira_key,
-                            "resolved_summary": link.summary,
-                        }
-                    )
-                    return link.jira_key
+                if resolved_key:
+                    return resolved_key
 
     except Exception as e:
         logger.warning(f"Failed to resolve ticket by name: {e}")
@@ -147,40 +137,81 @@ async def _resolve_ticket_by_name(state: dict, channel_id: str) -> str | None:
     return None
 
 
-async def _sync_missing_summaries(registry: "JiraRegistryStore", issues: list) -> None:
-    """Fetch missing summaries from Jira and update registry."""
+async def _search_jira_by_name(
+    issues: list[str],
+    name_fragment: str,
+    issue_type_filter: str | None,
+    registry: "JiraRegistryStore",
+    channel_id: str,
+) -> str | None:
+    """Search Jira for matching ticket among registered keys.
+
+    Fetches fresh data from Jira to handle renamed tickets.
+    Updates registry cache with fresh data.
+
+    Args:
+        issues: List of Jira keys to search among.
+        name_fragment: Text to search for in summary.
+        issue_type_filter: Optional filter by issue type.
+        registry: Registry store to update cache.
+        channel_id: Channel ID for registry updates.
+
+    Returns:
+        Matching Jira key or None.
+    """
     from src.jira.client import JiraService
     from src.config.settings import get_settings
 
     settings = get_settings()
     jira = JiraService(settings)
+    name_lower = name_fragment.lower()
 
     try:
-        for issue_link in issues:
+        for jira_key in issues:
             try:
-                jira_issue = await jira.get_issue(issue_link.jira_key)
-                if jira_issue:
-                    # Update registry with fetched data
+                jira_issue = await jira.get_issue(jira_key)
+                if not jira_issue:
+                    continue
+
+                issue_type = jira_issue.issue_type.lower() if jira_issue.issue_type else ""
+                summary = jira_issue.summary or ""
+
+                # Update registry cache with fresh data
+                link = await registry.get_link(channel_id, jira_key)
+                if link:
                     await registry.register(
-                        channel_id=issue_link.channel_id,
-                        jira_key=issue_link.jira_key,
-                        link_type=issue_link.link_type,
-                        linked_by=issue_link.linked_by,
-                        summary=jira_issue.summary,
-                        issue_type=jira_issue.issue_type.lower() if jira_issue.issue_type else None,
+                        channel_id=channel_id,
+                        jira_key=jira_key,
+                        link_type=link.link_type,
+                        linked_by=link.linked_by,
+                        summary=summary,
+                        issue_type=issue_type,
                     )
+
+                # Check if matches
+                if name_lower in summary.lower():
+                    # Check issue type filter if provided
+                    if issue_type_filter and issue_type != issue_type_filter.lower():
+                        continue
+
                     logger.info(
-                        "Synced issue summary from Jira",
+                        "Resolved ticket from Jira search",
                         extra={
-                            "jira_key": issue_link.jira_key,
-                            "summary": jira_issue.summary[:50] if jira_issue.summary else None,
-                            "issue_type": jira_issue.issue_type,
+                            "name_fragment": name_fragment,
+                            "resolved_key": jira_key,
+                            "summary": summary[:50],
+                            "issue_type": issue_type,
                         }
                     )
+                    return jira_key
+
             except Exception as e:
-                logger.warning(f"Failed to sync issue {issue_link.jira_key}: {e}")
+                logger.warning(f"Failed to fetch issue {jira_key}: {e}")
+
     finally:
         await jira.close()
+
+    return None
 
 
 async def ticket_action_node(state: AgentState) -> dict[str, Any]:
