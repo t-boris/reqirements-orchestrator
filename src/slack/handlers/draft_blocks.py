@@ -252,6 +252,59 @@ def build_approved_preview_blocks(draft: "TicketDraft", approved_by: str) -> lis
     return blocks
 
 
+def build_outdated_preview_blocks(
+    draft: "TicketDraft",
+    reason: str = "The draft has been updated",
+) -> list[dict]:
+    """Build preview blocks indicating the preview is outdated (Phase 27.4).
+
+    Used when state changes after buttons were posted, making them stale.
+    Replaces action buttons with an "outdated" notice.
+
+    Args:
+        draft: The TicketDraft (for displaying title context)
+        reason: Why the preview is outdated
+
+    Returns:
+        List of Slack blocks
+    """
+    blocks = []
+
+    # Header with outdated status
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": "Preview Outdated",
+            "emoji": True
+        }
+    })
+
+    # Title
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f"*Title:* {draft.title or '_Not set_'}"
+        }
+    })
+
+    # Divider
+    blocks.append({"type": "divider"})
+
+    # Outdated notice (replaces buttons)
+    outdated_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": f":warning: {reason} at {outdated_time}. Check the latest preview above."
+        }]
+    })
+
+    return blocks
+
+
 def build_rejected_preview_blocks(draft: "TicketDraft", rejected_by: str) -> list[dict]:
     """Build preview blocks with rejection status (no action buttons).
 
