@@ -532,6 +532,10 @@ async def _dispatch_result(
             text=f":warning: {result.get('error', 'Unknown error')}",
         )
 
+    elif action == "transform_applied":
+        # DRAFT_TRANSFORM completed - show new structure (Phase 28.6, R8)
+        await _handle_transform_applied(result, identity, client)
+
     elif action == "conflict":
         # Draft conflict detected - post conflict UI (Phase 27.3)
         await _handle_draft_conflict(result, identity, client)
@@ -1507,3 +1511,81 @@ async def _handle_draft_conflict(
             thread_ts=identity.thread_ts,
             text=f":warning: {len(conflicts_data)} conflicts detected. Please resolve each one above.",
         )
+
+
+# --- Transform Applied Handler (Phase 28.6) ---
+
+async def _handle_transform_applied(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle transform_applied action - show new structure.
+
+    R8: After each Draft form change, bot must show the new form.
+
+    Posts structure visualization with version-bound buttons after
+    any structural mutation to the draft.
+
+    Args:
+        result: Decision result with transform_result and structured_draft
+        identity: Session identity
+        client: Slack WebClient
+    """
+    from src.slack.blocks.draft_structure import build_structure_blocks
+    from src.schemas.structured_draft import StructuredDraft
+
+    transform_result = result.get("transform_result", {})
+    operation = result.get("operation", "unknown")
+    reason = result.get("reason", "")
+
+    # Get structured draft from result or fetch from runner
+    structured_draft_data = result.get("structured_draft")
+
+    if structured_draft_data is None:
+        # Try to get from runner state
+        runner = get_runner(identity)
+        state = await runner._get_current_state()
+        structured_draft = state.get("structured_draft")
+    elif isinstance(structured_draft_data, dict):
+        # Reconstruct from dict
+        structured_draft = StructuredDraft(**structured_draft_data)
+    else:
+        structured_draft = structured_draft_data
+
+    if not structured_draft:
+        # No draft to show
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Transform applied: {reason}",
+        )
+        return
+
+    # Build structure blocks with actions
+    structure_blocks = build_structure_blocks(
+        draft=structured_draft,
+        show_actions=True,
+        include_version=True,
+    )
+
+    # Post the structure visualization
+    client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        blocks=structure_blocks,
+        text=f"Draft structure updated (version {structured_draft.version})",
+    )
+
+    logger.info(
+        "Posted structure after transform",
+        extra={
+            "operation": operation,
+            "success": transform_result.get("success"),
+            "draft_id": structured_draft.id,
+            "version": structured_draft.version,
+            "item_count": len(structured_draft.items),
+            "channel_id": identity.channel_id,
+            "thread_ts": identity.thread_ts,
+        },
+    )
