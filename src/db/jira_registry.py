@@ -165,6 +165,10 @@ class JiraRegistryStore:
         workitem_id: Optional[str] = None,
         summary: Optional[str] = None,
         issue_type: Optional[str] = None,
+        # Sync tracking fields
+        status: Optional[str] = None,
+        assignee: Optional[str] = None,
+        jira_updated: Optional[datetime] = None,
     ) -> JiraIssueLink:
         """Register a Jira issue in a channel's registry.
 
@@ -178,6 +182,9 @@ class JiraRegistryStore:
             workitem_id: Optional WorkItem UUID if linked to WorkItem.
             summary: Optional ticket summary for name-based resolution.
             issue_type: Optional issue type (epic, story, bug, task).
+            status: Optional Jira status (To Do, In Progress, Done, etc.).
+            assignee: Optional Jira account ID of assignee.
+            jira_updated: Optional Jira's updated timestamp from API.
 
         Returns:
             JiraIssueLink: The registered link record.
@@ -189,23 +196,31 @@ class JiraRegistryStore:
         if issue_type:
             issue_type = issue_type.lower()
 
+        # Set last_synced if any sync field is provided
+        last_synced = now if (status or assignee or jira_updated) else None
+
         async with self._conn.cursor() as cur:
             await cur.execute(
                 """
                 INSERT INTO jira_registry (
-                    channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type
+                    channel_id, jira_key, workitem_id, link_type, linked_at, linked_by,
+                    summary, issue_type, status, assignee, jira_updated, last_synced
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (channel_id, jira_key) DO UPDATE SET
                     link_type = EXCLUDED.link_type,
                     linked_at = EXCLUDED.linked_at,
                     linked_by = EXCLUDED.linked_by,
                     workitem_id = COALESCE(EXCLUDED.workitem_id, jira_registry.workitem_id),
                     summary = COALESCE(EXCLUDED.summary, jira_registry.summary),
-                    issue_type = COALESCE(EXCLUDED.issue_type, jira_registry.issue_type)
+                    issue_type = COALESCE(EXCLUDED.issue_type, jira_registry.issue_type),
+                    status = COALESCE(EXCLUDED.status, jira_registry.status),
+                    assignee = COALESCE(EXCLUDED.assignee, jira_registry.assignee),
+                    jira_updated = COALESCE(EXCLUDED.jira_updated, jira_registry.jira_updated),
+                    last_synced = COALESCE(EXCLUDED.last_synced, jira_registry.last_synced)
                 RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
                 """,
-                (channel_id, jira_key, workitem_id, link_type, now, linked_by, summary, issue_type),
+                (channel_id, jira_key, workitem_id, link_type, now, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced),
             )
             row = await cur.fetchone()
             await self._conn.commit()
@@ -219,6 +234,7 @@ class JiraRegistryStore:
                 "linked_by": linked_by,
                 "summary": summary[:50] if summary else None,
                 "issue_type": issue_type,
+                "status": status,
             },
         )
 
