@@ -134,7 +134,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 28: Structured Draft Evolution
 
-**Status:** IN PROGRESS (3/? plans complete)
+**Status:** IN PROGRESS (5/? plans complete)
 
 **Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
 
@@ -279,4 +279,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 27.4 State-Bound Approvals | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.5 WorkItem Ownership & Audit | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
-| 28. Structured Draft Evolution | v1.2 | 3/? | In Progress | - |
+| 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |

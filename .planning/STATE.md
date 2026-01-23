@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 28-structured-draft-evolution
-Plan: 3 of ? in current phase
+Plan: 5 of ? in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 28.3-PLAN.md (Structural Mutation Engine)
+Last activity: 2026-01-23 — Completed 28.5-PLAN.md (User Input Classification)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 3 plans complete
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 5 plans complete
 
 ## Milestones Summary
 
@@ -115,6 +115,19 @@ Phase 28.3 decisions:
 - LLM parameter extraction is optional - falls back to empty params on failure
 - Cascading removal: removing parent removes children automatically
 
+Phase 28.4 decisions:
+- Form-dependent validation: EPIC doesn't require AC, STORY does
+- Lifecycle-aware questions: PLAN stage doesn't ask AC, asks decomposition instead
+- COMMITTED lifecycle is terminal - rejects further approvals
+- Transitions logged to change_log for audit trail
+
+Phase 28.5 decisions:
+- InputClass enum: CHOICE/OPINION/QUESTION/ANSWER/UNCLEAR types
+- LLM classification with keyword fallback for reliability
+- Separate answered_questions table (not JSON in thread_state)
+- 0.7 confidence threshold to record answer as definitive
+- CHOICE inputs route to transform action (not discussion)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -130,9 +143,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 28.3-PLAN.md (Structural Mutation Engine)
+Stopped at: Completed 28.5-PLAN.md (User Input Classification)
 Resume file: None
-Next action: Plan or execute 28.4
+Next action: Create 28.6-PLAN.md or complete Phase 28
 
 ## What's Next
 
@@ -144,8 +157,10 @@ Next action: Plan or execute 28.4
 - 28.1: StructuredDraft schema with lifecycle states and migration helpers
 - 28.2: DRAFT_TRANSFORM intent with 7 operations and graph routing
 - 28.3: Structural Mutation Engine (7 mutation methods implemented)
+- 28.4: Lifecycle State Machine (form-dependent validation, lifecycle-aware questions)
+- 28.5: User Input Classification (R3, R7, R10 - CHOICE/OPINION/QUESTION routing)
 
-**Next action:** Plan 28.4 (handler integration)
+**Next action:** Create 28.6-PLAN.md or finalize Phase 28
 
 ---
 
