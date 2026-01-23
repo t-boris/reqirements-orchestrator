@@ -5,12 +5,14 @@ Includes attribution tracking for multi-user support.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
+
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from src.schemas.attribution import MessageAttribution
+    from src.schemas.structured_draft import StructuredDraft
 
 
 class ConstraintStatus(str, Enum):
@@ -228,3 +230,19 @@ class TicketDraft(BaseModel):
             Set of Slack user IDs who contributed to this draft
         """
         return {attr.author_user_id for attr in self.attributions.values()}
+
+    def to_structured(self, user_id: str = "system") -> "StructuredDraft":
+        """Convert to new StructuredDraft format.
+
+        Phase 28 migration helper. Creates a SINGLE_ITEM StructuredDraft
+        with one DraftItem containing all fields from this TicketDraft.
+
+        Args:
+            user_id: Slack user ID to attribute the migration to.
+
+        Returns:
+            StructuredDraft instance with migrated content.
+        """
+        from src.schemas.structured_draft import StructuredDraft
+
+        return StructuredDraft.from_ticket_draft(self, user_id)
