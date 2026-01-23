@@ -225,6 +225,107 @@ async def _capture_user_metadata(
         logger.debug(f"Could not capture user metadata: {e}")
 
 
+async def _record_participation(
+    channel_id: str,
+    thread_ts: str,
+    user_id: str,
+) -> None:
+    """Record user participation in thread.
+
+    Tracks who participates in each thread for:
+    - Mention rules (direct question → mention that user)
+    - Turn-taking awareness
+    - Multi-user coordination
+
+    Non-blocking - logs errors but doesn't fail the request.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+        user_id: Slack user ID
+
+    Phase 27.2 - Participant Map & Turn-Taking
+    """
+    from src.db import get_connection
+    from src.db.participant_store import ThreadParticipantStore
+
+    try:
+        async with get_connection() as conn:
+            store = ThreadParticipantStore(conn)
+            await store.ensure_table()
+            await store.record_message(channel_id, thread_ts, user_id)
+        logger.debug(f"Recorded participation for {user_id} in {channel_id}/{thread_ts}")
+    except Exception as e:
+        # Non-blocking - log and continue
+        logger.debug(f"Could not record participation: {e}")
+
+
+def _is_processing_request(state: dict) -> bool:
+    """Check if state indicates active processing.
+
+    Only blocks if we're in middle of multi-step flow.
+
+    Args:
+        state: Current agent state dict
+
+    Returns:
+        True if thread is busy with a blocking pending_action
+
+    Phase 27.2 - Participant Map & Turn-Taking
+    """
+    from src.schemas.state import PendingAction
+
+    pending = state.get("pending_action")
+    if not pending:
+        return False
+
+    # Only block for these multi-step flows where interleaving would cause issues
+    blocking_actions = {
+        PendingAction.WAITING_APPROVAL,
+        PendingAction.WAITING_SCOPE_CHOICE,
+        PendingAction.WAITING_UPDATE_CONFIRM,
+        PendingAction.WAITING_STORY_EDIT,
+        PendingAction.WAITING_DECISION_EDIT,
+    }
+
+    # Handle both enum and string values
+    if isinstance(pending, str):
+        return pending in {a.value for a in blocking_actions}
+    return pending in blocking_actions
+
+
+async def _queue_request(
+    runner,
+    user_id: str,
+    message_text: str,
+    message_ts: str,
+) -> None:
+    """Add request to queue for later processing.
+
+    Called when a thread is busy processing another request.
+    Queued requests will be processed after the current operation completes.
+
+    Args:
+        runner: Graph runner instance
+        user_id: User ID who made the request
+        message_text: The message text
+        message_ts: Slack message timestamp
+
+    Phase 27.2 - Participant Map & Turn-Taking
+    """
+    from datetime import datetime, timezone
+
+    state = await runner._get_current_state()
+    queued = state.get("queued_requests", [])
+    queued.append({
+        "user_id": user_id,
+        "message_text": message_text,
+        "message_ts": message_ts,
+        "queued_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await runner._update_state({"queued_requests": queued})
+
+
 async def _process_mention(
     identity: SessionIdentity,
     text: str,
@@ -256,6 +357,9 @@ async def _process_mention(
     # Capture user metadata for multi-user support (Phase 27.1)
     await _capture_user_metadata(client, user, identity.team_id)
 
+    # Record participation for multi-user tracking (Phase 27.2)
+    await _record_participation(channel, thread_ts, user)
+
     # Ensure channel context exists (lazy creation for existing channels)
     try:
         from src.db import get_connection
@@ -274,6 +378,23 @@ async def _process_mention(
 
         # Get current state for event routing
         state = await runner._get_current_state()
+
+        # Check if thread is busy processing another request (Phase 27.2)
+        if _is_processing_request(state):
+            # Queue this request for later processing
+            await _queue_request(runner, user, text, thread_ts)
+            if collector:
+                collector.add_entry("decision", "Request Queued", {
+                    "reason": "thread_busy",
+                    "pending_action": str(state.get("pending_action")),
+                })
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"<@{user}>, I'm currently processing another request. Yours is queued and I'll get to it shortly.",
+            )
+            await tracker.complete()
+            return
 
         # Event routing (for button clicks, slash commands)
         # For @mentions, this checks pending_action and thread_default
