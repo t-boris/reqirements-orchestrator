@@ -2,7 +2,87 @@
 
 **Multi-Agent Requirements Orchestrator (MARO) v2**
 
-A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an 11-phase LangGraph workflow with human-in-the-loop approval.
+> **Note:** This document describes the original v2 architecture. Some components have changed:
+> - **Zep** replaced with PostgreSQL for all persistence
+> - **MCP** replaced with direct atlassian-python-api
+> - **11-phase workflow** replaced with intent-based routing
+>
+> See `HOW_THE_BOT_THINKS.md` for the current behavior and `Phase 28: StructuredDraft Evolution` section below for the latest architecture.
+
+A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
+
+---
+
+## Phase 28: StructuredDraft Evolution (Latest)
+
+**Core shift:** From "bot collects text for a ticket" to "bot manages a typed design object with lifecycle states and structural mutations."
+
+### StructuredDraft Schema
+
+```python
+class StructuredDraft(BaseModel):
+    id: str
+    kind: DraftKind           # SINGLE_ITEM vs PLAN
+    scope: DraftScope         # SINGLE, EPICS_ONLY, FULL_PLAN
+    lifecycle: DraftLifecycle # EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED
+    version: int              # Incremented on every mutation
+    items: list[DraftItem]    # Multiple items with hierarchy
+    change_log: list[DraftChange]  # Audit trail of all changes
+
+class DraftItem(BaseModel):
+    id: str
+    issue_type: IssueType     # EPIC, STORY, TASK, BUG
+    title: str
+    goal: str
+    status: DraftItemStatus   # PROPOSED → APPROVED → COMMITTED
+    parent_id: Optional[str]  # For stories under epics
+    acceptance_criteria: list[str]
+    jira_key: Optional[str]   # Set after Jira creation
+```
+
+### Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **DraftKind** | SINGLE_ITEM (one ticket) vs PLAN (multiple items) |
+| **DraftScope** | SINGLE, EPICS_ONLY, FULL_PLAN |
+| **DraftLifecycle** | State machine: EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED |
+| **DRAFT_TRANSFORM** | Intent for structural mutations (split, merge, elevate, decompose) |
+| **InputClass** | CHOICE/OPINION/QUESTION/ANSWER classification for routing |
+
+### Structural Mutations
+
+| Operation | Method | Effect |
+|-----------|--------|--------|
+| Split to plan | `split_to_plan()` | SINGLE_ITEM → PLAN |
+| Add items | `add_items()` | Append new DraftItems |
+| Merge items | `merge_items()` | Combine multiple items |
+| Elevate to epic | `elevate_to_epic()` | Change item type to EPIC |
+| Decompose | `decompose_to_stories()` | Create stories under epic |
+| Change scope | `change_scope()` | Modify generation intent |
+| Remove items | `remove_items()` | Delete items (cascading) |
+
+### Form-Dependent Validation
+
+| Issue Type | Required | Optional |
+|------------|----------|----------|
+| EPIC | title, problem | acceptance_criteria |
+| STORY | title, problem, acceptance_criteria | - |
+| TASK | title, problem | acceptance_criteria |
+
+### Lifecycle-Aware Questions
+
+- **PLAN stage**: Ask about decomposition, NOT acceptance criteria
+- **EPIC type**: Never ask about acceptance criteria
+- **STORY type**: Ask about acceptance criteria
+
+### Version-Bound Approvals
+
+Button payloads include `{draft_id, version}`. When clicked:
+- `button.version == draft.version` → Proceed
+- `button.version != draft.version` → "Outdated, please review new structure"
+
+---
 
 ---
 
@@ -32,12 +112,12 @@ MARO is built on the following technology stack:
 | Component | Technology |
 |-----------|------------|
 | **Orchestration** | LangGraph StateGraph with PostgreSQL checkpointer |
-| **Memory** | Zep Community Edition (long-term memory with semantic search) |
+| **Memory** | PostgreSQL (conversation history, two-layer context) |
 | **Chat Interface** | Slack Bolt (async, Socket Mode) |
-| **Issue Tracking** | Jira via MCP (Model Context Protocol) |
-| **LLM Providers** | OpenAI, Anthropic, Google (configurable per channel) |
-| **Database** | PostgreSQL (state persistence, approvals, config) |
-| **Admin UI** | FastAPI + D3.js visualizations |
+| **Issue Tracking** | Jira via atlassian-python-api (direct API) |
+| **LLM Providers** | Gemini (default), OpenAI, Anthropic (configurable) |
+| **Database** | PostgreSQL (state, WorkItems, approvals, config) |
+| **Deployment** | Docker Compose on GCE VM |
 
 ### High-Level Architecture
 

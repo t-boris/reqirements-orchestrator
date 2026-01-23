@@ -10,11 +10,11 @@ A Slack bot that acts as a collective thinking system where communication is the
 
 ## Current State (v1.2 in progress)
 
-**Latest:** 2026-01-22
+**Latest:** 2026-01-23
 
 **Tech stack:** Python 3.11, LangGraph, Slack Bolt, PostgreSQL, Docker
 
-**Codebase:** 146 Python files, 34,567 LOC
+**Codebase:** 150+ Python files, 38,000+ LOC
 
 **Deployed to:** GCE VM with Docker Compose
 
@@ -27,13 +27,20 @@ A Slack bot that acts as a collective thinking system where communication is the
 - Communication as Source of Truth: WorkItem registry, channel modes, commit semantics
 - Bidirectional Jira sync with field ownership and conflict detection
 
-**v1.2 in progress:**
+**v1.2 completed phases:**
 - Phase 24: Debug mode (`/maro debug on/off/status/state`)
 - Phase 25: WorkItem-centric architecture (WORKITEM_CREATE, OPS intent, CHANGE_REQUEST)
-- Phase 26: Context-aware intent classification
-  - `DRAFT_REFINE` intent for meta-questions about active draft
-  - `issue_type` and `requested_scope` extraction (no more "Epic:" prefixes)
-  - Context-aware LLM classification (message + draft state → intent)
+- Phase 26: Context-aware intent classification (DRAFT_REFINE, issue_type extraction)
+- Phase 27: Multi-user support (attribution, conflict detection, state-bound approvals)
+- Phase 28: Structured Draft Evolution
+  - **Core shift:** Draft is now a typed design object, not text container
+  - `StructuredDraft` with DraftKind, DraftScope, DraftLifecycle, DraftItem
+  - `DRAFT_TRANSFORM` intent for structural mutations (split, merge, elevate, decompose)
+  - User input classification (CHOICE/OPINION/QUESTION/ANSWER routing)
+  - Form-dependent validation (Epic doesn't require AC, Story does)
+  - Lifecycle-aware questions (PLAN stage asks decomposition, not AC)
+  - Version-bound approvals (stale button detection)
+  - Structure visualization after every mutation
 
 ## Requirements
 
@@ -125,6 +132,12 @@ A Slack bot that acts as a collective thinking system where communication is the
 | SessionStore deprecated | Migrate to WorkItemStore, keep for backward compat | — Pending cleanup |
 | Context-aware intent | Pass draft state to LLM classifier for DRAFT_REFINE detection | ✓ Good |
 | Structured issue types | IssueType/RequestedScope enums instead of "Epic:" title prefixes | ✓ Good |
+| StructuredDraft design object | Draft as typed data structure with lifecycle states (Phase 28) | ✓ Good |
+| Draft lifecycle state machine | EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED | ✓ Good |
+| Form-dependent validation | Epic validates goal/scope, Story validates AC (Phase 28) | ✓ Good |
+| DRAFT_TRANSFORM intent | Structural mutations via semantic triggers (Phase 28) | ✓ Good |
+| User input classification | CHOICE/OPINION/QUESTION/ANSWER routing (Phase 28) | ✓ Good |
+| Version-bound approvals | Button payloads include version, reject stale clicks (Phase 28) | ✓ Good |
 
 ---
-*Last updated: 2026-01-22 after Phase 26 (v1.2)*
+*Last updated: 2026-01-23 after Phase 28 (v1.2)*

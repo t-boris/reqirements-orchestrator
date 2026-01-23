@@ -11,6 +11,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.2 Identity & State
    - 1.3 Git Model
    - 1.4 LLM Providers
+   - 1.5 StructuredDraft: The Design Model (Phase 28)
 2. [Intent Classification](#2-intent-classification)
 3. [Governance Rules](#3-governance-rules)
    - 3.1 Core Model
@@ -21,6 +22,12 @@ This document explains the complete decision-making logic, rules, prompts, and b
 4. [LLM Prompts Reference](#4-llm-prompts-reference)
 5. [State Machine & Workflows](#5-state-machine--workflows)
 6. [Decision Logic](#6-decision-logic)
+   - 6.1 Decision Node Flow
+   - 6.2 Extraction Continuation Logic
+   - 6.3 Question Batching
+   - 6.4 User Input Classification (Phase 28)
+   - 6.5 Form-Dependent Validation (Phase 28)
+   - 6.6 Lifecycle-Aware Questions (Phase 28)
 7. [Response Generation](#7-response-generation)
 8. [Key Behavior Patterns](#8-key-behavior-patterns)
 
@@ -40,6 +47,7 @@ Intent Classification (LLM)
 Graph Routing (LangGraph)
     ├─→ WorkItem Flow (extraction → validation → decision)
     ├─→ Draft Refine Flow (meta-questions about draft → clarification)
+    ├─→ Draft Transform Flow (structural mutations → show new form)
     ├─→ Review Flow (persona-based analysis)
     ├─→ Discussion Flow (brief conversational)
     ├─→ Scope Gate Flow (ambiguous → 3-button UI)
@@ -101,6 +109,115 @@ The bot uses a provider-agnostic adapter layer supporting:
 - Max tokens: 4096
 - Timeout: 30 seconds
 
+### 1.5 StructuredDraft: The Design Model (Phase 28)
+
+**Core shift:** From "bot collects text for a ticket" to "bot manages a typed design object with lifecycle states and structural mutations."
+
+**Mantra:** Draft is a data structure representing the shape of work, not a paragraph of text.
+
+#### Draft as Design Object
+
+The traditional TicketDraft was a text container:
+```python
+# OLD: Text container
+class TicketDraft:
+    title: str
+    problem: str
+    acceptance_criteria: list[str]
+    # Just fields holding text
+```
+
+The new StructuredDraft is a **typed design object**:
+```python
+# NEW: Typed design object with structure
+class StructuredDraft:
+    kind: DraftKind           # SINGLE_ITEM vs PLAN
+    scope: DraftScope         # SINGLE, EPICS_ONLY, FULL_PLAN
+    lifecycle: DraftLifecycle # State machine position
+    version: int              # Every mutation increments
+    items: list[DraftItem]    # Multiple items with hierarchy
+    change_log: list[DraftChange]  # Audit trail
+```
+
+#### DraftKind: Shape of the Draft
+
+| Kind | Description | Example |
+|------|-------------|---------|
+| `SINGLE_ITEM` | One ticket | "Create a login page" |
+| `PLAN` | Multiple items with structure | "Build auth system" (3 epics, 12 stories) |
+
+#### DraftScope: Generation Intent
+
+| Scope | Description | Typical Use |
+|-------|-------------|-------------|
+| `SINGLE` | Just this one item | Single story or task |
+| `EPICS_ONLY` | Only epics, no stories | High-level planning |
+| `FULL_PLAN` | Epics + stories | Complete breakdown |
+
+#### DraftLifecycle: State Machine
+
+```
+EMPTY → SINGLE_ITEM → PLAN → PLAN_REFINED → APPROVED → COMMITTED
+  │         │           │          │            │           │
+  └─ No content yet     │          │            │           └─ In Jira
+                        │          │            └─ User approved
+                        │          └─ User refined items
+                        └─ Multiple items exist
+```
+
+**Key insight:** The lifecycle determines what questions to ask and what validation to apply.
+
+#### DraftItem: Individual Work Items
+
+Each item in the draft has:
+```python
+class DraftItem:
+    id: str                    # UUID for reference
+    issue_type: IssueType      # EPIC, STORY, TASK, BUG
+    title: str
+    goal: str
+    status: DraftItemStatus    # PROPOSED → APPROVED → COMMITTED
+    parent_id: Optional[str]   # For stories under epics
+    acceptance_criteria: list[str]
+    jira_key: Optional[str]    # Set after Jira creation
+```
+
+#### Structural Mutations
+
+User decisions **mutate draft form**, not just update text:
+
+| User Says | Mutation | Result |
+|-----------|----------|--------|
+| "Split into epics" | `split_to_plan()` | kind → PLAN, lifecycle → PLAN |
+| "Add a story for auth" | `add_items()` | New DraftItem appended |
+| "Merge the first two" | `merge_items()` | Items combined, count reduced |
+| "Make this an epic" | `elevate_to_epic()` | issue_type → EPIC |
+| "Break down into stories" | `decompose_to_stories()` | Stories created under epic |
+| "Only epics" | `change_scope()` | scope → EPICS_ONLY |
+| "Remove the second one" | `remove_items()` | Item deleted from list |
+
+Every mutation:
+1. Updates the draft structure
+2. Increments `version`
+3. Logs to `change_log`
+4. Shows updated structure to user (R8)
+
+#### Version-Bound Approvals
+
+Every button includes the draft version:
+```json
+{
+  "draft_id": "abc-123",
+  "version": 4
+}
+```
+
+When clicked:
+- If `button.version == draft.version`: Proceed
+- If `button.version != draft.version`: "Outdated, please review new structure"
+
+This prevents acting on stale state after transforms.
+
 ---
 
 ## 2. Intent Classification
@@ -114,6 +231,7 @@ The bot classifies every message into one of 9 intent types:
 | **WORKITEM_CREATE** | Create NEW work item | "create a ticket for authentication" |
 | ~~TICKET~~ | *Deprecated alias for WORKITEM_CREATE* | - |
 | **DRAFT_REFINE** | Clarify/refine active draft structure | "is one epic enough?" |
+| **DRAFT_TRANSFORM** | Structurally change active draft (Phase 28) | "split into multiple epics" |
 | **CHANGE_REQUEST** | Modify existing Jira issue | "update the description" |
 | **TICKET_ACTION** | Create items linked to existing ticket | "create stories for SCRUM-123" |
 | **JIRA_COMMAND** | Modify existing ticket fields | "change priority to high" |
@@ -123,6 +241,28 @@ The bot classifies every message into one of 9 intent types:
 | **DISCUSSION** | Greeting or simple question | "hi", "thanks" |
 | **META** | Questions about the bot | "what can you do?" |
 | **AMBIGUOUS** | Truly unclear intent (rare) | Shows scope gate UI |
+
+### 2.1.1 DRAFT_TRANSFORM vs DRAFT_REFINE (Phase 28)
+
+These intents serve different purposes:
+
+| Aspect | DRAFT_REFINE | DRAFT_TRANSFORM |
+|--------|--------------|-----------------|
+| **Nature** | Asking | Commanding |
+| **User says** | "Is one epic enough?" | "Split into multiple epics" |
+| **Bot response** | Proposes options, asks question | Mutates draft immediately |
+| **Draft change** | No structural change | Kind, scope, items change |
+
+**DRAFT_TRANSFORM triggers:**
+- "Split into..." → `split_to_plan()`
+- "Merge these..." → `merge_items()`
+- "Add a story for..." → `add_items()`
+- "Make this an epic" → `elevate_to_epic()`
+- "Break this down" → `decompose_to_stories()`
+- "Only epics" → `change_scope(EPICS_ONLY)`
+- "Remove the second one" → `remove_items()`
+
+Detection uses semantic meaning, not keywords. The LLM understands "just epics for now" means `change_scope(EPICS_ONLY)`.
 
 ### 2.2 Intent Classification Prompt
 
@@ -607,6 +747,12 @@ START
     │    → returns refinement_prompt with options
     │    → END
     │
+    ├─ draft_transform_flow (Phase 28)
+    │    → draft_transform (mutate draft structure)
+    │    → returns action="transform_applied"
+    │    → dispatch shows updated structure
+    │    → END
+    │
     ├─ review_flow
     │    → review (persona-based analysis)
     │    → END
@@ -756,6 +902,134 @@ def batch_questions(questions):
     return questions[:3]
 ```
 
+### 6.4 User Input Classification (Phase 28)
+
+Every user message is classified to determine routing:
+
+| InputClass | Description | Bot Action |
+|------------|-------------|------------|
+| **CHOICE** | Structural decision | Mutate draft immediately |
+| **OPINION** | Preference expression | Continue discussion |
+| **QUESTION** | User asking something | Answer the question |
+| **ANSWER** | Response to bot's question | Apply to draft, continue |
+| **UNCLEAR** | Cannot determine | Default to normal flow |
+
+**Key rule:** If user input represents a decision, bot must act, not discuss.
+
+```python
+# User: "Split into multiple epics"
+# → InputClass.CHOICE → draft.split_to_plan() → show structure
+
+# User: "I think we could split it"
+# → InputClass.OPINION → continue discussion, maybe ask "Would you like me to split it?"
+
+# User: "Should we split this?"
+# → InputClass.QUESTION → answer with options, don't mutate yet
+```
+
+**Classification signals:**
+- CHOICE: Imperative commands ("split", "merge", "only epics", "add a story")
+- OPINION: Hedging language ("I think", "maybe", "could", "might")
+- QUESTION: Interrogatives ("should we?", "do you think?", "is it?")
+- ANSWER: Follows pending_questions context
+
+### 6.5 Form-Dependent Validation (Phase 28)
+
+Validation rules depend on the draft's **form** (issue type and lifecycle):
+
+| Issue Type | Required Fields | Optional Fields |
+|------------|-----------------|-----------------|
+| **EPIC** | title, problem | acceptance_criteria |
+| **STORY** | title, problem, acceptance_criteria | - |
+| **TASK** | title, problem | acceptance_criteria |
+| **BUG** | title, problem | acceptance_criteria |
+
+**Key insight:** Epics don't require acceptance criteria. Stories do.
+
+```python
+def validate_structured_draft(draft):
+    for item in draft.items:
+        rules = _get_validation_rules_for_type(item.issue_type)
+
+        if item.issue_type == IssueType.EPIC:
+            # Validate goal/scope, NOT AC
+            check_required(["title", "problem"])
+        elif item.issue_type == IssueType.STORY:
+            # Validate including AC
+            check_required(["title", "problem", "acceptance_criteria"])
+
+    # Plan drafts require 2+ items
+    if draft.kind == DraftKind.PLAN and len(draft.items) < 2:
+        return Invalid("Plan needs at least 2 items")
+```
+
+### 6.6 Lifecycle-Aware Questions (Phase 28)
+
+The bot asks **different questions** based on draft lifecycle:
+
+| Lifecycle | Questions to Ask | Questions to Skip |
+|-----------|------------------|-------------------|
+| **EMPTY** | "What would you like to create?" | Everything else |
+| **SINGLE_ITEM** (Epic) | Goal, scope, decomposition options | Acceptance criteria |
+| **PLAN** | Item structure, decomposition | Acceptance criteria |
+| **PLAN_REFINED** | Item details, missing fields | - |
+| **APPROVED** | None (ready for commit) | All |
+
+**Key rule:** Cannot ask for acceptance criteria while Draft is in PLAN stage.
+
+```python
+def _filter_questions_by_lifecycle(questions, lifecycle, issue_type):
+    # PLAN stage: Don't ask AC, ask about decomposition
+    if lifecycle == DraftLifecycle.PLAN:
+        questions = [q for q in questions if "acceptance" not in q.lower()]
+        questions.append("How should we break this down?")
+
+    # EPIC type: Never ask AC
+    if issue_type == IssueType.EPIC:
+        questions = [q for q in questions if "acceptance" not in q.lower()]
+
+    return questions
+```
+
+**Example conversation:**
+```
+User: "Create an auth system"
+Bot: "What's the main goal?" (not "What are the acceptance criteria?")
+
+User: "Secure login for users"
+Bot: "Should this be one epic or multiple?" (lifecycle-appropriate)
+
+User: "Split into multiple epics"
+Bot: [mutates draft, shows structure]
+Bot: "What items should this plan include?" (not AC questions)
+```
+
+### 6.7 No Question Repetition (Phase 28)
+
+Once a question is answered, it's recorded and never asked again:
+
+```python
+class AnsweredQuestionsStore:
+    async def record_answer(channel_id, thread_ts, question_key, answer, user_id)
+    async def was_answered(channel_id, thread_ts, question_key) -> bool
+    async def filter_unanswered(channel_id, thread_ts, questions) -> list[str]
+```
+
+**Question keys** normalize questions to fields:
+- "What are the acceptance criteria?" → `acceptance_criteria`
+- "What problem are we solving?" → `problem`
+- "Would you like epics or full plan?" → `scope_decision`
+
+**Confidence threshold:** 0.7 minimum to record as definitive answer.
+
+```python
+# Before asking questions:
+questions = await store.filter_unanswered(channel_id, thread_ts, missing_fields)
+# Only ask questions not yet answered
+```
+
+**Hard rule:** Repeating the same question after a direct answer is a system error.
+
 ---
 
 ## 7. Response Generation
@@ -902,20 +1176,30 @@ MARO's intelligence is built on:
 
 1. **WorkItem-centric model** — Channel is truth, Jira is deployment
 2. **Git-like semantics** — Threads propose, channels commit, Jira syncs
-3. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
-4. **Structured type extraction** — issue_type/requested_scope instead of "Epic:" prefixes
-5. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
-6. **Rule-based governance** ensuring consistent behavior
-7. **Graph-based workflows** with conditional routing
-8. **Smart duplicate detection** — channel-first, then Jira
-9. **Human-in-the-loop** interrupts for critical decisions
-10. **Context-aware extraction** building understanding progressively
-11. **Persona-based analysis** for different perspectives
+3. **StructuredDraft as design object** — Draft is a typed data structure, not text (Phase 28)
+4. **Lifecycle state machine** — EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED
+5. **User input classification** — CHOICE/OPINION/QUESTION/ANSWER routing (Phase 28)
+6. **Form-dependent validation** — Epic validates goal/scope, Story validates AC (Phase 28)
+7. **Lifecycle-aware questions** — PLAN stage asks decomposition, not AC (Phase 28)
+8. **DRAFT_TRANSFORM intent** — Structural mutations triggered by semantic commands (Phase 28)
+9. **Version-bound approvals** — Stale buttons detected and rejected (Phase 28)
+10. **Structure visualization** — Show draft structure after every mutation (Phase 28)
+11. **No question repetition** — Answered questions never re-asked (Phase 28)
+12. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+13. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
+14. **Rule-based governance** ensuring consistent behavior
+15. **Graph-based workflows** with conditional routing
+16. **Smart duplicate detection** — channel-first, then Jira
+17. **Human-in-the-loop** interrupts for critical decisions
+18. **Persona-based analysis** for different perspectives
 
-**Mantra:** "Threads propose. Channels decide. Jira executes."
+**Mantras:**
+- "Threads propose. Channels decide. Jira executes."
+- "Draft is a data structure representing the shape of work, not a paragraph of text." (Phase 28)
+- "If user input represents a decision, bot must act, not discuss." (Phase 28)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
 ---
 
-*Last updated: 2026-01-22 (Phase 26 context-aware intent)*
+*Last updated: 2026-01-23 (Phase 28 StructuredDraft evolution)*
