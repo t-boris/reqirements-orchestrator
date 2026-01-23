@@ -11,7 +11,7 @@ Link types:
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from psycopg import AsyncConnection
@@ -563,3 +563,157 @@ class JiraRegistryStore:
             row = await cur.fetchone()
 
         return row[0] if row else 0
+
+    # ---- Sync tracking methods for Preflight Sync and /maro sync ----
+
+    async def update_from_jira(
+        self,
+        channel_id: str,
+        jira_key: str,
+        summary: str,
+        status: str,
+        assignee: Optional[str],
+        issue_type: str,
+        jira_updated: datetime,
+    ) -> Optional[JiraIssueLink]:
+        """Update registry entry with fresh data from Jira API.
+
+        Sets last_synced to now().
+
+        Args:
+            channel_id: Slack channel ID.
+            jira_key: Jira issue key.
+            summary: Issue summary/title from Jira.
+            status: Jira status (To Do, In Progress, Done, etc.).
+            assignee: Jira account ID of assignee (None if unassigned).
+            issue_type: Issue type (epic, story, bug, task).
+            jira_updated: Jira's updated timestamp from API.
+
+        Returns:
+            Updated JiraIssueLink if found, None if not registered.
+        """
+        jira_key = jira_key.upper()
+        now = datetime.now(timezone.utc)
+        # Normalize issue_type to lowercase
+        if issue_type:
+            issue_type = issue_type.lower()
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE jira_registry
+                SET
+                    summary = COALESCE(%s, summary),
+                    status = COALESCE(%s, status),
+                    assignee = %s,
+                    issue_type = COALESCE(%s, issue_type),
+                    jira_updated = %s,
+                    last_synced = %s
+                WHERE channel_id = %s AND jira_key = %s
+                RETURNING id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
+                """,
+                (summary, status, assignee, issue_type, jira_updated, now, channel_id, jira_key),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            logger.debug(
+                "Issue not registered, cannot update from Jira",
+                extra={
+                    "channel_id": channel_id,
+                    "jira_key": jira_key,
+                },
+            )
+            return None
+
+        logger.info(
+            "Updated issue from Jira",
+            extra={
+                "channel_id": channel_id,
+                "jira_key": jira_key,
+                "status": status,
+                "jira_updated": jira_updated.isoformat() if jira_updated else None,
+            },
+        )
+        return self._row_to_link(row)
+
+    async def get_stale_issues(
+        self,
+        channel_id: str,
+        older_than: timedelta,
+        limit: int = 100,
+    ) -> list[JiraIssueLink]:
+        """Get issues that haven't been synced recently.
+
+        Returns issues where last_synced is older than threshold or NULL.
+
+        Args:
+            channel_id: Slack channel ID.
+            older_than: Timedelta threshold for staleness.
+            limit: Maximum issues to return.
+
+        Returns:
+            List of JiraIssueLink ordered by last_synced (oldest first, NULLs first).
+        """
+        cutoff = datetime.now(timezone.utc) - older_than
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, channel_id, jira_key, workitem_id, link_type, linked_at, linked_by, summary, issue_type, status, assignee, jira_updated, last_synced
+                FROM jira_registry
+                WHERE channel_id = %s
+                  AND (last_synced IS NULL OR last_synced < %s)
+                ORDER BY last_synced NULLS FIRST, linked_at DESC
+                LIMIT %s
+                """,
+                (channel_id, cutoff, limit),
+            )
+            rows = await cur.fetchall()
+
+        return [self._row_to_link(row) for row in rows]
+
+    async def mark_deleted(
+        self,
+        channel_id: str,
+        jira_key: str,
+    ) -> bool:
+        """Mark issue as externally deleted in Jira.
+
+        Sets status to 'DELETED_EXTERNALLY'. Does not remove from registry.
+
+        Args:
+            channel_id: Slack channel ID.
+            jira_key: Jira issue key.
+
+        Returns:
+            True if issue was found and marked, False if not registered.
+        """
+        jira_key = jira_key.upper()
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE jira_registry
+                SET status = 'DELETED_EXTERNALLY', last_synced = %s
+                WHERE channel_id = %s AND jira_key = %s
+                RETURNING jira_key
+                """,
+                (now, channel_id, jira_key),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if row:
+            logger.warning(
+                "Issue marked as deleted externally",
+                extra={
+                    "channel_id": channel_id,
+                    "jira_key": jira_key,
+                },
+            )
+            return True
+
+        return False
