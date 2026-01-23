@@ -304,6 +304,357 @@ class StructuredDraft(BaseModel):
         valid_targets = _VALID_TRANSITIONS.get(self.lifecycle, set())
         return target_lifecycle in valid_targets
 
+    # =========================================================================
+    # Structural Mutation Methods (Phase 28.3)
+    # =========================================================================
+
+    def split_to_plan(
+        self, user_id: str, item_titles: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Transform SINGLE_ITEM to PLAN with multiple items.
+
+        If current draft has a single item, it becomes the first item in the plan.
+        Additional items can be provided via item_titles.
+
+        Returns dict with 'success', 'message', 'items_created'.
+        """
+        # Validate: must be SINGLE_ITEM or EMPTY
+        if self.kind == DraftKind.PLAN:
+            return {"success": False, "message": "Already a plan"}
+
+        # If we have a primary item, keep it
+        existing_items = list(self.items)
+
+        # Add new items from titles if provided
+        if item_titles:
+            for title in item_titles:
+                new_item = DraftItem(
+                    issue_type=IssueType.EPIC,  # Default to epic for plan items
+                    title=title,
+                    status=DraftItemStatus.PROPOSED,
+                )
+                existing_items.append(new_item)
+
+        # Update draft
+        self.kind = DraftKind.PLAN
+        self.scope = DraftScope.EPICS_ONLY  # Default scope for plans
+        self.items = existing_items
+
+        # Update lifecycle
+        if self.lifecycle in (DraftLifecycle.EMPTY, DraftLifecycle.SINGLE_ITEM):
+            self.lifecycle = DraftLifecycle.PLAN
+
+        # Log the change
+        self.log_change(
+            action="split_to_plan",
+            user_id=user_id,
+            details={"item_count": len(self.items), "new_titles": item_titles or []},
+        )
+
+        return {
+            "success": True,
+            "message": f"Transformed to plan with {len(self.items)} items",
+            "items_created": len(item_titles or []),
+        }
+
+    def add_items(
+        self,
+        user_id: str,
+        items_to_add: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Add new items to the draft.
+
+        items_to_add: list of dicts with 'title', 'issue_type', optional 'parent_id'
+
+        Returns dict with 'success', 'message', 'items_added'.
+        """
+        if not items_to_add:
+            return {"success": False, "message": "No items to add"}
+
+        added = []
+        for item_data in items_to_add:
+            issue_type = IssueType.STORY  # Default
+            if "issue_type" in item_data:
+                try:
+                    issue_type = IssueType(item_data["issue_type"].lower())
+                except ValueError:
+                    pass
+
+            new_item = DraftItem(
+                issue_type=issue_type,
+                title=item_data.get("title", ""),
+                goal=item_data.get("goal", ""),
+                parent_id=item_data.get("parent_id"),
+                status=DraftItemStatus.PROPOSED,
+            )
+            self.items.append(new_item)
+            added.append(new_item.id)
+
+        # If we now have multiple items, upgrade to PLAN
+        if len(self.items) > 1 and self.kind == DraftKind.SINGLE_ITEM:
+            self.kind = DraftKind.PLAN
+            if self.lifecycle == DraftLifecycle.SINGLE_ITEM:
+                self.lifecycle = DraftLifecycle.PLAN
+
+        self.log_change(
+            action="add_items",
+            user_id=user_id,
+            details={"items_added": added, "count": len(added)},
+        )
+
+        return {
+            "success": True,
+            "message": f"Added {len(added)} items",
+            "items_added": added,
+        }
+
+    def merge_items(
+        self,
+        user_id: str,
+        item_ids: list[str],
+        merged_title: str | None = None,
+    ) -> dict[str, Any]:
+        """Merge multiple items into one.
+
+        Takes the first item as base, combines content from others,
+        then removes the merged items.
+
+        Returns dict with 'success', 'message', 'merged_item_id'.
+        """
+        if len(item_ids) < 2:
+            return {"success": False, "message": "Need at least 2 items to merge"}
+
+        # Find items to merge
+        items_to_merge = [i for i in self.items if i.id in item_ids]
+        if len(items_to_merge) < 2:
+            return {
+                "success": False,
+                "message": f"Found only {len(items_to_merge)} of {len(item_ids)} items",
+            }
+
+        # Use first item as base
+        base_item = items_to_merge[0]
+
+        # Merge titles and goals
+        if merged_title:
+            base_item.title = merged_title
+        else:
+            # Combine titles
+            titles = [i.title for i in items_to_merge if i.title]
+            base_item.title = (
+                " + ".join(titles[:2])
+                if len(titles) > 1
+                else (titles[0] if titles else "Merged Item")
+            )
+
+        # Combine goals
+        goals = [i.goal for i in items_to_merge if i.goal]
+        if goals:
+            base_item.goal = "; ".join(goals)
+
+        # Combine constraints
+        for item in items_to_merge[1:]:
+            base_item.constraints.extend(item.constraints)
+
+        # Remove merged items (except base)
+        merged_ids = [i.id for i in items_to_merge[1:]]
+        self.items = [i for i in self.items if i.id not in merged_ids]
+
+        # If we're down to 1 item, revert to SINGLE_ITEM
+        if len(self.items) == 1:
+            self.kind = DraftKind.SINGLE_ITEM
+            if self.lifecycle == DraftLifecycle.PLAN:
+                self.lifecycle = DraftLifecycle.SINGLE_ITEM
+
+        self.log_change(
+            action="merge_items",
+            user_id=user_id,
+            details={"merged_ids": merged_ids, "into": base_item.id},
+        )
+
+        return {
+            "success": True,
+            "message": f"Merged {len(items_to_merge)} items into one",
+            "merged_item_id": base_item.id,
+        }
+
+    def elevate_to_epic(
+        self, user_id: str, item_id: str | None = None
+    ) -> dict[str, Any]:
+        """Change an item's type to EPIC.
+
+        If item_id is None and draft is SINGLE_ITEM, elevates the primary item.
+
+        Returns dict with 'success', 'message', 'item_id'.
+        """
+        # Find target item
+        target = None
+        if item_id:
+            for item in self.items:
+                if item.id == item_id:
+                    target = item
+                    break
+        elif self.kind == DraftKind.SINGLE_ITEM and self.items:
+            target = self.items[0]
+
+        if not target:
+            return {"success": False, "message": "Item not found"}
+
+        if target.issue_type == IssueType.EPIC:
+            return {"success": False, "message": "Item is already an epic"}
+
+        old_type = target.issue_type
+        target.issue_type = IssueType.EPIC
+
+        self.log_change(
+            action="elevate_to_epic",
+            user_id=user_id,
+            details={"item_id": target.id, "from_type": old_type.value},
+        )
+
+        return {
+            "success": True,
+            "message": "Elevated item to Epic",
+            "item_id": target.id,
+        }
+
+    def decompose_to_stories(
+        self,
+        user_id: str,
+        epic_id: str | None = None,
+        story_titles: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create stories under an epic.
+
+        If epic_id is None and draft has exactly one epic, uses that.
+        Creates story items with parent_id pointing to the epic.
+
+        Returns dict with 'success', 'message', 'stories_created'.
+        """
+        # Find target epic
+        epic = None
+        if epic_id:
+            for item in self.items:
+                if item.id == epic_id and item.issue_type == IssueType.EPIC:
+                    epic = item
+                    break
+        else:
+            # Find the only epic
+            epics = [i for i in self.items if i.issue_type == IssueType.EPIC]
+            if len(epics) == 1:
+                epic = epics[0]
+
+        if not epic:
+            return {"success": False, "message": "No epic found to decompose"}
+
+        if not story_titles:
+            return {"success": False, "message": "No story titles provided"}
+
+        # Create stories
+        created = []
+        for title in story_titles:
+            story = DraftItem(
+                issue_type=IssueType.STORY,
+                title=title,
+                parent_id=epic.id,
+                status=DraftItemStatus.PROPOSED,
+            )
+            self.items.append(story)
+            created.append(story.id)
+
+        # Upgrade to FULL_PLAN scope since we now have stories
+        self.scope = DraftScope.FULL_PLAN
+
+        # Ensure we're in PLAN kind
+        if self.kind == DraftKind.SINGLE_ITEM:
+            self.kind = DraftKind.PLAN
+            if self.lifecycle == DraftLifecycle.SINGLE_ITEM:
+                self.lifecycle = DraftLifecycle.PLAN
+
+        self.log_change(
+            action="decompose_to_stories",
+            user_id=user_id,
+            details={"epic_id": epic.id, "stories_created": created},
+        )
+
+        return {
+            "success": True,
+            "message": f"Created {len(created)} stories under epic",
+            "stories_created": created,
+        }
+
+    def change_scope(self, user_id: str, new_scope: DraftScope) -> dict[str, Any]:
+        """Change the generation scope of the draft.
+
+        Returns dict with 'success', 'message', 'old_scope', 'new_scope'.
+        """
+        old_scope = self.scope
+
+        if old_scope == new_scope:
+            return {"success": False, "message": f"Already at scope {new_scope.value}"}
+
+        self.scope = new_scope
+
+        self.log_change(
+            action="change_scope",
+            user_id=user_id,
+            details={"from": old_scope.value, "to": new_scope.value},
+        )
+
+        return {
+            "success": True,
+            "message": f"Changed scope from {old_scope.value} to {new_scope.value}",
+            "old_scope": old_scope.value,
+            "new_scope": new_scope.value,
+        }
+
+    def remove_items(self, user_id: str, item_ids: list[str]) -> dict[str, Any]:
+        """Remove items from the draft.
+
+        Also removes any items that have a removed item as parent_id.
+
+        Returns dict with 'success', 'message', 'removed_count'.
+        """
+        if not item_ids:
+            return {"success": False, "message": "No items to remove"}
+
+        # First pass: mark items for removal
+        to_remove = set(item_ids)
+
+        # Second pass: also remove children of removed items
+        for item in self.items:
+            if item.parent_id in to_remove:
+                to_remove.add(item.id)
+
+        # Remove items
+        before_count = len(self.items)
+        self.items = [i for i in self.items if i.id not in to_remove]
+        removed_count = before_count - len(self.items)
+
+        if removed_count == 0:
+            return {"success": False, "message": "No items found to remove"}
+
+        # If we're down to 0 or 1 item, adjust kind/lifecycle
+        if len(self.items) == 0:
+            self.kind = DraftKind.SINGLE_ITEM
+            self.lifecycle = DraftLifecycle.EMPTY
+        elif len(self.items) == 1:
+            self.kind = DraftKind.SINGLE_ITEM
+            if self.lifecycle in (DraftLifecycle.PLAN, DraftLifecycle.PLAN_REFINED):
+                self.lifecycle = DraftLifecycle.SINGLE_ITEM
+
+        self.log_change(
+            action="remove_items",
+            user_id=user_id,
+            details={"removed_ids": list(to_remove), "count": removed_count},
+        )
+
+        return {
+            "success": True,
+            "message": f"Removed {removed_count} items",
+            "removed_count": removed_count,
+        }
+
     @classmethod
     def from_ticket_draft(
         cls,
