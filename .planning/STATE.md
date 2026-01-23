@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 26: Context-Aware Intent (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 27: Multi-User Support (IN PROGRESS)
 
 ## Current Position
 
 Phase: 27-multi-user-support
-Plan: 1 of 6 in current phase (27.1 complete)
+Plan: 2 of 6 in current phase (27.1, 27.2 complete)
 Status: In progress
-Last activity: 2026-01-23 — Completed 27.1-PLAN.md (User Identity & Attribution Foundation)
+Last activity: 2026-01-23 — Completed 27.2-PLAN.md (Participant Map & Turn-Taking)
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 1/6 sub-phases
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 2/6 sub-phases
 
 ## Milestones Summary
 
@@ -68,6 +68,11 @@ Phase 27.1 decisions:
 - User metadata cached on @mention, non-blocking
 - COALESCE for optional fields in upsert (preserve existing data)
 
+Phase 27.2 decisions:
+- Queue requests only for blocking pending_actions (not all pending states)
+- Participation tracking is non-blocking (errors logged, don't fail requests)
+- Max 2 @mentions per message to prevent notification spam
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26 features shipped.
@@ -83,9 +88,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27.1 (User Identity & Attribution Foundation)
+Stopped at: Completed Phase 27.2 (Participant Map & Turn-Taking)
 Resume file: None
-Next action: Execute Phase 27.2 (Participant Map & Turn-Taking)
+Next action: Execute Phase 27.3 (Multi-Author Drafts & Conflict Detection)
 
 ## What's Next
 
@@ -106,9 +111,9 @@ Next action: Execute Phase 27.2 (Participant Map & Turn-Taking)
 | 27.6 | Notifications & Slack UX | Low |
 
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
-**First sub-phase:** `.planning/phases/27-multi-user-support/27.1-PLAN.md`
+**Current sub-phase:** `.planning/phases/27-multi-user-support/27.3-PLAN.md`
 
-**Next action:** Run `/gsd:execute-plan 27.1` to implement User Identity & Attribution
+**Next action:** Run `/gsd:execute-plan 27.3` to implement Multi-Author Drafts & Conflict Detection
 
 ---
 

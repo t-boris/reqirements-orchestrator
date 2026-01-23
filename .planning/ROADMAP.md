@@ -225,7 +225,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 26. Context-Aware Intent | v1.2 | 4/4 | Complete | 2026-01-22 |
 | 27.1 User Identity & Attribution | v1.2 | 1/1 | Complete | 2026-01-23 |
-| 27.2 Participant Map & Turn-Taking | v1.2 | 0/1 | Planned | - |
+| 27.2 Participant Map & Turn-Taking | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.3 Multi-Author Drafts & Conflicts | v1.2 | 0/1 | Planned | - |
 | 27.4 State-Bound Approvals | v1.2 | 0/1 | Planned | - |
 | 27.5 WorkItem Ownership & Audit | v1.2 | 0/1 | Planned | - |
