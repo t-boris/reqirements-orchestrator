@@ -22,7 +22,8 @@ class Intent(str, Enum):
     """
     # Primary intents
     WORKITEM_CREATE = "workitem_create"  # Create new work item
-    DRAFT_REFINE = "draft_refine"        # Refine/clarify current draft (Phase 26)
+    DRAFT_REFINE = "draft_refine"        # Refine/clarify current draft (Phase 26) - ASKING about structure
+    DRAFT_TRANSFORM = "draft_transform"  # Transform draft structure (Phase 28) - COMMANDING structure change
     TICKET_ACTION = "ticket_action"      # Actions on existing ticket
     JIRA_COMMAND = "jira_command"        # Modify ticket fields
     SYNC_REQUEST = "sync_request"        # Bulk sync
@@ -69,3 +70,13 @@ class IntentResult(BaseModel):
     change_operation: Optional[Literal["update", "delete", "split", "merge", "move", "link"]] = None
     # Context relation (Phase 26) - how message relates to active context
     context_relation: Optional[Literal["continue", "refine", "change", "new_topic"]] = None
+    # For DRAFT_TRANSFORM intent (Phase 28) - structural mutation operations
+    transform_operation: Optional[Literal[
+        "split_to_plan",       # Split single item into plan
+        "add_items",           # Add epics/stories
+        "merge_items",         # Combine items
+        "elevate_to_epic",     # Promote item to epic
+        "decompose_to_stories",  # Break epic into stories
+        "change_scope",        # Switch between SINGLE, EPICS_ONLY, FULL_PLAN
+        "remove_items",        # Delete specific items
+    ]] = None
