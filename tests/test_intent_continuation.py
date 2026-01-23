@@ -13,28 +13,19 @@ See: tests/test_event_router.py for current tests
 Original Phase 15: When user replies to a REVIEW with answers, should classify as
 REVIEW_CONTINUATION (not TICKET).
 """
-import importlib.util
-import os
-import sys
-
 import pytest
 
-# Load intent module directly to avoid circular imports through __init__.py
-# This is necessary because src.graph.__init__.py imports graph.py which has
-# circular dependencies with other modules in the package.
-_intent_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'graph', 'intent.py')
-_spec = importlib.util.spec_from_file_location("intent", _intent_path)
-_intent_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_intent_module)
-
-classify_intent_patterns = _intent_module.classify_intent_patterns
-IntentType = _intent_module.IntentType
-
 # Mark all tests in this file as skipped for Phase 20-12 refactor
+# NOTE: We skip BEFORE importing the module since classify_intent_patterns
+# no longer exists in intent.py
 pytestmark = pytest.mark.skip(
     reason="Phase 20-12: REVIEW_CONTINUATION/DECISION_APPROVAL now PendingAction values, "
            "handled by event_router before intent classification"
 )
+
+# These imports are deferred/mocked since the test is skipped
+classify_intent_patterns = None
+IntentType = None
 
 
 class TestReviewContinuationPatterns:

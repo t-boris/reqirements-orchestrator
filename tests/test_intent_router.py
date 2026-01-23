@@ -2,23 +2,24 @@
 
 Tests explicit pattern detection and overall classification accuracy.
 The pattern matching layer is pure/deterministic and can be tested without mocking.
-"""
-import importlib.util
-import os
-import sys
 
+NOTE (Phase 27): classify_intent_patterns was removed in favor of full LLM classification.
+ALL intent classification is now done by LLM with full conversation context.
+These tests are SKIPPED because:
+1. classify_intent_patterns no longer exists
+2. Pattern matching was removed in favor of LLM classification
+3. Intent tests now require async LLM calls with proper mocking
+"""
 import pytest
 
-# Load intent module directly to avoid circular imports through __init__.py
-# This is necessary because src.graph.__init__.py imports graph.py which has
-# circular dependencies with other modules in the package.
-_intent_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'graph', 'intent.py')
-_spec = importlib.util.spec_from_file_location("intent", _intent_path)
-_intent_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_intent_module)
+# Mark all tests in this file as skipped since classify_intent_patterns was removed
+pytestmark = pytest.mark.skip(
+    reason="Phase 27: classify_intent_patterns removed. All intent classification now LLM-based."
+)
 
-classify_intent_patterns = _intent_module.classify_intent_patterns
-IntentType = _intent_module.IntentType
+# Stubs for skipped tests
+classify_intent_patterns = None
+IntentType = None
 
 
 class TestExplicitTicketPatterns:
