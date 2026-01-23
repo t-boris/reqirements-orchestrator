@@ -1,12 +1,16 @@
 """Rich draft schema for PM-machine workflow.
 
 Supports patch-style updates with evidence tracking.
+Includes attribution tracking for multi-user support.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from src.schemas.attribution import MessageAttribution
 
 
 class ConstraintStatus(str, Enum):
@@ -87,6 +91,13 @@ class TicketDraft(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     version: int = 1  # Increment on each update for race detection
 
+    # Attribution tracking for multi-user support (Phase 27.1)
+    attributions: dict[str, "MessageAttribution"] = Field(
+        default_factory=dict,
+        description="Attribution for each field: {field_name: attribution}"
+    )
+    # Keys: "title", "problem", "proposed_solution", "constraint_0", "constraint_1", etc.
+
     def is_empty(self) -> bool:
         """Check if draft has no meaningful content yet."""
         return not (
@@ -163,3 +174,57 @@ class TicketDraft(BaseModel):
         self.updated_at = datetime.utcnow()
         self.version += 1
         return self
+
+    def set_with_attribution(
+        self,
+        field: str,
+        value: str,
+        author_user_id: str,
+        source_message_ts: str,
+        source_permalink: Optional[str] = None,
+        confidence: float = 1.0,
+    ) -> None:
+        """Set a field value with attribution tracking.
+
+        Records who set the value and from which message.
+        For multi-user support in Phase 27.
+
+        Args:
+            field: Field name to set (e.g., "title", "problem")
+            value: The value to set
+            author_user_id: Slack user ID who provided this content
+            source_message_ts: Slack message timestamp as source reference
+            source_permalink: Optional permalink to the source message
+            confidence: Extraction confidence (0.0-1.0)
+        """
+        from src.schemas.attribution import MessageAttribution
+
+        if hasattr(self, field):
+            setattr(self, field, value)
+            self.attributions[field] = MessageAttribution(
+                author_user_id=author_user_id,
+                source_message_ts=source_message_ts,
+                source_permalink=source_permalink,
+                confidence=confidence,
+            )
+            self.updated_at = datetime.utcnow()
+            self.version += 1
+
+    def get_attribution(self, field: str) -> Optional["MessageAttribution"]:
+        """Get attribution for a field.
+
+        Args:
+            field: Field name to get attribution for
+
+        Returns:
+            MessageAttribution if field has attribution, None otherwise
+        """
+        return self.attributions.get(field)
+
+    def get_all_authors(self) -> set[str]:
+        """Get all unique author user IDs from attributions.
+
+        Returns:
+            Set of Slack user IDs who contributed to this draft
+        """
+        return {attr.author_user_id for attr in self.attributions.values()}
