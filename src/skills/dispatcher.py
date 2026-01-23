@@ -52,12 +52,18 @@ class SkillDispatcher:
         self,
         decision: DecisionResult,
         draft: TicketDraft,
+        state_version: int = 0,
+        ui_version: int = 0,
     ) -> dict[str, Any]:
         """Dispatch decision to appropriate skill.
+
+        Phase 27.4: Added state_version and ui_version for state-bound approvals.
 
         Args:
             decision: DecisionResult from decision node
             draft: Current ticket draft
+            state_version: State version for approval validation (Phase 27.4)
+            ui_version: UI version for stale button detection (Phase 27.4)
 
         Returns:
             Dict with:
@@ -87,7 +93,9 @@ class SkillDispatcher:
             return await self._dispatch_ask(decision)
         elif decision.action == "preview":
             logger.info(f"Dispatching preview with {len(decision.potential_duplicates)} duplicates")
-            return await self._dispatch_preview(draft, decision.potential_duplicates)
+            return await self._dispatch_preview(
+                draft, decision.potential_duplicates, state_version, ui_version
+            )
         elif decision.action == "ready_to_create":
             return self._dispatch_ready(draft)
         else:
@@ -144,10 +152,14 @@ class SkillDispatcher:
         self,
         draft: TicketDraft,
         potential_duplicates: list[dict] = None,
+        state_version: int = 0,
+        ui_version: int = 0,
     ) -> dict[str, Any]:
         """Dispatch to preview_ticket skill.
 
         Posts draft preview with approval buttons.
+
+        Phase 27.4: Added state_version and ui_version for state-bound approvals.
         """
         from src.skills.preview_ticket import preview_ticket
 
@@ -159,6 +171,8 @@ class SkillDispatcher:
                 draft=draft,
                 session_id=self.identity.session_id,
                 potential_duplicates=potential_duplicates,
+                state_version=state_version,
+                ui_version=ui_version,
             )
 
             return {
@@ -215,15 +229,24 @@ class SkillDispatcher:
         )
         return await self._dispatch_ask(decision)
 
-    async def preview_ticket(self, draft: TicketDraft) -> dict[str, Any]:
+    async def preview_ticket(
+        self,
+        draft: TicketDraft,
+        state_version: int = 0,
+        ui_version: int = 0,
+    ) -> dict[str, Any]:
         """Direct skill call: preview ticket draft.
 
         Convenience method for calling preview_ticket skill directly.
 
+        Phase 27.4: Added state_version and ui_version for state-bound approvals.
+
         Args:
             draft: Ticket draft to preview
+            state_version: State version for approval validation (Phase 27.4)
+            ui_version: UI version for stale button detection (Phase 27.4)
 
         Returns:
             Skill result dict
         """
-        return await self._dispatch_preview(draft)
+        return await self._dispatch_preview(draft, state_version=state_version, ui_version=ui_version)

@@ -189,8 +189,15 @@ async def _dispatch_result(
             reask_count=result.get("pending_questions", {}).get("re_ask_count", 0) if result.get("pending_questions") else 0,
         )
 
+        # Get state_version and ui_version from runner for state-bound approvals (Phase 27.4)
+        state = await runner._get_current_state()
+        state_version = state.get("state_version", 0)
+        ui_version = state.get("ui_version", 0)
+
         dispatcher = SkillDispatcher(client, identity, tracker)
-        skill_result = await dispatcher.dispatch(decision, result.get("draft"))
+        skill_result = await dispatcher.dispatch(
+            decision, result.get("draft"), state_version=state_version, ui_version=ui_version
+        )
 
         # Store pending questions in runner state
         if skill_result.get("success") and skill_result.get("pending_questions"):
@@ -205,8 +212,13 @@ async def _dispatch_result(
                 potential_duplicates=result.get("potential_duplicates", []),
             )
 
+            # Get state_version and ui_version from runner for state-bound approvals (Phase 27.4)
+            state = await runner._get_current_state()
+            state_version = state.get("state_version", 0)
+            ui_version = state.get("ui_version", 0)
+
             dispatcher = SkillDispatcher(client, identity, tracker)
-            await dispatcher.dispatch(decision, draft)
+            await dispatcher.dispatch(decision, draft, state_version=state_version, ui_version=ui_version)
 
     elif action == "ready":
         # Approved - notify user

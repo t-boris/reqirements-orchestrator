@@ -56,8 +56,13 @@ async def preview_ticket(
     evidence_permalinks: Optional[list[dict]] = None,
     potential_duplicates: Optional[list[dict]] = None,
     draft_state: str = "draft",
+    state_version: int = 0,
+    ui_version: int = 0,
 ) -> PreviewResult:
     """Post draft preview with approval buttons.
+
+    Phase 27.4: Added state_version and ui_version for state-bound approvals.
+    These are embedded in button payloads to enable outdated approval detection.
 
     Args:
         client: Slack async web client
@@ -68,6 +73,8 @@ async def preview_ticket(
         evidence_permalinks: Optional list of {permalink, user, preview} for evidence
         potential_duplicates: Optional list of {key, summary, url} for duplicate display
         draft_state: Lifecycle state of draft (draft, approved, created, linked)
+        state_version: State version for approval validation (Phase 27.4)
+        ui_version: UI version for stale button detection (Phase 27.4)
 
     Returns:
         PreviewResult with message_ts, preview_id, draft_hash, status
@@ -82,7 +89,8 @@ async def preview_ticket(
     # Import blocks builder
     from src.slack.blocks import build_draft_preview_blocks_with_hash
 
-    # Build blocks with hash embedded in button values
+    # Build blocks with hash and state version embedded in button values
+    # Phase 27.4: Include state_version and ui_version for state-bound approvals
     blocks = build_draft_preview_blocks_with_hash(
         draft=draft,
         session_id=session_id,
@@ -90,6 +98,8 @@ async def preview_ticket(
         evidence_permalinks=evidence_permalinks,
         potential_duplicates=potential_duplicates,
         draft_state=draft_state,
+        state_version=state_version,
+        ui_version=ui_version,
     )
 
     # Post preview (WebClient is sync, not async)

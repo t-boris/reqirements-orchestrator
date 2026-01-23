@@ -273,6 +273,7 @@ async def _handle_create_anyway_async(body, client: WebClient, action):
     current_hash = compute_draft_hash(draft)
 
     # Build standard approval preview (without duplicates, with approval buttons)
+    # Phase 27.4: Include state versions for state-bound approval
     preview_blocks = build_draft_preview_blocks_with_hash(
         draft=draft,
         session_id=session_id,
@@ -280,6 +281,8 @@ async def _handle_create_anyway_async(body, client: WebClient, action):
         evidence_permalinks=None,
         potential_duplicates=None,  # Don't show duplicates again
         validator_findings=state.get("validation_report"),
+        state_version=state.get("state_version", 0),
+        ui_version=state.get("ui_version", 0),
     )
 
     # Update the message to show standard approval view
@@ -985,6 +988,7 @@ async def _handle_modal_create_anyway_async(body, client: WebClient, action):
 
     current_hash = compute_draft_hash(draft)
 
+    # Phase 27.4: Include state versions for state-bound approval
     preview_blocks = build_draft_preview_blocks_with_hash(
         draft=draft,
         session_id=session_id,
@@ -992,6 +996,8 @@ async def _handle_modal_create_anyway_async(body, client: WebClient, action):
         evidence_permalinks=None,
         potential_duplicates=None,
         validator_findings=state.get("validation_report"),
+        state_version=state.get("state_version", 0),
+        ui_version=state.get("ui_version", 0),
     )
 
     # Post new preview message (since we can't update from modal)

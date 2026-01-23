@@ -186,6 +186,8 @@ def build_draft_preview_blocks_with_hash(
     potential_duplicates: Optional[list[dict]] = None,
     validator_findings: Optional[dict[str, Any]] = None,
     draft_state: str = "draft",
+    state_version: int = 0,
+    ui_version: int = 0,
 ) -> list[dict]:
     """Build Slack blocks for ticket draft preview with version hash.
 
@@ -193,6 +195,9 @@ def build_draft_preview_blocks_with_hash(
     Shows evidence links inline with permalinks.
     Shows potential duplicates before approval buttons if found.
     Shows validator findings with hybrid UX (Phase 9).
+
+    Phase 27.4: Added state_version and ui_version for state-bound approvals.
+    Button values now include state binding for outdated approval detection.
 
     Args:
         draft: TicketDraft to display
@@ -202,6 +207,8 @@ def build_draft_preview_blocks_with_hash(
         potential_duplicates: Optional list of {key, summary, url} dicts for duplicate display
         validator_findings: Optional ValidationFindings dict with findings
         draft_state: Lifecycle state of draft (draft, approved, created, linked)
+        state_version: State version for approval validation (Phase 27.4)
+        ui_version: UI version for stale button detection (Phase 27.4)
     """
     from src.slack.blocks.duplicates import build_duplicate_blocks
 
@@ -313,8 +320,16 @@ def build_draft_preview_blocks_with_hash(
         if findings_blocks:
             blocks.extend(findings_blocks)
 
-    # Build button value with session_id:draft_hash for version checking
-    button_value = f"{session_id}:{draft_hash}" if draft_hash else session_id
+    # Build button value with session_id:draft_hash:state_version for version checking
+    # Phase 27.4: Include state_version for state-bound approval validation
+    import json
+    button_payload = {
+        "session_id": session_id,
+        "draft_hash": draft_hash or "",
+        "state_version": state_version,
+        "ui_version": ui_version,
+    }
+    button_value = json.dumps(button_payload)
 
     # When duplicates found, show duplicate blocks with action buttons (Phase 11.1)
     # This replaces the standard approval buttons

@@ -191,12 +191,14 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             }
         )
 
-        # Post new preview with updated content
+        # Post new preview with updated content (Phase 27.4: include state versions)
         from src.slack.blocks import build_draft_preview_blocks_with_hash
         new_blocks = build_draft_preview_blocks_with_hash(
             draft=draft,
             session_id=session_id,
             draft_hash=current_hash,
+            state_version=state.get("state_version", 0),
+            ui_version=state.get("ui_version", 0),
         )
 
         client.chat_postMessage(
@@ -649,12 +651,19 @@ async def _handle_edit_draft_submit_async(body, client: WebClient, view):
     from src.skills.preview_ticket import compute_draft_hash
     new_hash = compute_draft_hash(draft)
 
+    # Get state versions for state-bound approval (Phase 27.4)
+    state = await runner._get_current_state()
+    state_version = state.get("state_version", 0)
+    ui_version = state.get("ui_version", 0)
+
     # Update original preview message with new draft
     from src.slack.blocks import build_draft_preview_blocks_with_hash
     new_blocks = build_draft_preview_blocks_with_hash(
         draft=draft,
         session_id=session_id,
         draft_hash=new_hash,
+        state_version=state_version,
+        ui_version=ui_version,
     )
 
     try:
