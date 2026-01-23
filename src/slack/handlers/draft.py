@@ -16,6 +16,7 @@ from src.slack.handlers.draft_blocks import (
     post_error_actions,
     update_preview_to_created,
 )
+from src.db.audit_store import AuditStore, AuditActionType
 
 if TYPE_CHECKING:
     from src.schemas.draft import TicketDraft
@@ -303,6 +304,26 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             )
             return
 
+        # Log approval action (Phase 27.5)
+        try:
+            audit_store = AuditStore(conn)
+            await audit_store.ensure_table()
+            await audit_store.log(
+                channel_id=channel,
+                action_type=AuditActionType.DRAFT_APPROVE,
+                actor_user_id=user_id,
+                target_type="draft",
+                target_id=session_id,
+                outcome="success",
+                thread_ts=thread_ts,
+                metadata={
+                    "draft_hash": hash_to_record,
+                    "state_version": current_state_version,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log approval audit entry: {e}")
+
         # Approval recorded - now create Jira ticket with progress visibility
         settings = get_settings()
         jira_service = JiraService(settings)
@@ -333,6 +354,8 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 settings=settings,
                 slack_permalink=slack_permalink,
                 progress_callback=on_jira_retry,
+                channel_id=channel,
+                thread_ts=thread_ts,
             )
         except Exception as e:
             # Unexpected error during creation

@@ -7,10 +7,12 @@ Every guard must pass before create:
 3. Check idempotency (first wins)
 4. Create Jira issue
 5. Audit trail in jira_operations table
+6. Audit log entry (Phase 27.5)
 
 All-or-nothing: Jira failure doesn't advance session state.
 """
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
@@ -19,6 +21,7 @@ from psycopg import AsyncConnection
 from src.config.settings import Settings, get_settings
 from src.db.approval_store import ApprovalStore
 from src.db.jira_operations import JiraOperationStore
+from src.db.audit_store import AuditStore, AuditActionType
 from src.jira.client import JiraService, JiraAPIError
 from src.jira.types import JiraCreateRequest, JiraIssueType, JiraPriority
 from src.schemas.draft import TicketDraft
@@ -109,6 +112,8 @@ async def jira_create(
     settings: Optional[Settings] = None,
     slack_permalink: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    channel_id: Optional[str] = None,
+    thread_ts: Optional[str] = None,
 ) -> JiraCreateResult:
     """Create a Jira issue with strict approval validation.
 
@@ -118,6 +123,7 @@ async def jira_create(
     3. Check idempotency (first wins)
     4. Create Jira issue
     5. Record in audit trail
+    6. Log to audit store (Phase 27.5)
 
     Args:
         session_id: Session ID for this operation
@@ -129,6 +135,8 @@ async def jira_create(
         slack_permalink: Optional Slack thread permalink to include in description
         progress_callback: Optional async callback for retry visibility.
             Called as progress_callback(error_type, attempt, max_attempts)
+        channel_id: Optional channel ID for audit logging
+        thread_ts: Optional thread timestamp for audit logging
 
     Returns:
         JiraCreateResult with success/error status and Jira details
@@ -281,6 +289,30 @@ async def jira_create(
         logger.info(f"Marking operation success for {issue.key}")
         await op_store.mark_success(session_id, current_hash, "jira_create", issue.key)
 
+        # --- Step 6: Audit log entry (Phase 27.5) ---
+        if channel_id:
+            try:
+                audit_store = AuditStore(conn)
+                await audit_store.ensure_table()
+                await audit_store.log(
+                    channel_id=channel_id,
+                    action_type=AuditActionType.JIRA_CREATE,
+                    actor_user_id=approved_by,
+                    target_type="jira",
+                    target_id=issue.key,
+                    outcome="success",
+                    thread_ts=thread_ts,
+                    request_id=str(uuid.uuid4()),
+                    metadata={
+                        "summary": draft.title,
+                        "draft_hash": current_hash,
+                        "session_id": session_id,
+                    },
+                )
+            except Exception as e:
+                # Non-blocking: audit failure shouldn't fail the operation
+                logger.warning(f"Failed to log audit entry: {e}")
+
         logger.info(
             "Jira issue created successfully",
             extra={
@@ -303,6 +335,30 @@ async def jira_create(
             f"Jira API error {e.status_code}: {e.message}",
         )
 
+        # Audit log entry for failure (Phase 27.5)
+        if channel_id:
+            try:
+                audit_store = AuditStore(conn)
+                await audit_store.ensure_table()
+                await audit_store.log(
+                    channel_id=channel_id,
+                    action_type=AuditActionType.JIRA_CREATE,
+                    actor_user_id=approved_by,
+                    target_type="jira",
+                    target_id="unknown",
+                    outcome="error",
+                    thread_ts=thread_ts,
+                    error_message=f"Jira API error {e.status_code}: {e.message}",
+                    error_details={"status_code": e.status_code, "response_body": e.response_body},
+                    metadata={
+                        "summary": draft.title,
+                        "draft_hash": current_hash,
+                        "session_id": session_id,
+                    },
+                )
+            except Exception as audit_err:
+                logger.warning(f"Failed to log audit entry: {audit_err}")
+
         logger.error(
             "Jira API error during creation",
             extra={
@@ -324,6 +380,29 @@ async def jira_create(
             session_id, current_hash, "jira_create",
             f"Unexpected error: {str(e)}",
         )
+
+        # Audit log entry for unexpected failure (Phase 27.5)
+        if channel_id:
+            try:
+                audit_store = AuditStore(conn)
+                await audit_store.ensure_table()
+                await audit_store.log(
+                    channel_id=channel_id,
+                    action_type=AuditActionType.JIRA_CREATE,
+                    actor_user_id=approved_by,
+                    target_type="jira",
+                    target_id="unknown",
+                    outcome="error",
+                    thread_ts=thread_ts,
+                    error_message=str(e),
+                    metadata={
+                        "summary": draft.title,
+                        "draft_hash": current_hash,
+                        "session_id": session_id,
+                    },
+                )
+            except Exception as audit_err:
+                logger.warning(f"Failed to log audit entry: {audit_err}")
 
         logger.error(
             "Unexpected error during Jira creation",
