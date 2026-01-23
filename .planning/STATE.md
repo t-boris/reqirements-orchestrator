@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 27-multi-user-support
-Plan: 4 of 6 in current phase (27.1, 27.2, 27.3, 27.4 complete)
+Plan: 5 of 6 in current phase (27.1, 27.2, 27.3, 27.4, 27.5 complete)
 Status: In progress
-Last activity: 2026-01-23 — Completed 27.4-PLAN.md (State-Bound Approvals)
+Last activity: 2026-01-23 — Completed 27.5-PLAN.md (WorkItem Ownership & Audit Log)
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 4/6 sub-phases
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 5/6 sub-phases
 
 ## Milestones Summary
 
@@ -24,7 +24,7 @@ Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 4/6 su
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | ✅ Complete | 2026-01-20 |
 | v1.2 | Developer Experience | 24+ | 4+ | 🚧 In Progress | - |
 
-**Total:** 28 phases, 110 plans shipped (v1.2: 4 plans complete)
+**Total:** 28 phases, 111 plans shipped (v1.2: 5 plans complete)
 
 ## v1.1 Summary
 
@@ -85,6 +85,12 @@ Phase 27.4 decisions:
 - Backward-compatible button parsing (supports legacy format)
 - State-bound approvals prevent acting on outdated content
 
+Phase 27.5 decisions:
+- Creator becomes first owner on WorkItem creation
+- Audit logging is non-blocking (failures logged, don't fail operations)
+- Audit logging at skill layer (not low-level client) for full context
+- Structured explain output for /maro explain command
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26 features shipped.
@@ -100,9 +106,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27.4 (State-Bound Approvals)
+Stopped at: Completed Phase 27.5 (WorkItem Ownership & Audit Log)
 Resume file: None
-Next action: Execute Phase 27.5 (WorkItem Ownership & Audit Log)
+Next action: Execute Phase 27.6 (Notifications & Slack UX)
 
 ## What's Next
 
@@ -123,9 +129,9 @@ Next action: Execute Phase 27.5 (WorkItem Ownership & Audit Log)
 | 27.6 | Notifications & Slack UX | Low |
 
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
-**Current sub-phase:** `.planning/phases/27-multi-user-support/27.5-PLAN.md`
+**Current sub-phase:** `.planning/phases/27-multi-user-support/27.6-PLAN.md`
 
-**Next action:** Run `/gsd:plan-phase 27.5` to plan WorkItem Ownership & Audit Log
+**Next action:** Run `/gsd:plan-phase 27.6` to plan Notifications & Slack UX
 
 ---
 
