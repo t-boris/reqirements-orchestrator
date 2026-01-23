@@ -60,6 +60,8 @@ from src.slack.handlers import (
     handle_update_preview_edit,
     handle_update_preview_cancel,
     handle_update_edit_modal_submit,
+    # Draft conflict handlers (Phase 27.3)
+    register_draft_conflict_handlers,
 )
 from src.slack.handlers.scope_gate import (
     handle_scope_gate_review,
@@ -222,4 +224,7 @@ def register_handlers(app: App) -> None:
     app.action("change_request_cancel")(handle_change_request_cancel)
     app.action("change_request_edit")(handle_change_request_edit)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request")
+    # Draft conflict actions (Phase 27.3)
+    register_draft_conflict_handlers(app)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict")

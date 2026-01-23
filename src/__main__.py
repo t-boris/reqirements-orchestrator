@@ -77,6 +77,16 @@ async def init_database() -> None:
         thread_state_store = ThreadStateStore(conn)
         await thread_state_store.create_tables()
 
+        # Phase 27.3: Multi-author drafts & conflict detection
+        from src.db.draft_edit_store import DraftEditStore
+        from src.db.conflict_store import ConflictStore
+
+        draft_edit_store = DraftEditStore(conn)
+        await draft_edit_store.ensure_table()
+
+        conflict_store = ConflictStore(conn)
+        await conflict_store.ensure_table()
+
     logger.info("Database initialized")
 
 
