@@ -451,6 +451,9 @@ def _parse_json_response(response_text: str) -> Any:
     if not response_text:
         return None
 
+    # Log raw response for debugging
+    logger.debug(f"Parsing JSON response: {response_text[:300]}...")
+
     # Try parsing as-is first
     try:
         return json.loads(response_text)
@@ -463,6 +466,44 @@ def _parse_json_response(response_text: str) -> Any:
     # Remove trailing commas before ] or }
     fixed = re.sub(r',\s*]', ']', fixed)
     fixed = re.sub(r',\s*}', '}', fixed)
+
+    # Handle concatenated JSON objects (no array brackets)
+    # e.g., '{"a":1} {"b":2}' -> '[{"a":1}, {"b":2}]'
+    if fixed.startswith("{") and not fixed.startswith("["):
+        # Find all JSON objects by matching balanced braces
+        objects = []
+        depth = 0
+        start = None
+        in_string = False
+        escape = False
+
+        for i, char in enumerate(fixed):
+            if escape:
+                escape = False
+                continue
+            if char == '\\':
+                escape = True
+                continue
+            if char == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+
+            if char == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                if depth == 0 and start is not None:
+                    objects.append(fixed[start:i+1])
+                    start = None
+
+        if len(objects) > 1:
+            # Multiple objects found - wrap in array
+            fixed = '[' + ', '.join(objects) + ']'
+            logger.info(f"Wrapped {len(objects)} concatenated JSON objects into array")
 
     # Try to extract JSON array or object if there's extra text
     array_match = re.search(r'\[[\s\S]*\]', fixed)
@@ -481,8 +522,8 @@ def _parse_json_response(response_text: str) -> Any:
         return json.loads(fixed)
     except json.JSONDecodeError as e:
         logger.warning(f"JSON parse failed even after fixes: {e}")
-        logger.debug(f"Original: {response_text[:200]}...")
-        logger.debug(f"Fixed: {fixed[:200]}...")
+        logger.warning(f"Original response: {response_text[:500]}")
+        logger.warning(f"After fixes: {fixed[:500]}")
         raise
 
 
