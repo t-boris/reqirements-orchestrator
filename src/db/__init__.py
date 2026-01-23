@@ -71,6 +71,7 @@ from src.db.commit_store import CommitStore
 from src.db.channel_state_store import ChannelStateStore
 from src.db.thread_state_store import ThreadStateStore
 from src.db.user_metadata_store import UserMetadataStore, UserMetadata
+from src.db.participant_store import ThreadParticipantStore, ThreadParticipant
 
 __all__ = [
     # Connection (02-01)
@@ -132,4 +133,7 @@ __all__ = [
     # User Metadata Store (27-01)
     "UserMetadataStore",
     "UserMetadata",
+    # Thread Participant Store (27.2)
+    "ThreadParticipantStore",
+    "ThreadParticipant",
 ]
