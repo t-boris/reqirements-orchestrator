@@ -266,28 +266,32 @@ JSON response:'''
 
 
 # Phase 1: Extract just item list (lightweight, avoids truncation)
-MULTI_ITEM_LIST_PROMPT = '''Analyze this review and list ALL proposed work items.
+MULTI_ITEM_LIST_PROMPT = '''Analyze this review and list work items to create.
 
 Review text:
 {review_text}
 
 Topic: {topic}
-Scope: {scope}
+Requested scope: {scope}
+
+SCOPE RULES:
+- If scope contains "epic" (e.g., "epics_only", "2 epics"): ONLY extract Epics. Do NOT create Stories.
+- If scope contains "story" or "full": Extract both Epics and Stories.
+- If scope is "decision" or unclear: Extract only what was explicitly decided.
 
 CRITICAL: Return ONLY a valid JSON array. No text before or after. No explanations.
 
-Format (copy this structure exactly):
+Format:
 [
   {{"type": "epic", "title": "Short title here"}},
   {{"type": "story", "title": "Short title here", "parent_index": 0}}
 ]
 
 Rules:
-- "N epics" = N separate Epic items
-- "epic with N stories" = 1 Epic at index 0, N Stories with parent_index: 0
-- parent_index is the array index of the parent Epic (if any)
+- parent_index is the array index of the parent Epic (only for stories)
 - Keep titles SHORT (under 80 chars)
 - Do NOT include descriptions
+- Do NOT auto-generate stories under epics unless scope explicitly asks for them
 
 IMPORTANT: Your response must start with [ and end with ]. Nothing else.
 '''
