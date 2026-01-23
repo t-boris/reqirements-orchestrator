@@ -70,6 +70,7 @@ from src.db.channel_mode_store import ChannelModeStore
 from src.db.commit_store import CommitStore
 from src.db.channel_state_store import ChannelStateStore
 from src.db.thread_state_store import ThreadStateStore
+from src.db.user_metadata_store import UserMetadataStore, UserMetadata
 
 __all__ = [
     # Connection (02-01)
@@ -128,4 +129,7 @@ __all__ = [
     # Separated State Stores (25-05)
     "ChannelStateStore",
     "ThreadStateStore",
+    # User Metadata Store (27-01)
+    "UserMetadataStore",
+    "UserMetadata",
 ]
