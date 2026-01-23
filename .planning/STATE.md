@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 28-structured-draft-evolution
-Plan: 2 of ? in current phase
+Plan: 3 of ? in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 28.2-PLAN.md (DRAFT_TRANSFORM intent)
+Last activity: 2026-01-23 — Completed 28.3-PLAN.md (Structural Mutation Engine)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 2 plans complete
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 3 plans complete
 
 ## Milestones Summary
 
@@ -109,6 +109,12 @@ Phase 28.2 decisions:
 - draft_transform_node returns action="transform_applied" for handler
 - Transform requests logged to StructuredDraft change_log for audit
 
+Phase 28.3 decisions:
+- Mutation methods return dict with success/message for handler feedback
+- Lifecycle transitions happen automatically within mutation methods
+- LLM parameter extraction is optional - falls back to empty params on failure
+- Cascading removal: removing parent removes children automatically
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -124,9 +130,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 28.2-PLAN.md (DRAFT_TRANSFORM intent)
+Stopped at: Completed 28.3-PLAN.md (Structural Mutation Engine)
 Resume file: None
-Next action: Execute next plan in Phase 28
+Next action: Plan or execute 28.4
 
 ## What's Next
 
@@ -137,8 +143,9 @@ Next action: Execute next plan in Phase 28
 **Plans completed:**
 - 28.1: StructuredDraft schema with lifecycle states and migration helpers
 - 28.2: DRAFT_TRANSFORM intent with 7 operations and graph routing
+- 28.3: Structural Mutation Engine (7 mutation methods implemented)
 
-**Next action:** Execute next plan in Phase 28
+**Next action:** Plan 28.4 (handler integration)
 
 ---
 
