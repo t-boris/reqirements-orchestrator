@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 28-structured-draft-evolution
-Plan: 1 of ? in current phase
+Plan: 2 of ? in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 28.1-PLAN.md (StructuredDraft schema)
+Last activity: 2026-01-23 — Completed 28.2-PLAN.md (DRAFT_TRANSFORM intent)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 1 plan complete
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 2 plans complete
 
 ## Milestones Summary
 
@@ -103,6 +103,12 @@ Phase 28.1 decisions:
 - Bidirectional conversion (TicketDraft <-> StructuredDraft) enables gradual migration
 - structured_draft field Optional in AgentState for dual-draft transition period
 
+Phase 28.2 decisions:
+- DRAFT_TRANSFORM vs DRAFT_REFINE: commanding vs asking distinction
+- 7 transform operations: split_to_plan, add_items, merge_items, elevate_to_epic, decompose_to_stories, change_scope, remove_items
+- draft_transform_node returns action="transform_applied" for handler
+- Transform requests logged to StructuredDraft change_log for audit
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -118,7 +124,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 28.1-PLAN.md (StructuredDraft schema)
+Stopped at: Completed 28.2-PLAN.md (DRAFT_TRANSFORM intent)
 Resume file: None
 Next action: Execute next plan in Phase 28
 
@@ -130,6 +136,7 @@ Next action: Execute next plan in Phase 28
 
 **Plans completed:**
 - 28.1: StructuredDraft schema with lifecycle states and migration helpers
+- 28.2: DRAFT_TRANSFORM intent with 7 operations and graph routing
 
 **Next action:** Execute next plan in Phase 28
 
