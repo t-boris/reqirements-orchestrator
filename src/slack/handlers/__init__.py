@@ -147,6 +147,13 @@ from src.slack.handlers.change_request import (
     handle_change_request_edit,
 )
 
+# Draft conflict handlers (Phase 27.3)
+from src.slack.handlers.draft_conflict import (
+    handle_draft_conflict_resolve_existing,
+    handle_draft_conflict_resolve_proposed,
+    register_draft_conflict_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -235,4 +242,8 @@ __all__ = [
     "handle_change_request_approve",
     "handle_change_request_cancel",
     "handle_change_request_edit",
+    # Draft conflict handlers (Phase 27.3)
+    "handle_draft_conflict_resolve_existing",
+    "handle_draft_conflict_resolve_proposed",
+    "register_draft_conflict_handlers",
 ]
