@@ -233,6 +233,53 @@ async def _dispatch_result(
         # OPS response - debug or explain (Phase 25.2)
         await _handle_ops_response(result, identity, client)
 
+    elif action == "draft_refine":
+        # DRAFT_REFINE - user asking about draft structure (Phase 26)
+        decision_result = result.get("decision_result", {})
+        refinement_prompt = decision_result.get("refinement_prompt", "")
+
+        if refinement_prompt:
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": refinement_prompt,
+                    },
+                }
+            ]
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                blocks=blocks,
+                text=refinement_prompt[:200],  # Fallback for notifications
+            )
+            logger.info(
+                "Posted draft refinement response",
+                extra={
+                    "session_id": identity.session_id,
+                    "prompt_length": len(refinement_prompt),
+                },
+            )
+        else:
+            # Fallback if no refinement prompt generated
+            fallback_text = "I understand you're asking about the draft structure. Could you be more specific about what you'd like to adjust?"
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": fallback_text,
+                    },
+                }
+            ]
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                blocks=blocks,
+                text=fallback_text,
+            )
+
     elif action == "review_continuation":
         # Review continuation - synthesized response to user's answers
         continuation_msg = result.get("message", "")
@@ -473,6 +520,10 @@ async def _dispatch_result(
             text=f":warning: {result.get('error', 'Unknown error')}",
         )
 
+    elif action == "conflict":
+        # Draft conflict detected - post conflict UI (Phase 27.3)
+        await _handle_draft_conflict(result, identity, client)
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -498,6 +549,15 @@ async def _handle_ticket_action(
     ticket_key = result.get("ticket_key")
     action_type = result.get("action_type")
     already_bound_to_same = result.get("already_bound_to_same", False)
+
+    # Validate ticket_key before any operations
+    if not ticket_key:
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text="I couldn't determine which ticket you're referring to. Please mention the ticket key (e.g., SCRUM-123).",
+        )
+        return
 
     if action_type == "create_subtask":
         # Check if already bound to same ticket - do action, don't re-link
@@ -551,6 +611,7 @@ async def _handle_ticket_action(
         from src.slack.blocks.update_preview import build_update_preview_blocks
         from src.schemas.state import PendingAction, WorkflowStep
 
+        jira_service = None
         try:
             settings = get_settings()
             jira_service = JiraService(settings)
@@ -564,7 +625,6 @@ async def _handle_ticket_action(
             update_content = await _extract_update_content(
                 result, client, identity.channel_id, identity.thread_ts
             )
-            await jira_service.close()
 
             if not update_content or update_content.strip() == "":
                 client.chat_postMessage(
@@ -637,12 +697,16 @@ async def _handle_ticket_action(
                 thread_ts=identity.thread_ts,
                 text=f"Failed to prepare update for *{ticket_key}*: {str(e)}",
             )
+        finally:
+            if jira_service:
+                await jira_service.close()
 
     elif action_type == "add_comment":
         # Add comment to ticket
         from src.jira.client import JiraService
         from src.config.settings import get_settings
 
+        jira_service = None
         try:
             settings = get_settings()
             jira_service = JiraService(settings)
@@ -652,7 +716,6 @@ async def _handle_ticket_action(
 
             # Add comment to the ticket
             await jira_service.add_comment(ticket_key, comment_content)
-            await jira_service.close()
 
             client.chat_postMessage(
                 channel=identity.channel_id,
@@ -666,6 +729,9 @@ async def _handle_ticket_action(
                 thread_ts=identity.thread_ts,
                 text=f"Failed to add comment to *{ticket_key}*: {str(e)}",
             )
+        finally:
+            if jira_service:
+                await jira_service.close()
 
     elif action_type == "create_stories":
         # Create user stories under an existing epic
@@ -1371,3 +1437,61 @@ async def _handle_ops_response(
             "subtype": subtype,
         }
     )
+
+
+# --- Draft Conflict Handler (Phase 27.3) ---
+
+async def _handle_draft_conflict(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle draft conflict detected during extraction.
+
+    Posts conflict UI with resolution buttons for each detected conflict.
+
+    Args:
+        result: Decision result with conflicts list
+        identity: Session identity
+        client: Slack WebClient
+    """
+    from src.slack.blocks.draft_conflict import build_draft_conflict_blocks
+    from src.schemas.conflict import DraftConflict
+
+    conflicts_data = result.get("conflicts", [])
+    if not conflicts_data:
+        logger.warning("No conflicts data in conflict result")
+        return
+
+    # Post each conflict with its resolution buttons
+    for conflict_data in conflicts_data:
+        try:
+            conflict = DraftConflict(**conflict_data)
+            blocks = build_draft_conflict_blocks(conflict)
+
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                blocks=blocks,
+                text=f"Conflict detected in {conflict.field_name}",
+            )
+
+            logger.info(
+                "Posted conflict UI",
+                extra={
+                    "conflict_id": conflict.conflict_id,
+                    "field_name": conflict.field_name,
+                    "channel_id": identity.channel_id,
+                    "thread_ts": identity.thread_ts,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to post conflict UI: {e}", exc_info=True)
+
+    # Post summary if multiple conflicts
+    if len(conflicts_data) > 1:
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f":warning: {len(conflicts_data)} conflicts detected. Please resolve each one above.",
+        )
