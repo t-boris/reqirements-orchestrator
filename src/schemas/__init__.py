@@ -19,6 +19,11 @@ from src.schemas.attribution import (
     MessageAttribution,
     AttributedContent,
 )
+from src.schemas.conflict import (
+    ConflictType,
+    ConflictSide,
+    DraftConflict,
+)
 
 __all__ = [
     # Ticket schemas
@@ -40,4 +45,8 @@ __all__ = [
     # Attribution schemas (Phase 27.1)
     "MessageAttribution",
     "AttributedContent",
+    # Conflict schemas (Phase 27.3)
+    "ConflictType",
+    "ConflictSide",
+    "DraftConflict",
 ]
