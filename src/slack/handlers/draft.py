@@ -938,3 +938,64 @@ async def _handle_approve_structure_async(body, client: WebClient, action):
             "user_id": user_id,
         }
     )
+
+
+def handle_edit_structure(ack, body, client: WebClient, action):
+    """Synchronous wrapper for structure edit.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_edit_structure_async(body, client, action))
+
+
+async def _handle_edit_structure_async(body, client: WebClient, action):
+    """Handle edit_structure button click.
+
+    Prompts user to describe desired changes to draft structure.
+
+    Phase 28.6: Structure Feedback UI
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    user_id = body["user"]["id"]
+
+    # Parse button payload
+    button_value = action.get("value", "{}")
+    try:
+        payload = json.loads(button_value)
+        draft_id = payload.get("draft_id")
+        version = payload.get("version", 0)
+    except json.JSONDecodeError:
+        draft_id = None
+        version = 0
+
+    # In-memory dedup for Slack retries
+    from src.slack.dedup import try_process_button
+    action_id = action.get("action_id", "edit_structure")
+    if not try_process_button(action_id, user_id, button_value):
+        logger.debug(f"Ignoring duplicate edit_structure click: {button_value}")
+        return
+
+    logger.info(
+        "Edit structure requested",
+        extra={
+            "draft_id": draft_id,
+            "version": version,
+            "user_id": user_id,
+            "channel_id": channel,
+            "thread_ts": thread_ts,
+        }
+    )
+
+    # Post prompt for user to describe changes
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text="What changes would you like to make to the draft structure? You can say things like:\n"
+             "- \"Split this into multiple epics\"\n"
+             "- \"Add a story for authentication\"\n"
+             "- \"Merge the first two items\"\n"
+             "- \"Change scope to epics only\"\n"
+             "- \"Remove the last item\"",
+    )
