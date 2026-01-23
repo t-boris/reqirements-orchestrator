@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 28-structured-draft-evolution
-Plan: 5 of ? in current phase
+Plan: 6 of ? in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 28.5-PLAN.md (User Input Classification)
+Last activity: 2026-01-23 — Completed 28.6-PLAN.md (Structure Feedback UI)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 5 plans complete
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans complete
 
 ## Milestones Summary
 
@@ -128,6 +128,13 @@ Phase 28.5 decisions:
 - 0.7 confidence threshold to record answer as definitive
 - CHOICE inputs route to transform action (not discussion)
 
+Phase 28.6 decisions:
+- Text-based structure visualization (not complex visual diagrams) - simpler, mobile-friendly
+- Stories indented under epics with '└─' prefix for hierarchy
+- Ephemeral messages for stale approvals (private) rather than in-thread (public)
+- Edit button prompts user to describe changes, routes to DRAFT_TRANSFORM intent
+- Version binding: JSON payloads with {draft_id, version} in action buttons
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -143,9 +150,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 28.5-PLAN.md (User Input Classification)
+Stopped at: Completed 28.6-PLAN.md (Structure Feedback UI)
 Resume file: None
-Next action: Create 28.6-PLAN.md or complete Phase 28
+Next action: Create 28.7-PLAN.md or complete Phase 28
 
 ## What's Next
 
@@ -159,8 +166,9 @@ Next action: Create 28.6-PLAN.md or complete Phase 28
 - 28.3: Structural Mutation Engine (7 mutation methods implemented)
 - 28.4: Lifecycle State Machine (form-dependent validation, lifecycle-aware questions)
 - 28.5: User Input Classification (R3, R7, R10 - CHOICE/OPINION/QUESTION routing)
+- 28.6: Structure Feedback UI (R8, R9 - version-bound visualization and stale detection)
 
-**Next action:** Create 28.6-PLAN.md or finalize Phase 28
+**Next action:** Create 28.7-PLAN.md or finalize Phase 28
 
 ---
 
