@@ -19,6 +19,9 @@ from src.schemas.draft import (
     EvidenceLink,
     TicketDraft,
 )
+
+# Rebuild TicketDraft to resolve forward reference to MessageAttribution
+TicketDraft.model_rebuild()
 from src.schemas.state import AgentPhase, AgentState
 from src.schemas.structured_draft import (
     DraftChange,
