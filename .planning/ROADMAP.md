@@ -100,7 +100,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 27: Multi-User Support
 
-**Status:** PLANNED (6 sub-phases)
+**Status:** COMPLETE (6/6 sub-phases)
 
 **Objective:** Enable MARO to work in channels with multiple participants — track authorship, handle concurrent edits, route approvals correctly, and maintain auditability.
 
@@ -108,24 +108,73 @@ User: "Do you think only one epic is enough?"
 
 **Sub-Phases:**
 
-| Phase | Focus | Risk | Requirements |
-|-------|-------|------|--------------|
-| 27.1 | User Identity & Attribution Foundation | Low | R1, R2, R5 (partial) |
-| 27.2 | Participant Map & Turn-Taking | Medium | R7, R8, R9 |
-| 27.3 | Multi-Author Drafts & Conflict Detection | High | R10, R11, R12 |
-| 27.4 | State-Bound Approvals | Medium | R13, R14, R15 |
-| 27.5 | WorkItem Ownership & Audit Log | Medium | R16, R17, R20, R21 |
-| 27.6 | Notifications & Slack UX | Low | R18, R19, R22, R23 |
+| Phase | Focus | Risk | Status |
+|-------|-------|------|--------|
+| 27.1 | User Identity & Attribution Foundation | Low | Complete |
+| 27.2 | Participant Map & Turn-Taking | Medium | Complete |
+| 27.3 | Multi-Author Drafts & Conflict Detection | High | Complete |
+| 27.4 | State-Bound Approvals | Medium | Complete |
+| 27.5 | WorkItem Ownership & Audit Log | Medium | Complete |
+| 27.6 | Notifications & Slack UX | Low | Complete |
 
-**DoD Tests:**
-- T1: Two users edit same draft → deterministic result (27.3)
-- T2: Two users click approve → first wins + audit (27.4)
-- T3: Conflict surfaced with correct attribution (27.3)
-- T4: Unauthorized user blocked with explanation (27.4)
-- T5: Non-directed chatter ignored (27.6)
+**What shipped:**
+- User identity with metadata caching (display name, avatar)
+- Field attribution tracking (who said what)
+- Thread participant tracking with activity windows
+- Multi-author draft support with semantic conflict detection
+- State-bound approvals preventing stale button clicks
+- WorkItem ownership with audit logging
+- Targeted notifications (owners/watchers, not everyone)
+- Low-noise filtering for listening mode
+- Status cards at channel level for Jira visibility
+- Open question tracking with no-response policy
 
 **Full requirements:** `.planning/phases/27-multi-user-support/REQUIREMENTS.md`
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
+
+### Phase 28: Structured Draft Evolution
+
+**Status:** PLANNED
+
+**Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
+
+**Mantra:** Draft is a data structure representing the shape of work, not a paragraph of text.
+
+**Core Shift:** From "bot collects text for a ticket" to "bot manages the form of a design object and the evolution of its structure."
+
+**Key Concepts:**
+
+1. **DraftKind** — SINGLE_ITEM vs PLAN (multiple items with structure)
+2. **DraftScope** — SINGLE, EPICS_ONLY, FULL_PLAN
+3. **DraftItemStatus** — PROPOSED → APPROVED → COMMITTED
+4. **DraftLifecycle** — EMPTY → SINGLE_ITEM → PLAN → PLAN_REFINED → APPROVED → COMMITTED
+5. **DRAFT_TRANSFORM intent** — Semantic triggers like "split into...", "merge these...", "break this down"
+
+**Requirements:**
+
+| Rule | Description |
+|------|-------------|
+| R1 | Draft must be a typed object, not text |
+| R2 | User decisions must mutate Draft form, not just be answered with text |
+| R3 | Bot must transition from questions to action |
+| R4 | New intent: DRAFT_TRANSFORM |
+| R5 | Draft must have a lifecycle |
+| R6 | Validation must depend on Draft form |
+| R7 | Distinguish between choice, opinion, and question |
+| R8 | After each Draft form change, show the new form |
+| R9 | Draft must be versioned |
+| R10 | Bot cannot repeat a question after receiving a direct answer |
+| R11 | Transition from decision to action is mandatory |
+| R12 | Draft is no longer "text draft", it's a "design model" |
+
+**DoD Tests:**
+- T1: Structural decision mutates state (e.g., "Split into epics" → Draft.kind = PLAN)
+- T2: Lifecycle enforced (PLAN stage → ask decomposition, not acceptance criteria)
+- T3: No question repetition after direct answer
+- T4: Version-bound approvals reject outdated buttons
+- T5: Form-dependent validation (Epic validates goal/scope, Story validates AC)
+
+**Full requirements:** `.planning/phases/28-structured-draft-evolution/REQUIREMENTS.md`
 
 ## Completed Milestones
 
@@ -226,7 +275,8 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 26. Context-Aware Intent | v1.2 | 4/4 | Complete | 2026-01-22 |
 | 27.1 User Identity & Attribution | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.2 Participant Map & Turn-Taking | v1.2 | 1/1 | Complete | 2026-01-23 |
-| 27.3 Multi-Author Drafts & Conflicts | v1.2 | 0/1 | Planned | - |
-| 27.4 State-Bound Approvals | v1.2 | 0/1 | Planned | - |
-| 27.5 WorkItem Ownership & Audit | v1.2 | 0/1 | Planned | - |
-| 27.6 Notifications & Slack UX | v1.2 | 0/1 | Planned | - |
+| 27.3 Multi-Author Drafts & Conflicts | v1.2 | 1/1 | Complete | 2026-01-23 |
+| 27.4 State-Bound Approvals | v1.2 | 1/1 | Complete | 2026-01-23 |
+| 27.5 WorkItem Ownership & Audit | v1.2 | 1/1 | Complete | 2026-01-23 |
+| 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
+| 28. Structured Draft Evolution | v1.2 | 0/? | Planned | - |

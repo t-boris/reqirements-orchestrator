@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 27: Multi-User Support (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 28: Structured Draft Evolution (PLANNED)
 
 ## Current Position
 
-Phase: 27-multi-user-support
-Plan: 6 of 6 in current phase (ALL COMPLETE)
-Status: COMPLETE
-Last activity: 2026-01-23 — Completed 27.6-PLAN.md (Notifications & Slack UX)
+Phase: 28-structured-draft-evolution
+Plan: 0 of ? in current phase (PLANNING)
+Status: PLANNED
+Last activity: 2026-01-23 — Added Phase 28 to roadmap
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 6/6 sub-phases COMPLETE
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: Planning
 
 ## Milestones Summary
 
@@ -24,7 +24,7 @@ Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 6/6 su
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | Complete | 2026-01-20 |
 | v1.2 | Developer Experience | 24+ | 6+ | In Progress | - |
 
-**Total:** 28 phases, 112 plans shipped (v1.2: 6 plans complete)
+**Total:** 28 phases, 118 plans shipped (v1.2: 12 plans complete)
 
 ## v1.1 Summary
 
@@ -112,46 +112,41 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27 (Multi-User Support) - ALL 6 SUB-PHASES COMPLETE
+Stopped at: Added Phase 28 to roadmap
 Resume file: None
-Next action: Plan Phase 28 or complete v1.2 milestone
+Next action: Plan Phase 28 with `/gsd:plan-phase 28`
 
 ## What's Next
 
-**Phase 27: Multi-User Support** — COMPLETE
+**Phase 28: Structured Draft Evolution** — PLANNED
 
-**Objective:** Enable MARO to work in channels with multiple participants — track authorship, handle concurrent edits, route approvals correctly, and maintain auditability.
+**Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
 
-**Mantra:** Every statement has an author, every action has an approver, every conflict has a resolution path.
+**Mantra:** Draft is a data structure representing the shape of work, not a paragraph of text.
 
-**Sub-phases:** 6 sub-phases COMPLETE
-| Phase | Focus | Risk | Status |
-|-------|-------|------|--------|
-| 27.1 | User Identity & Attribution Foundation | Low | COMPLETE |
-| 27.2 | Participant Map & Turn-Taking | Medium | COMPLETE |
-| 27.3 | Multi-Author Drafts & Conflict Detection | High | COMPLETE |
-| 27.4 | State-Bound Approvals | Medium | COMPLETE |
-| 27.5 | WorkItem Ownership & Audit Log | Medium | COMPLETE |
-| 27.6 | Notifications & Slack UX | Low | COMPLETE |
+**Core Shift:** From "bot collects text for a ticket" to "bot manages the form of a design object and the evolution of its structure."
 
-**Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
+**Key Requirements:**
+- R1: Draft must be a typed object, not text
+- R2: User decisions must mutate Draft form
+- R3: Bot must transition from questions to action
+- R4: New intent: DRAFT_TRANSFORM
+- R5: Draft must have a lifecycle
+- R6: Validation must depend on Draft form
+- R7: Distinguish between choice, opinion, and question
+- R8: After each Draft form change, show the new form
+- R9: Draft must be versioned
+- R10: Bot cannot repeat a question after receiving a direct answer
+- R11: Transition from decision to action is mandatory
+- R12: Draft is no longer "text draft", it's a "design model"
 
-**What shipped in Phase 27:**
-- User identity with metadata caching (display name, avatar)
-- Field attribution tracking (who said what)
-- Thread participant tracking with activity windows
-- Multi-author draft support with semantic conflict detection
-- State-bound approvals preventing stale button clicks
-- WorkItem ownership with audit logging
-- Targeted notifications (owners/watchers, not everyone)
-- Low-noise filtering for listening mode
-- Status cards at channel level for Jira visibility
-- Open question tracking with no-response policy
+**Full requirements:** `.planning/phases/28-structured-draft-evolution/REQUIREMENTS.md`
 
-**Next action:** Run `/gsd:complete-milestone` or plan Phase 28
+**Next action:** Run `/gsd:plan-phase 28` to create implementation plan
 
 ---
 
 ### Roadmap Evolution
 
+- 2026-01-23: Phase 28 ADDED — Structured Draft Evolution (typed, versioned design object)
 - 2026-01-23: Phase 27 COMPLETE — Multi-User Support (auditable multi-user operation in channels)
