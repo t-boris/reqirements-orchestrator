@@ -265,7 +265,8 @@ IMPORTANT: Do NOT put "Epic:" or "Story:" prefixes in the title. Use issue_type 
 JSON response:'''
 
 
-MULTI_ITEM_EXTRACTION_PROMPT = '''Analyze this review and extract ALL proposed work items.
+# Phase 1: Extract just item list (lightweight, avoids truncation)
+MULTI_ITEM_LIST_PROMPT = '''Analyze this review and list ALL proposed work items.
 
 Review text:
 {review_text}
@@ -273,25 +274,44 @@ Review text:
 Topic: {topic}
 Scope: {scope}
 
-Extract every proposed Epic, Story, or Task. Return a JSON array of items:
+Return a JSON array with ONLY type, title, and parent_index for each item:
 [
-  {{"type": "epic", "title": "...", "description": "..."}},
-  {{"type": "story", "title": "...", "description": "...", "parent_index": 0}}
+  {{"type": "epic", "title": "Short title here"}},
+  {{"type": "story", "title": "Short title here", "parent_index": 0}}
 ]
 
 Rules:
-- "N epics" = N separate Epic items with no parent
+- "N epics" = N separate Epic items
 - "epic with N stories" = 1 Epic at index 0, N Stories with parent_index: 0
-- Stories/Tasks without explicit epic = type "story" with no parent
-- If only 1 item proposed, return array with 1 item
-- parent_index is the array index of the Epic this Story belongs to
+- parent_index is the array index of the parent Epic (if any)
+- Keep titles SHORT (under 80 chars)
+- Do NOT include descriptions in this response
 
-Be thorough - extract EVERY item mentioned, not just the first.
+Be thorough - list EVERY item mentioned.
+'''
+
+# Phase 2: Get full details for a single item
+SINGLE_ITEM_DETAIL_PROMPT = '''Generate Jira ticket content for this work item.
+
+Topic: {topic}
+Item type: {item_type}
+Item title: {item_title}
+
+Context from review:
+{review_excerpt}
+
+Return JSON with full details:
+{{"title": "Clear concise title", "description": "Detailed description with context, acceptance criteria if story"}}
+
+Keep the description focused and actionable (2-4 paragraphs max).
 '''
 
 
 async def extract_multi_items_from_review(review_text: str, scope: str, topic: str) -> list[dict]:
-    """Extract multiple work items from review text.
+    """Extract multiple work items from review text using two-phase approach.
+
+    Phase 1: Extract item list (type + title only) - small response, no truncation
+    Phase 2: For each item, extract full description separately
 
     Returns list of items with:
     - id: UUID for internal tracking
@@ -310,32 +330,31 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
     """
     llm = get_llm()
 
-    prompt = MULTI_ITEM_EXTRACTION_PROMPT.format(
-        review_text=review_text[:3000],  # Limit to prevent token overflow
+    # Phase 1: Get item list (lightweight)
+    list_prompt = MULTI_ITEM_LIST_PROMPT.format(
+        review_text=review_text[:3000],
         topic=topic,
         scope=scope,
     )
 
     try:
-        response_text = await llm.chat(prompt)
-        response_text = response_text.strip()
+        logger.info("Phase 1: Extracting item list from review")
+        response_text = await llm.chat(list_prompt)
+        item_list = _parse_json_response(response_text)
 
-        # Handle markdown code blocks
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        raw_items = json.loads(response_text) if response_text else []
-
-        if not isinstance(raw_items, list):
-            logger.warning(f"Expected list from multi-item extraction, got {type(raw_items)}")
+        if not isinstance(item_list, list):
+            logger.warning(f"Expected list from item list extraction, got {type(item_list)}")
             return []
 
-        # Assign UUIDs and convert parent_index to parent_id
+        if not item_list:
+            logger.info("No items found in review")
+            return []
+
+        logger.info(f"Phase 1 complete: Found {len(item_list)} items")
+
+        # Assign UUIDs and resolve parent relationships first
         items_with_ids = []
-        for idx, item in enumerate(raw_items):
+        for idx, item in enumerate(item_list):
             if not isinstance(item, dict):
                 continue
 
@@ -348,8 +367,8 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
                 "id": item_id,
                 "type": item_type,
                 "title": item.get("title", "Untitled"),
-                "description": item.get("description", ""),
-                "parent_index": item.get("parent_index"),  # Keep for resolution
+                "description": "",  # Will be filled in Phase 2
+                "parent_index": item.get("parent_index"),
             })
 
         # Resolve parent_index to parent_id
@@ -358,7 +377,6 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
             if parent_index is not None and isinstance(parent_index, int):
                 if 0 <= parent_index < len(items_with_ids):
                     parent_item = items_with_ids[parent_index]
-                    # Only link to epics
                     if parent_item["type"] == "epic":
                         item["parent_id"] = parent_item["id"]
                     else:
@@ -368,8 +386,37 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
             else:
                 item["parent_id"] = None
 
+        # Phase 2: Get full details for each item (one at a time)
+        logger.info(f"Phase 2: Extracting details for {len(items_with_ids)} items")
+        review_excerpt = review_text[:2000]  # Context for detail extraction
+
+        for i, item in enumerate(items_with_ids):
+            try:
+                detail_prompt = SINGLE_ITEM_DETAIL_PROMPT.format(
+                    topic=topic,
+                    item_type=item["type"],
+                    item_title=item["title"],
+                    review_excerpt=review_excerpt,
+                )
+
+                detail_response = await llm.chat(detail_prompt)
+                details = _parse_json_response(detail_response)
+
+                if isinstance(details, dict):
+                    # Update title if improved
+                    if details.get("title"):
+                        item["title"] = details["title"]
+                    # Set description
+                    item["description"] = details.get("description", "")
+
+                logger.info(f"Phase 2: Extracted details for item {i+1}/{len(items_with_ids)}: {item['title'][:50]}")
+
+            except Exception as e:
+                logger.warning(f"Failed to extract details for item {i}: {e}")
+                # Keep the item with empty description rather than failing entirely
+
         logger.info(
-            "Extracted multi-items from review",
+            "Extracted multi-items from review (two-phase)",
             extra={
                 "item_count": len(items_with_ids),
                 "epics": sum(1 for i in items_with_ids if i["type"] == "epic"),
@@ -386,6 +433,22 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
     except Exception as e:
         logger.error(f"Multi-item extraction failed: {e}")
         return []
+
+
+def _parse_json_response(response_text: str) -> Any:
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    response_text = response_text.strip()
+
+    # Handle markdown code blocks
+    if response_text.startswith("```"):
+        parts = response_text.split("```")
+        if len(parts) >= 2:
+            response_text = parts[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+    return json.loads(response_text) if response_text else None
 
 
 def _detect_reference_to_prior_content(message: str) -> bool:
