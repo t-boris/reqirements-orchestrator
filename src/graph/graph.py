@@ -60,6 +60,7 @@ from src.graph.nodes.jira_command import jira_command_node
 from src.graph.nodes.sync_trigger import sync_trigger_node
 from src.graph.nodes.jira_search import jira_search_node
 from src.graph.nodes.change_request import change_request_node
+from src.graph.nodes.draft_transform import draft_transform_node
 from src.graph.nodes.ops import ops_node
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     return get_decision_action(state)
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
@@ -180,6 +181,10 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         # Refinement questions about active draft - stays in ticket flow
         logger.info("Intent router: routing DRAFT_REFINE to ticket_flow")
         return "ticket_flow"
+    elif intent_upper == "DRAFT_TRANSFORM":
+        # Structural transformation of draft
+        logger.info("Intent router: routing DRAFT_TRANSFORM to draft_transform_flow")
+        return "draft_transform_flow"
     elif intent_upper == "TICKET_ACTION":
         # Backward compatibility - these should be PendingActions now
         logger.info("Intent router: routing to ticket_action_flow")
@@ -239,6 +244,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("jira_search", jira_search_node)
     workflow.add_node("change_request", change_request_node)
     workflow.add_node("ops", ops_node)
+    workflow.add_node("draft_transform", draft_transform_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -260,6 +266,7 @@ def create_graph() -> StateGraph:
             "jira_search_flow": "jira_search",  # Search Jira for existing issues
             "change_request_flow": "change_request",  # Diff-based updates (Phase 25.3)
             "ops_flow": "ops",  # Debug failures or explain decisions (Phase 25.2)
+            "draft_transform_flow": "draft_transform",  # Structural mutations (Phase 28)
         }
     )
 
@@ -295,6 +302,9 @@ def create_graph() -> StateGraph:
 
     # OPS goes directly to END after generating debug/explain response
     workflow.add_edge("ops", END)
+
+    # Draft transform goes to END (handler sends structure feedback)
+    workflow.add_edge("draft_transform", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
