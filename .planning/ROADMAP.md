@@ -98,6 +98,35 @@ User: "Do you think only one epic is enough?"
 → Bot proposes decomposition options, asks clarifying question
 ```
 
+### Phase 27: Multi-User Support
+
+**Status:** PLANNED (6 sub-phases)
+
+**Objective:** Enable MARO to work in channels with multiple participants — track authorship, handle concurrent edits, route approvals correctly, and maintain auditability.
+
+**Mantra:** Every statement has an author, every action has an approver, every conflict has a resolution path.
+
+**Sub-Phases:**
+
+| Phase | Focus | Risk | Requirements |
+|-------|-------|------|--------------|
+| 27.1 | User Identity & Attribution Foundation | Low | R1, R2, R5 (partial) |
+| 27.2 | Participant Map & Turn-Taking | Medium | R7, R8, R9 |
+| 27.3 | Multi-Author Drafts & Conflict Detection | High | R10, R11, R12 |
+| 27.4 | State-Bound Approvals | Medium | R13, R14, R15 |
+| 27.5 | WorkItem Ownership & Audit Log | Medium | R16, R17, R20, R21 |
+| 27.6 | Notifications & Slack UX | Low | R18, R19, R22, R23 |
+
+**DoD Tests:**
+- T1: Two users edit same draft → deterministic result (27.3)
+- T2: Two users click approve → first wins + audit (27.4)
+- T3: Conflict surfaced with correct attribution (27.3)
+- T4: Unauthorized user blocked with explanation (27.4)
+- T5: Non-directed chatter ignored (27.6)
+
+**Full requirements:** `.planning/phases/27-multi-user-support/REQUIREMENTS.md`
+**Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
+
 ## Completed Milestones
 
 <details>
@@ -195,3 +224,9 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 25.4 ReviewArtifact | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 25.5 State + Dedupe | v1.2 | 1/1 | Complete | 2026-01-22 |
 | 26. Context-Aware Intent | v1.2 | 4/4 | Complete | 2026-01-22 |
+| 27.1 User Identity & Attribution | v1.2 | 1/1 | Complete | 2026-01-23 |
+| 27.2 Participant Map & Turn-Taking | v1.2 | 0/1 | Planned | - |
+| 27.3 Multi-Author Drafts & Conflicts | v1.2 | 0/1 | Planned | - |
+| 27.4 State-Bound Approvals | v1.2 | 0/1 | Planned | - |
+| 27.5 WorkItem Ownership & Audit | v1.2 | 0/1 | Planned | - |
+| 27.6 Notifications & Slack UX | v1.2 | 0/1 | Planned | - |

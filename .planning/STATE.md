@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 26-context-aware-intent
-Plan: 4 of 4 plans
-Status: Phase complete
-Last activity: 2026-01-22 — Completed 26-04-PLAN.md
+Phase: 27-multi-user-support
+Plan: 1 of 6 in current phase (27.1 complete)
+Status: In progress
+Last activity: 2026-01-23 — Completed 27.1-PLAN.md (User Identity & Attribution Foundation)
 
-Progress: ██████████ 100% (v1.2 Phase 26)
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 1/6 sub-phases
 
 ## Milestones Summary
 
@@ -63,6 +63,11 @@ Phase 26 decisions:
 - draft_refine routes to END (Slack handler processes refinement_prompt)
 - _build_refinement_prompt offers type-specific scope options
 
+Phase 27.1 decisions:
+- Attribution on key fields only: title, problem, proposed_solution
+- User metadata cached on @mention, non-blocking
+- COALESCE for optional fields in upsert (preserve existing data)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26 features shipped.
@@ -77,25 +82,36 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-22
-Stopped at: Completed 26-04-PLAN.md (Draft continuity rule in decision node)
+Last session: 2026-01-23
+Stopped at: Completed Phase 27.1 (User Identity & Attribution Foundation)
 Resume file: None
-Next action: Phase 26 complete, ready for next phase planning
+Next action: Execute Phase 27.2 (Participant Map & Turn-Taking)
 
 ## What's Next
 
-**Phase 26: Context-Aware Intent Classification** — COMPLETE (4/4 plans)
+**Phase 27: Multi-User Support** — PLANNED
 
-**Completed:**
-- Plan 01: Added IssueType/RequestedScope enums and type fields to TicketDraft
-- Plan 02: Context-aware intent routing (message + state -> intent)
-- Plan 03: Extract issue_type and scope from user requests
-- Plan 04: Draft continuity rule in decision node
+**Objective:** Enable MARO to work in channels with multiple participants — track authorship, handle concurrent edits, route approvals correctly, and maintain auditability.
 
-**Phase 26 delivers:**
-- DRAFT_REFINE intent for refinement questions about active draft
-- Context-aware extraction of issue_type and requested_scope
-- Decision node handles draft refinement before other checks
-- Graph routing for draft_refine action
+**Mantra:** Every statement has an author, every action has an approver, every conflict has a resolution path.
 
-**Next action:** Run `/gsd:plan-phase 27` to continue with next phase
+**Sub-phases:** 6 sub-phases planned
+| Phase | Focus | Risk |
+|-------|-------|------|
+| 27.1 | User Identity & Attribution Foundation | Low |
+| 27.2 | Participant Map & Turn-Taking | Medium |
+| 27.3 | Multi-Author Drafts & Conflict Detection | High |
+| 27.4 | State-Bound Approvals | Medium |
+| 27.5 | WorkItem Ownership & Audit Log | Medium |
+| 27.6 | Notifications & Slack UX | Low |
+
+**Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
+**First sub-phase:** `.planning/phases/27-multi-user-support/27.1-PLAN.md`
+
+**Next action:** Run `/gsd:execute-plan 27.1` to implement User Identity & Attribution
+
+---
+
+### Roadmap Evolution
+
+- 2026-01-23: Phase 27 added — Multi-User Support (auditable multi-user operation in channels)
