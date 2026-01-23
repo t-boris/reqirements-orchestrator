@@ -5,7 +5,7 @@ This package contains all Slack handlers split by responsibility:
 - dispatch: Result dispatch, content extraction
 - draft: Draft approval, rejection, editing
 - duplicates: Duplicate handling actions
-- commands: /maro, /persona, /jira, /help commands
+- commands: /maro, /jira, /help commands
 - onboarding: Channel join, hints, help examples
 - review: Review-to-ticket, scope gate
 - misc: Epic selection, contradictions, message events
@@ -17,6 +17,7 @@ All handlers are re-exported here for backward compatibility.
 from src.slack.handlers.core import (
     handle_app_mention,
     _run_async,
+    _capture_user_metadata,
 )
 
 # Message and thread handlers
@@ -33,7 +34,6 @@ from src.slack.handlers.commands import (
     handle_jira_command,
     handle_help_command,
     handle_maro_command,
-    handle_persona_command,
 )
 
 # Draft handlers
@@ -151,6 +151,7 @@ __all__ = [
     # Core
     "handle_app_mention",
     "_run_async",
+    "_capture_user_metadata",
     # Misc
     "handle_message",
     "handle_epic_selection_sync",
@@ -161,7 +162,6 @@ __all__ = [
     "handle_jira_command",
     "handle_help_command",
     "handle_maro_command",
-    "handle_persona_command",
     # Draft
     "handle_approve_draft",
     "handle_reject_draft",

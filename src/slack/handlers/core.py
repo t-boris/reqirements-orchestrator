@@ -51,9 +51,21 @@ def _run_async(coro):
     Submits the coroutine to the persistent background event loop.
     This ensures all async code uses the same event loop, which is required
     for the AsyncPostgresSaver checkpointer locks to work correctly.
+
+    Exceptions in the coroutine are logged but not re-raised (fire-and-forget).
     """
     loop = _get_background_loop()
-    asyncio.run_coroutine_threadsafe(coro, loop)
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+    # Add callback to log any exceptions (prevents silent swallowing)
+    def handle_exception(fut):
+        try:
+            # This will raise if coroutine raised an exception
+            fut.result()
+        except Exception:
+            logger.exception("Exception in background coroutine")
+
+    future.add_done_callback(handle_exception)
 
 
 def handle_app_mention(event: dict, say, client: WebClient, context: BoltContext):
@@ -168,6 +180,51 @@ async def _build_conversation_context(
         return None
 
 
+async def _capture_user_metadata(
+    client: WebClient,
+    user_id: str,
+    team_id: str,
+) -> None:
+    """Capture and cache user metadata from Slack.
+
+    Fetches user info from Slack API and stores/updates in database.
+    Non-blocking - logs errors but doesn't fail the request.
+
+    Args:
+        client: Slack WebClient for API calls
+        user_id: Slack user ID to capture
+        team_id: Slack workspace ID
+    """
+    from src.db import get_connection
+    from src.db.user_metadata_store import UserMetadataStore
+
+    try:
+        # Fetch user info from Slack
+        result = client.users_info(user=user_id)
+        if not result.get("ok"):
+            logger.debug(f"users_info returned not ok for {user_id}")
+            return
+
+        user_data = result.get("user", {})
+        profile = user_data.get("profile", {})
+
+        async with get_connection() as conn:
+            store = UserMetadataStore(conn)
+            await store.ensure_table()
+            await store.upsert(
+                slack_user_id=user_id,
+                team_id=team_id,
+                display_name=profile.get("display_name") or user_data.get("name", "Unknown"),
+                real_name=profile.get("real_name"),
+                email=profile.get("email"),
+                avatar_url=profile.get("image_72"),
+            )
+        logger.debug(f"Captured user metadata for {user_id}")
+    except Exception as e:
+        # Non-blocking - log and continue
+        logger.debug(f"Could not capture user metadata: {e}")
+
+
 async def _process_mention(
     identity: SessionIdentity,
     text: str,
@@ -195,6 +252,20 @@ async def _process_mention(
     # Check debug mode at start (before processing)
     debug_enabled = await _is_debug_enabled(channel)
     collector: Optional[DebugCollector] = DebugCollector() if debug_enabled else None
+
+    # Capture user metadata for multi-user support (Phase 27.1)
+    await _capture_user_metadata(client, user, identity.team_id)
+
+    # Ensure channel context exists (lazy creation for existing channels)
+    try:
+        from src.db import get_connection
+        from src.db.channel_context_store import ChannelContextStore
+
+        async with get_connection() as conn:
+            ctx_store = ChannelContextStore(conn)
+            await ctx_store.get_or_create(identity.team_id, channel)
+    except Exception as e:
+        logger.debug(f"Could not ensure channel context: {e}")
 
     try:
         await tracker.start("Processing...")
