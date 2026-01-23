@@ -15,6 +15,10 @@ from src.schemas.draft import (
     ConstraintStatus,
     EvidenceLink,
 )
+from src.schemas.attribution import (
+    MessageAttribution,
+    AttributedContent,
+)
 
 __all__ = [
     # Ticket schemas
@@ -33,4 +37,7 @@ __all__ = [
     "DraftConstraint",
     "ConstraintStatus",
     "EvidenceLink",
+    # Attribution schemas (Phase 27.1)
+    "MessageAttribution",
+    "AttributedContent",
 ]
