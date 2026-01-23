@@ -3,13 +3,17 @@
 Routes from DRAFT_TRANSFORM intent. Mutates draft structure based on
 transform_operation and returns to decision flow for validation.
 
-Phase 28 requirement R4: New intent DRAFT_TRANSFORM.
+Phase 28 requirement R2: User decisions must mutate Draft form.
+Phase 28 requirement R11: Transition from decision to action is mandatory.
 """
 import logging
 from typing import Any
 
 from src.schemas.state import AgentState
-from src.schemas.structured_draft import StructuredDraft
+from src.schemas.structured_draft import (
+    DraftScope,
+    StructuredDraft,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ async def draft_transform_node(state: AgentState) -> dict[str, Any]:
 
     Returns partial state update with:
     - structured_draft: Mutated draft
-    - decision_result: Contains action="transform_applied" for handler
+    - decision_result: Contains action="transform_applied" with result details
     """
     intent_result = state.get("intent_result", {})
     transform_op = intent_result.get("transform_operation")
@@ -52,28 +56,20 @@ async def draft_transform_node(state: AgentState) -> dict[str, Any]:
         # No draft at all - create empty
         structured_draft = StructuredDraft(created_by=user_id)
 
-    # Apply transformation based on operation
-    # Note: Actual mutation logic will be implemented in Phase 28.3
-    # For now, we prepare the state and log the intent
+    # Extract transform parameters from intent (may be populated by LLM or future extraction)
+    transform_params = intent_result.get("transform_params", {})
 
-    transform_result = {
-        "operation": transform_op,
-        "applied": False,  # Will be True after 28.3 implements mutations
-        "message": (
-            f"Transform operation '{transform_op}' recognized. "
-            f"Mutation engine pending (Phase 28.3)."
-        ),
-    }
-
-    # Log the transformation request
-    structured_draft.log_change(
-        action=f"transform_requested:{transform_op}",
+    # Dispatch to appropriate mutation method
+    mutation_result = _apply_transform(
+        draft=structured_draft,
+        operation=transform_op,
         user_id=user_id,
-        details={"operation": transform_op, "intent_result": intent_result},
+        params=transform_params,
     )
 
     logger.info(
         f"DRAFT_TRANSFORM: operation={transform_op}, "
+        f"success={mutation_result.get('success')}, "
         f"draft_kind={structured_draft.kind}, lifecycle={structured_draft.lifecycle}"
     )
 
@@ -81,7 +77,83 @@ async def draft_transform_node(state: AgentState) -> dict[str, Any]:
         "structured_draft": structured_draft,
         "decision_result": {
             "action": "transform_applied",
-            "transform_result": transform_result,
-            "reason": f"Structural transform requested: {transform_op}",
+            "transform_result": mutation_result,
+            "operation": transform_op,
+            "reason": mutation_result.get("message", f"Transform: {transform_op}"),
         },
     }
+
+
+def _apply_transform(
+    draft: StructuredDraft,
+    operation: str | None,
+    user_id: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply a transform operation to the draft.
+
+    Args:
+        draft: The StructuredDraft to mutate
+        operation: The transform operation name
+        user_id: User making the change
+        params: Additional parameters for the operation
+
+    Returns:
+        Dict with 'success', 'message', and operation-specific fields
+    """
+    if not operation:
+        return {
+            "success": False,
+            "applied": False,
+            "message": "No transform operation specified",
+        }
+
+    # Map operations to methods
+    if operation == "split_to_plan":
+        item_titles = params.get("item_titles", [])
+        result = draft.split_to_plan(user_id, item_titles or None)
+
+    elif operation == "add_items":
+        items_to_add = params.get("items", [])
+        result = draft.add_items(user_id, items_to_add)
+
+    elif operation == "merge_items":
+        item_ids = params.get("item_ids", [])
+        merged_title = params.get("merged_title")
+        result = draft.merge_items(user_id, item_ids, merged_title)
+
+    elif operation == "elevate_to_epic":
+        item_id = params.get("item_id")
+        result = draft.elevate_to_epic(user_id, item_id)
+
+    elif operation == "decompose_to_stories":
+        epic_id = params.get("epic_id")
+        story_titles = params.get("story_titles", [])
+        result = draft.decompose_to_stories(user_id, epic_id, story_titles or None)
+
+    elif operation == "change_scope":
+        scope_str = params.get("scope", "").lower()
+        scope_map = {
+            "single": DraftScope.SINGLE,
+            "epics_only": DraftScope.EPICS_ONLY,
+            "full_plan": DraftScope.FULL_PLAN,
+        }
+        new_scope = scope_map.get(scope_str)
+        if new_scope:
+            result = draft.change_scope(user_id, new_scope)
+        else:
+            result = {"success": False, "message": f"Unknown scope: {scope_str}"}
+
+    elif operation == "remove_items":
+        item_ids = params.get("item_ids", [])
+        result = draft.remove_items(user_id, item_ids)
+
+    else:
+        result = {
+            "success": False,
+            "message": f"Unknown transform operation: {operation}",
+        }
+
+    # Add applied flag for consistency
+    result["applied"] = result.get("success", False)
+    return result
