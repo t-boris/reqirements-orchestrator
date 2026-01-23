@@ -35,9 +35,9 @@ def _build_ticket_announcement_blocks(
 ) -> list[dict]:
     """Build announcement blocks for main channel notification.
 
+    Uses status card format (Phase 27.6) for consistent channel visibility.
     Creates a card with:
     - Ticket key and title (linked)
-    - Brief problem description
     - Who created it
     - Link to the thread
 
@@ -53,6 +53,8 @@ def _build_ticket_announcement_blocks(
     Returns:
         List of Slack blocks for the announcement
     """
+    from src.slack.blocks.status_card import build_ticket_created_card
+
     # Get thread permalink
     thread_link = ""
     try:
@@ -61,38 +63,15 @@ def _build_ticket_announcement_blocks(
     except Exception as e:
         logger.warning(f"Failed to get thread permalink: {e}")
 
-    # Build problem preview (truncate if too long)
-    problem_preview = draft.problem or "No description"
-    if len(problem_preview) > 200:
-        problem_preview = problem_preview[:197] + "..."
-
-    blocks = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f":white_check_mark: *Ticket Created:* <{jira_url}|{jira_key}>\n*{draft.title or 'Untitled'}*",
-            },
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"_{problem_preview}_",
-            },
-        },
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"Created by <@{created_by}>" + (f" • <{thread_link}|View thread>" if thread_link else ""),
-                },
-            ],
-        },
-    ]
-
-    return blocks
+    # Use status card block builder for consistent format (Phase 27.6)
+    return build_ticket_created_card(
+        jira_key=jira_key,
+        jira_url=jira_url,
+        summary=draft.title or "Untitled",
+        created_by=created_by,
+        thread_link=thread_link or None,
+        issue_type=draft.issue_type or "Task",
+    )
 
 
 def handle_approve_draft(ack, body, client: WebClient, action):
