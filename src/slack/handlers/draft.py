@@ -1,6 +1,10 @@
 """Draft approval, rejection, and editing handlers.
 
 Handles the ticket draft lifecycle: approval, rejection, and editing.
+
+Phase 28.4: Lifecycle transition enforcement for StructuredDraft.
+- Reject approvals if lifecycle is COMMITTED (terminal state)
+- Advance lifecycle to APPROVED/COMMITTED on successful operations
 """
 
 import json
@@ -20,6 +24,7 @@ from src.db.audit_store import AuditStore, AuditActionType
 
 if TYPE_CHECKING:
     from src.schemas.draft import TicketDraft
+    from src.schemas.structured_draft import StructuredDraft
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +163,35 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
     runner = get_runner(identity)
     state = await runner._get_current_state()
     draft = state.get("draft")
+    structured_draft = state.get("structured_draft")
 
-    if not draft:
+    if not draft and not structured_draft:
         client.chat_postMessage(
             channel=channel,
             thread_ts=thread_ts,
             text="Error: Could not find draft. Please start a new session.",
         )
         return
+
+    # Phase 28.4: Check lifecycle state for StructuredDraft
+    if structured_draft:
+        from src.schemas.structured_draft import DraftLifecycle
+
+        if structured_draft.lifecycle == DraftLifecycle.COMMITTED:
+            # COMMITTED is terminal - reject approval
+            logger.warning(
+                "Attempted approval on COMMITTED draft",
+                extra={
+                    "session_id": session_id,
+                    "lifecycle": structured_draft.lifecycle.value,
+                }
+            )
+            client.chat_postEphemeral(
+                channel=channel,
+                user=user_id,
+                text="This draft has already been committed to Jira. No further approvals are needed.",
+            )
+            return
 
     # Compute current draft hash
     current_hash = compute_draft_hash(draft)
@@ -357,6 +383,34 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
         else:
             # New creation - update session state
             await runner.handle_approval(approved=True)
+
+            # Phase 28.4: Advance StructuredDraft lifecycle to COMMITTED
+            if structured_draft:
+                from src.schemas.structured_draft import DraftLifecycle, DraftItemStatus
+                from src.graph.nodes.validation import transition_lifecycle
+
+                # Mark all items as COMMITTED
+                for item in structured_draft.items:
+                    item.status = DraftItemStatus.COMMITTED
+                    if create_result.jira_key:
+                        item.jira_key = create_result.jira_key
+
+                # Transition lifecycle to COMMITTED
+                if structured_draft.lifecycle != DraftLifecycle.COMMITTED:
+                    # First transition to APPROVED if needed
+                    if structured_draft.lifecycle not in (DraftLifecycle.APPROVED, DraftLifecycle.COMMITTED):
+                        transition_lifecycle(structured_draft, DraftLifecycle.APPROVED, user_id)
+                    # Then transition to COMMITTED
+                    transition_lifecycle(structured_draft, DraftLifecycle.COMMITTED, user_id)
+
+                logger.info(
+                    "StructuredDraft lifecycle advanced to COMMITTED",
+                    extra={
+                        "session_id": session_id,
+                        "jira_key": create_result.jira_key,
+                        "lifecycle": structured_draft.lifecycle.value,
+                    }
+                )
 
             # Bind thread to the created ticket for contextual references
             try:
