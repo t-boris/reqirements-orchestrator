@@ -41,6 +41,8 @@ from src.slack.handlers.draft import (
     handle_approve_draft,
     handle_reject_draft,
     handle_edit_draft_submit,
+    # Structure approval (Phase 28.6)
+    handle_approve_structure,
 )
 
 # Duplicate handlers
@@ -173,6 +175,8 @@ __all__ = [
     "handle_approve_draft",
     "handle_reject_draft",
     "handle_edit_draft_submit",
+    # Structure approval (Phase 28.6)
+    "handle_approve_structure",
     # Duplicates
     "handle_link_duplicate",
     "handle_add_to_duplicate",

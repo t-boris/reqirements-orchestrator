@@ -775,3 +775,166 @@ async def _handle_edit_draft_submit_async(body, client: WebClient, view):
         thread_ts=thread_ts,
         text=f"Draft updated by <@{user_id}>. Please review the changes above.",
     )
+
+
+def handle_approve_structure(ack, body, client: WebClient, action):
+    """Synchronous wrapper for structure approval.
+
+    Bolt calls handlers from a sync context. This wraps the async handler.
+    """
+    ack()
+    _run_async(_handle_approve_structure_async(body, client, action))
+
+
+async def _handle_approve_structure_async(body, client: WebClient, action):
+    """Handle approve_structure button click on structure preview.
+
+    R9: Rejects if draft.version != payload.version (stale button).
+    Posts ephemeral message for stale approvals.
+
+    Phase 28.6: Structure Feedback UI
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    team_id = body["team"]["id"]
+    user_id = body["user"]["id"]
+
+    # Parse button payload with version
+    button_value = action.get("value", "{}")
+    try:
+        payload = json.loads(button_value)
+        expected_version = payload.get("version", 0)
+        draft_id = payload.get("draft_id")
+    except json.JSONDecodeError:
+        expected_version = 0
+        draft_id = None
+
+    # In-memory dedup for Slack retries
+    from src.slack.dedup import try_process_button
+    action_id = action.get("action_id", "approve_structure")
+    if not try_process_button(action_id, user_id, button_value):
+        logger.debug(f"Ignoring duplicate approve_structure click: {button_value}")
+        return
+
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    logger.info(
+        "Structure approval requested",
+        extra={
+            "draft_id": draft_id,
+            "expected_version": expected_version,
+            "user_id": user_id,
+        }
+    )
+
+    # Get current structured draft from runner state
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    structured_draft = state.get("structured_draft")
+
+    if not structured_draft:
+        client.chat_postEphemeral(
+            channel=channel,
+            user=user_id,
+            text="Could not find draft. Please start a new session.",
+        )
+        return
+
+    # R9: Version check - stale button detection
+    if structured_draft.version != expected_version:
+        # T4: Old approve button -> "Outdated, please review new structure"
+        logger.warning(
+            "Stale structure approval detected",
+            extra={
+                "expected_version": expected_version,
+                "current_version": structured_draft.version,
+                "draft_id": draft_id,
+            }
+        )
+        client.chat_postEphemeral(
+            channel=channel,
+            user=user_id,
+            text=f"This structure preview is outdated. The draft has been modified "
+                 f"(version {expected_version} -> {structured_draft.version}). "
+                 f"Please review the new structure.",
+        )
+        return
+
+    # Phase 28.4: Check lifecycle state
+    from src.schemas.structured_draft import DraftLifecycle, DraftItemStatus
+
+    if structured_draft.lifecycle == DraftLifecycle.COMMITTED:
+        client.chat_postEphemeral(
+            channel=channel,
+            user=user_id,
+            text="This draft has already been committed to Jira. No further approvals are needed.",
+        )
+        return
+
+    # Approve all items in the structure
+    for item in structured_draft.items:
+        if item.status == DraftItemStatus.PROPOSED:
+            item.status = DraftItemStatus.APPROVED
+
+    # Transition lifecycle to APPROVED
+    from src.graph.nodes.validation import transition_lifecycle
+
+    if structured_draft.lifecycle not in (DraftLifecycle.APPROVED, DraftLifecycle.COMMITTED):
+        transition_lifecycle(structured_draft, DraftLifecycle.APPROVED, user_id)
+
+    # Log the approval
+    structured_draft.log_change(
+        action="structure_approved",
+        user_id=user_id,
+        details={
+            "approved_items": len(structured_draft.items),
+        },
+    )
+
+    # Update state
+    state["structured_draft"] = structured_draft
+    await runner.update_state(state)
+
+    # Log audit entry
+    try:
+        from src.db import get_connection
+        async with get_connection() as conn:
+            audit_store = AuditStore(conn)
+            await audit_store.ensure_table()
+            await audit_store.log(
+                channel_id=channel,
+                action_type=AuditActionType.DRAFT_APPROVE,
+                actor_user_id=user_id,
+                target_type="structured_draft",
+                target_id=structured_draft.id,
+                outcome="success",
+                thread_ts=thread_ts,
+                metadata={
+                    "version": structured_draft.version,
+                    "items_approved": len(structured_draft.items),
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Failed to log structure approval audit: {e}")
+
+    # Notify in thread
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=f"Structure approved by <@{user_id}>. "
+             f"{len(structured_draft.items)} items are ready for Jira creation.",
+    )
+
+    logger.info(
+        "Structure approved",
+        extra={
+            "draft_id": structured_draft.id,
+            "version": structured_draft.version,
+            "items_approved": len(structured_draft.items),
+            "user_id": user_id,
+        }
+    )

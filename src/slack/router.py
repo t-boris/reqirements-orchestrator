@@ -19,6 +19,8 @@ from src.slack.handlers import (
     handle_approve_draft,
     handle_reject_draft,
     handle_edit_draft_submit,
+    # Structure approval (Phase 28.6)
+    handle_approve_structure,
     # Duplicate handling (Phase 11.1)
     handle_link_duplicate,
     handle_add_to_duplicate,
@@ -130,6 +132,9 @@ def register_handlers(app: App) -> None:
     # Action handlers for draft approval/rejection
     app.action("approve_draft")(handle_approve_draft)
     app.action("reject_draft")(handle_reject_draft)
+
+    # Structure approval (Phase 28.6)
+    app.action("approve_structure")(handle_approve_structure)
 
     # View submission handlers
     app.view("edit_draft_modal")(handle_edit_draft_submit)
