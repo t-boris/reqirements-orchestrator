@@ -76,6 +76,7 @@ from src.db.draft_edit_store import DraftEditStore, DraftEdit
 from src.db.conflict_store import ConflictStore
 from src.db.approval_policy_store import ApprovalPolicyStore
 from src.db.audit_store import AuditStore, AuditEntry, AuditActionType
+from src.db.open_question_store import OpenQuestionStore, OpenQuestion
 
 __all__ = [
     # Connection (02-01)
@@ -151,4 +152,7 @@ __all__ = [
     "AuditStore",
     "AuditEntry",
     "AuditActionType",
+    # Open Question Store (27.6)
+    "OpenQuestionStore",
+    "OpenQuestion",
 ]
