@@ -72,6 +72,7 @@ from src.db.channel_state_store import ChannelStateStore
 from src.db.thread_state_store import ThreadStateStore
 from src.db.user_metadata_store import UserMetadataStore, UserMetadata
 from src.db.participant_store import ThreadParticipantStore, ThreadParticipant
+from src.db.draft_edit_store import DraftEditStore, DraftEdit
 
 __all__ = [
     # Connection (02-01)
@@ -136,4 +137,7 @@ __all__ = [
     # Thread Participant Store (27.2)
     "ThreadParticipantStore",
     "ThreadParticipant",
+    # Draft Edit Store (27.3)
+    "DraftEditStore",
+    "DraftEdit",
 ]
