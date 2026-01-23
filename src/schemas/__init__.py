@@ -24,6 +24,11 @@ from src.schemas.conflict import (
     ConflictSide,
     DraftConflict,
 )
+from src.schemas.approval import (
+    ApprovalPolicy,
+    ApprovalRequirement,
+    ChannelApprovalConfig,
+)
 
 __all__ = [
     # Ticket schemas
@@ -49,4 +54,8 @@ __all__ = [
     "ConflictType",
     "ConflictSide",
     "DraftConflict",
+    # Approval schemas (Phase 27.4)
+    "ApprovalPolicy",
+    "ApprovalRequirement",
+    "ChannelApprovalConfig",
 ]
