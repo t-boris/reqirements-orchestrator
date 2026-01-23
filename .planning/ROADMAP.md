@@ -134,7 +134,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 28: Structured Draft Evolution
 
-**Status:** PLANNED
+**Status:** IN PROGRESS (1/? plans complete)
 
 **Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
 

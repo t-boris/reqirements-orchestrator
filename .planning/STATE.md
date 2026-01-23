@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 28: Structured Draft Evolution (PLANNED)
+**Current focus:** v1.2 Developer Experience — Phase 28: Structured Draft Evolution (IN PROGRESS)
 
 ## Current Position
 
 Phase: 28-structured-draft-evolution
-Plan: 0 of ? in current phase (PLANNING)
-Status: PLANNED
-Last activity: 2026-01-23 — Added Phase 28 to roadmap
+Plan: 1 of ? in current phase
+Status: In Progress
+Last activity: 2026-01-23 — Completed 28.1-PLAN.md (StructuredDraft schema)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: Planning
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 1 plan complete
 
 ## Milestones Summary
 
@@ -97,6 +97,12 @@ Phase 27.6 decisions:
 - Conservative actionable detection (prefer silence over spam)
 - Status cards posted to channel (not thread) for visibility
 
+Phase 28.1 decisions:
+- Draft lifecycle uses explicit state machine with _VALID_TRANSITIONS
+- DraftItem carries compatibility fields from TicketDraft for migration
+- Bidirectional conversion (TicketDraft <-> StructuredDraft) enables gradual migration
+- structured_draft field Optional in AgentState for dual-draft transition period
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -112,37 +118,20 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Added Phase 28 to roadmap
+Stopped at: Completed 28.1-PLAN.md (StructuredDraft schema)
 Resume file: None
-Next action: Plan Phase 28 with `/gsd:plan-phase 28`
+Next action: Execute next plan in Phase 28
 
 ## What's Next
 
-**Phase 28: Structured Draft Evolution** — PLANNED
+**Phase 28: Structured Draft Evolution** — IN PROGRESS
 
 **Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
 
-**Mantra:** Draft is a data structure representing the shape of work, not a paragraph of text.
+**Plans completed:**
+- 28.1: StructuredDraft schema with lifecycle states and migration helpers
 
-**Core Shift:** From "bot collects text for a ticket" to "bot manages the form of a design object and the evolution of its structure."
-
-**Key Requirements:**
-- R1: Draft must be a typed object, not text
-- R2: User decisions must mutate Draft form
-- R3: Bot must transition from questions to action
-- R4: New intent: DRAFT_TRANSFORM
-- R5: Draft must have a lifecycle
-- R6: Validation must depend on Draft form
-- R7: Distinguish between choice, opinion, and question
-- R8: After each Draft form change, show the new form
-- R9: Draft must be versioned
-- R10: Bot cannot repeat a question after receiving a direct answer
-- R11: Transition from decision to action is mandatory
-- R12: Draft is no longer "text draft", it's a "design model"
-
-**Full requirements:** `.planning/phases/28-structured-draft-evolution/REQUIREMENTS.md`
-
-**Next action:** Run `/gsd:plan-phase 28` to create implementation plan
+**Next action:** Execute next plan in Phase 28
 
 ---
 
