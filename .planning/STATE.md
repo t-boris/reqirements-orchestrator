@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 27-multi-user-support
-Plan: 3 of 6 in current phase (27.1, 27.2, 27.3 complete)
+Plan: 4 of 6 in current phase (27.1, 27.2, 27.3, 27.4 complete)
 Status: In progress
-Last activity: 2026-01-23 — Completed 27.3-PLAN.md (Multi-Author Drafts & Conflict Detection)
+Last activity: 2026-01-23 — Completed 27.4-PLAN.md (State-Bound Approvals)
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 3/6 sub-phases
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 4/6 sub-phases
 
 ## Milestones Summary
 
@@ -79,6 +79,12 @@ Phase 27.3 decisions:
 - Same-user updates allowed without conflict check
 - ConflictSide stores both content and full attribution
 
+Phase 27.4 decisions:
+- JSON button payloads for state binding (replaces string concatenation)
+- Ephemeral messages for approval errors (private feedback)
+- Backward-compatible button parsing (supports legacy format)
+- State-bound approvals prevent acting on outdated content
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26 features shipped.
@@ -94,9 +100,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27.3 (Multi-Author Drafts & Conflict Detection)
+Stopped at: Completed Phase 27.4 (State-Bound Approvals)
 Resume file: None
-Next action: Execute Phase 27.4 (State-Bound Approvals)
+Next action: Execute Phase 27.5 (WorkItem Ownership & Audit Log)
 
 ## What's Next
 
@@ -117,9 +123,9 @@ Next action: Execute Phase 27.4 (State-Bound Approvals)
 | 27.6 | Notifications & Slack UX | Low |
 
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
-**Current sub-phase:** `.planning/phases/27-multi-user-support/27.4-PLAN.md`
+**Current sub-phase:** `.planning/phases/27-multi-user-support/27.5-PLAN.md`
 
-**Next action:** Run `/gsd:execute-plan 27.4` to implement State-Bound Approvals
+**Next action:** Run `/gsd:plan-phase 27.5` to plan WorkItem Ownership & Audit Log
 
 ---
 
