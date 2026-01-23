@@ -5,26 +5,26 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 27: Multi-User Support (IN PROGRESS)
+**Current focus:** v1.2 Developer Experience — Phase 27: Multi-User Support (COMPLETE)
 
 ## Current Position
 
 Phase: 27-multi-user-support
-Plan: 5 of 6 in current phase (27.1, 27.2, 27.3, 27.4, 27.5 complete)
-Status: In progress
-Last activity: 2026-01-23 — Completed 27.5-PLAN.md (WorkItem Ownership & Audit Log)
+Plan: 6 of 6 in current phase (ALL COMPLETE)
+Status: COMPLETE
+Last activity: 2026-01-23 — Completed 27.6-PLAN.md (Notifications & Slack UX)
 
-Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 5/6 sub-phases
+Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 6/6 sub-phases COMPLETE
 
 ## Milestones Summary
 
 | Version | Name | Phases | Plans | Status | Shipped |
 |---------|------|--------|-------|--------|---------|
-| v1.0 | MVP | 1-10 | 43 | ✅ Complete | 2026-01-14 |
-| v1.1 | Communication as Source of Truth | 11-23.5 | 63 | ✅ Complete | 2026-01-20 |
-| v1.2 | Developer Experience | 24+ | 4+ | 🚧 In Progress | - |
+| v1.0 | MVP | 1-10 | 43 | Complete | 2026-01-14 |
+| v1.1 | Communication as Source of Truth | 11-23.5 | 63 | Complete | 2026-01-20 |
+| v1.2 | Developer Experience | 24+ | 6+ | In Progress | - |
 
-**Total:** 28 phases, 111 plans shipped (v1.2: 5 plans complete)
+**Total:** 28 phases, 112 plans shipped (v1.2: 6 plans complete)
 
 ## v1.1 Summary
 
@@ -42,7 +42,7 @@ Progress: ██████████ 100% (v1.2 Phase 26) | Phase 27: 5/6 su
 **Stats:**
 - 18 phases, 63 plans
 - 146 Python files, 34,567 LOC
-- 6 days development (Jan 14 → Jan 20)
+- 6 days development (Jan 14 -> Jan 20)
 
 ## Accumulated Context
 
@@ -91,9 +91,15 @@ Phase 27.5 decisions:
 - Audit logging at skill layer (not low-level client) for full context
 - Structured explain output for /maro explain command
 
+Phase 27.6 decisions:
+- MAX_MENTIONS=2 enforced in notification service
+- MAX_PINGS=3 before logging as OPEN QUESTION
+- Conservative actionable detection (prefer silence over spam)
+- Status cards posted to channel (not thread) for visibility
+
 ### Deferred Issues
 
-None — all planned v1.2 Phase 26 features shipped.
+None — all planned v1.2 Phase 26-27 features shipped.
 
 ### Pending Todos
 
@@ -106,35 +112,46 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed Phase 27.5 (WorkItem Ownership & Audit Log)
+Stopped at: Completed Phase 27 (Multi-User Support) - ALL 6 SUB-PHASES COMPLETE
 Resume file: None
-Next action: Execute Phase 27.6 (Notifications & Slack UX)
+Next action: Plan Phase 28 or complete v1.2 milestone
 
 ## What's Next
 
-**Phase 27: Multi-User Support** — PLANNED
+**Phase 27: Multi-User Support** — COMPLETE
 
 **Objective:** Enable MARO to work in channels with multiple participants — track authorship, handle concurrent edits, route approvals correctly, and maintain auditability.
 
 **Mantra:** Every statement has an author, every action has an approver, every conflict has a resolution path.
 
-**Sub-phases:** 6 sub-phases planned
-| Phase | Focus | Risk |
-|-------|-------|------|
-| 27.1 | User Identity & Attribution Foundation | Low |
-| 27.2 | Participant Map & Turn-Taking | Medium |
-| 27.3 | Multi-Author Drafts & Conflict Detection | High |
-| 27.4 | State-Bound Approvals | Medium |
-| 27.5 | WorkItem Ownership & Audit Log | Medium |
-| 27.6 | Notifications & Slack UX | Low |
+**Sub-phases:** 6 sub-phases COMPLETE
+| Phase | Focus | Risk | Status |
+|-------|-------|------|--------|
+| 27.1 | User Identity & Attribution Foundation | Low | COMPLETE |
+| 27.2 | Participant Map & Turn-Taking | Medium | COMPLETE |
+| 27.3 | Multi-Author Drafts & Conflict Detection | High | COMPLETE |
+| 27.4 | State-Bound Approvals | Medium | COMPLETE |
+| 27.5 | WorkItem Ownership & Audit Log | Medium | COMPLETE |
+| 27.6 | Notifications & Slack UX | Low | COMPLETE |
 
 **Implementation plan:** `.planning/phases/27-multi-user-support/27-PLAN.md`
-**Current sub-phase:** `.planning/phases/27-multi-user-support/27.6-PLAN.md`
 
-**Next action:** Run `/gsd:plan-phase 27.6` to plan Notifications & Slack UX
+**What shipped in Phase 27:**
+- User identity with metadata caching (display name, avatar)
+- Field attribution tracking (who said what)
+- Thread participant tracking with activity windows
+- Multi-author draft support with semantic conflict detection
+- State-bound approvals preventing stale button clicks
+- WorkItem ownership with audit logging
+- Targeted notifications (owners/watchers, not everyone)
+- Low-noise filtering for listening mode
+- Status cards at channel level for Jira visibility
+- Open question tracking with no-response policy
+
+**Next action:** Run `/gsd:complete-milestone` or plan Phase 28
 
 ---
 
 ### Roadmap Evolution
 
-- 2026-01-23: Phase 27 added — Multi-User Support (auditable multi-user operation in channels)
+- 2026-01-23: Phase 27 COMPLETE — Multi-User Support (auditable multi-user operation in channels)
