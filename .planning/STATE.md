@@ -170,6 +170,17 @@ Next action: Create 28.7-PLAN.md or complete Phase 28
 
 **Next action:** Create 28.7-PLAN.md or finalize Phase 28
 
+**Phase 29: Sync on Demand** — CONTEXT READY
+
+**Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
+
+**Vision captured:**
+- Preflight Sync: Automatic safety layer with 4 conflict types (Idempotent/Safe drift/Real conflict/Structural)
+- /maro sync: Diagnostic command with reconciliation offers
+- Philosophy: "Distributed version control for meaning" — never auto-fix, always human choice
+
+**Next:** `/gsd:research-phase 29` or `/gsd:plan-phase 29`
+
 ---
 
 ### Roadmap Evolution
