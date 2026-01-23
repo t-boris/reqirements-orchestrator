@@ -79,7 +79,7 @@ async def _update_listening_context(
     team_id: str,
     channel_id: str,
     message: dict,
-) -> None:
+) -> bool:
     """Update rolling summary for listening-enabled channel.
 
     Maintains the two-layer context pattern:
@@ -89,22 +89,56 @@ async def _update_listening_context(
     This runs for EVERY message in enabled channels, so kept lightweight.
     Summary updates only happen when buffer threshold is exceeded.
 
+    Also checks for high-confidence actionable content (Phase 27.6 noise filter).
+    Returns True if MARO should proactively respond.
+
     Args:
         team_id: Slack team/workspace ID
         channel_id: Channel ID
         message: Slack message dict to add to buffer
+
+    Returns:
+        True if message contains high-confidence actionable content
     """
     from src.db import get_connection, ListeningStore
     from src.slack.summarizer import update_rolling_summary, should_update_summary
+    from src.slack.noise_filter import should_respond
     from src.llm import get_llm
+    from src.config import get_settings
+
+    is_actionable = False
+    text = message.get("text", "")
 
     try:
+        # Get bot user ID for noise filter
+        settings = get_settings()
+        bot_user_id = getattr(settings, "slack_bot_user_id", "BOT")
+
         async with get_connection() as conn:
             store = ListeningStore(conn)
 
             # Quick check if listening enabled (lightweight)
             if not await store.is_enabled(team_id, channel_id):
-                return  # Not listening, skip
+                return False  # Not listening, skip
+
+            # Check if we should respond in listening mode (Phase 27.6)
+            respond, reason = should_respond(
+                message_text=text,
+                bot_user_id=bot_user_id,
+                is_listening_mode=True,
+                has_pending_action=False,  # No pending action context here
+            )
+
+            if respond and reason == "high_confidence_actionable":
+                is_actionable = True
+                logger.debug(
+                    "High-confidence actionable content detected in listening mode",
+                    extra={
+                        "channel_id": channel_id,
+                        "text_preview": text[:100] if text else "",
+                        "reason": reason,
+                    }
+                )
 
             # Get current state
             summary, raw_buffer = await store.get_summary(team_id, channel_id)
@@ -113,7 +147,7 @@ async def _update_listening_context(
             raw_buffer = raw_buffer or []
             raw_buffer.append({
                 "user": message.get("user", "unknown"),
-                "text": message.get("text", ""),
+                "text": text,
                 "ts": message.get("ts", ""),
             })
 
@@ -142,6 +176,8 @@ async def _update_listening_context(
     except Exception as e:
         # Non-blocking - log and continue
         logger.warning(f"Failed to update listening context: {e}")
+
+    return is_actionable
 
 
 async def _process_thread_message(
