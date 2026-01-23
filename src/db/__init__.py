@@ -75,6 +75,7 @@ from src.db.participant_store import ThreadParticipantStore, ThreadParticipant
 from src.db.draft_edit_store import DraftEditStore, DraftEdit
 from src.db.conflict_store import ConflictStore
 from src.db.approval_policy_store import ApprovalPolicyStore
+from src.db.audit_store import AuditStore, AuditEntry, AuditActionType
 
 __all__ = [
     # Connection (02-01)
@@ -146,4 +147,8 @@ __all__ = [
     "ConflictStore",
     # Approval Policy Store (27.4)
     "ApprovalPolicyStore",
+    # Audit Store (27.5)
+    "AuditStore",
+    "AuditEntry",
+    "AuditActionType",
 ]
