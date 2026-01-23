@@ -146,6 +146,20 @@ class MultiTicketState(TypedDict):
     created_keys: list[str]  # Jira keys after creation
 
 
+class QueuedRequest(TypedDict):
+    """A queued user request waiting for processing.
+
+    Used when a thread is busy processing another request (pending_action set).
+    Enables serialized turn-taking in multi-user threads.
+
+    Phase 27.2 - Participant Map & Turn-Taking
+    """
+    user_id: str  # Slack user ID who made the request
+    message_text: str  # The message text to process
+    message_ts: str  # Slack message timestamp
+    queued_at: str  # ISO timestamp when queued
+
+
 class WorkflowStep(str, Enum):
     """Typed workflow positions for event validation.
 
@@ -306,6 +320,9 @@ class AgentState(TypedDict):
 
     # Context persistence (Phase 20)
     salient_facts: list[Fact]  # Structured facts with confidence + canonical_id
+
+    # Request queue (Phase 27.2 - Turn-Taking)
+    queued_requests: list[QueuedRequest]  # Requests waiting while another processes
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
