@@ -17,6 +17,11 @@ from src.schemas.attribution import MessageAttribution
 from src.schemas.conflict import DraftConflict, ConflictType, ConflictSide
 from src.llm import get_llm
 from src.skills.answer_matcher import match_answers
+from src.skills.input_classifier import (
+    classify_input,
+    InputClass,
+    normalize_question_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -582,8 +587,51 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
                 ]
                 answer_match_result.all_answered = len(answer_match_result.unanswered_questions) == 0
 
+            # Phase 28.5 (R10): Record answered questions to prevent re-asking
+            if answer_match_result.matches and channel_id and thread_ts:
+                try:
+                    from src.db import get_connection
+                    from src.db.answered_questions_store import AnsweredQuestionsStore
+
+                    user_id = state.get("user_id", "")
+                    async with get_connection() as conn:
+                        store = AnsweredQuestionsStore(conn)
+                        await store.ensure_table()
+                        for match in answer_match_result.matches:
+                            if match.confidence >= 0.7:
+                                question_key = normalize_question_key(match.question)
+                                await store.record_answer(
+                                    channel_id=channel_id,
+                                    thread_ts=thread_ts,
+                                    question_key=question_key,
+                                    original_question=match.question,
+                                    answer=match.answer,
+                                    user_id=user_id,
+                                )
+                except Exception as e:
+                    # Non-blocking - continue even if recording fails
+                    logger.warning(f"Failed to record answered questions: {e}")
+
         except Exception as e:
             logger.warning(f"Answer matching failed, falling back to extraction: {e}")
+
+    # Phase 28.5 (R7): Classify user input type for routing
+    input_classification = None
+    pending_q_list = pending_questions.get("questions", []) if pending_questions else None
+    try:
+        classification = await classify_input(message_text, pending_q_list)
+        if classification.confidence >= 0.6:
+            input_classification = classification.model_dump()
+            logger.info(
+                "Input classification completed",
+                extra={
+                    "input_class": classification.input_class.value,
+                    "confidence": classification.confidence,
+                    "structural_action": classification.structural_action,
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Input classification failed: {e}")
 
     # Prepare prompt
     draft_json = draft.model_dump_json(exclude={"evidence_links", "created_at", "updated_at"})
@@ -891,6 +939,10 @@ Reviewed by: {artifact_persona}
         # Clear pending questions if all answered
         if answer_match_result.all_answered:
             state_update["pending_questions"] = None
+
+    # Phase 28.5 (R7): Include input classification for decision routing
+    if input_classification:
+        state_update["input_classification"] = input_classification
 
     # Handle empty draft - use contextual hints instead of static intro/nudge
     is_first_message = state.get("is_first_message", True)

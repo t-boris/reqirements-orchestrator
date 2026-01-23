@@ -9,6 +9,11 @@ Preflight: blocks creation on EXACT_MATCH (>85% confidence) until user chooses.
 Phase 28.4: Lifecycle-aware question selection.
 R5: Draft must have lifecycle - Cannot ask AC while in PLAN stage
 
+Phase 28.5: Input classification and answered question filtering.
+R3: Bot transitions from questions to action after answer detected
+R7: Distinguish choice vs opinion vs question
+R10: No question repetition after direct answer
+
 EXECUTE is deferred to Phase 7 - only sets state to READY_TO_CREATE.
 """
 import logging
@@ -654,6 +659,33 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
                 ).model_dump(),
             }
 
+    # Phase 28.5 (R7): Check for CHOICE input classification - route to transform
+    input_classification = state.get("input_classification")
+    if input_classification and input_classification.get("input_class") == "choice":
+        structural_action = input_classification.get("structural_action")
+        if structural_action:
+            logger.info(
+                "CHOICE input detected - should route to transform",
+                extra={
+                    "structural_action": structural_action,
+                    "confidence": input_classification.get("confidence"),
+                },
+            )
+            # Signal that a structural choice was made - handler should route to transform
+            return {
+                "step_count": step_count + 1,
+                "phase": AgentPhase.AWAITING_USER,
+                "decision_result": DecisionResult(
+                    action="preview",  # Preview with transform hint
+                    reason=f"User made structural choice: {structural_action}",
+                ).model_dump(),
+                "pending_action": {
+                    "type": "transform",
+                    "action": structural_action,
+                    "from_input_classification": True,
+                },
+            }
+
     # Check for DRAFT_REFINE intent (Phase 26)
     # If user is asking meta-questions about the draft, generate clarifying response
     intent_result = state.get("intent_result", {})
@@ -835,6 +867,61 @@ async def decision_node(state: AgentState) -> dict[str, Any]:
         lifecycle=lifecycle,
         issue_type=issue_type,
     )
+
+    # Phase 28.5 (R10): Filter out already-answered questions
+    if questions and channel_id and thread_ts:
+        try:
+            from src.db import get_connection
+            from src.db.answered_questions_store import AnsweredQuestionsStore
+            from src.skills.input_classifier import normalize_question_key
+
+            async with get_connection() as conn:
+                store = AnsweredQuestionsStore(conn)
+                await store.ensure_table()
+
+                # Get question keys for the questions we're about to ask
+                question_keys = [normalize_question_key(q) for q in questions]
+                unanswered_keys = await store.filter_unanswered(
+                    channel_id, thread_ts, question_keys
+                )
+
+                # Filter questions to only those not yet answered
+                original_count = len(questions)
+                questions = [
+                    q for q in questions
+                    if normalize_question_key(q) in unanswered_keys
+                ]
+
+                if len(questions) < original_count:
+                    logger.info(
+                        "Skipping already-answered questions",
+                        extra={
+                            "original_count": original_count,
+                            "filtered_count": len(questions),
+                            "skipped": original_count - len(questions),
+                            "thread_ts": thread_ts,
+                        },
+                    )
+        except Exception as e:
+            # Non-blocking - continue with all questions if filtering fails
+            logger.warning(f"Failed to filter answered questions: {e}")
+
+    # If all questions were already answered, go to preview
+    if not questions:
+        logger.info(
+            "All questions already answered - proceeding to preview",
+            extra={"thread_ts": thread_ts},
+        )
+        return {
+            "step_count": step_count + 1,
+            "phase": AgentPhase.AWAITING_USER,
+            "pending_questions": None,
+            "decision_result": DecisionResult(
+                action="preview",
+                reason="All questions already answered - ready for review",
+            ).model_dump(),
+        }
+
     batched = batch_questions(questions)
 
     logger.info(
