@@ -436,7 +436,7 @@ async def extract_multi_items_from_review(review_text: str, scope: str, topic: s
 
 
 def _parse_json_response(response_text: str) -> Any:
-    """Parse JSON from LLM response, handling markdown code blocks."""
+    """Parse JSON from LLM response, handling common issues."""
     response_text = response_text.strip()
 
     # Handle markdown code blocks
@@ -448,7 +448,42 @@ def _parse_json_response(response_text: str) -> Any:
                 response_text = response_text[4:]
             response_text = response_text.strip()
 
-    return json.loads(response_text) if response_text else None
+    if not response_text:
+        return None
+
+    # Try parsing as-is first
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        pass
+
+    # Fix common LLM JSON issues
+    fixed = response_text
+
+    # Remove trailing commas before ] or }
+    fixed = re.sub(r',\s*]', ']', fixed)
+    fixed = re.sub(r',\s*}', '}', fixed)
+
+    # Try to extract JSON array or object if there's extra text
+    array_match = re.search(r'\[[\s\S]*\]', fixed)
+    if array_match:
+        fixed = array_match.group(0)
+    else:
+        obj_match = re.search(r'\{[\s\S]*\}', fixed)
+        if obj_match:
+            fixed = obj_match.group(0)
+
+    # Remove trailing commas again after extraction
+    fixed = re.sub(r',\s*]', ']', fixed)
+    fixed = re.sub(r',\s*}', '}', fixed)
+
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError as e:
+        logger.warning(f"JSON parse failed even after fixes: {e}")
+        logger.debug(f"Original: {response_text[:200]}...")
+        logger.debug(f"Fixed: {fixed[:200]}...")
+        raise
 
 
 def _detect_reference_to_prior_content(message: str) -> bool:
