@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 4 of 8 in current phase
+Plan: 6 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 34-04-PLAN.md (Chunking + Search Index)
+Last activity: 2026-01-23 — Completed 34-06-PLAN.md (Intent-Scoped Rules)
 
-Progress: ████░░░░░░ 50% (Phase 34: 4/8 plans complete)
+Progress: ███████░░░ 75% (Phase 34: 6/8 plans complete)
 
 ## Milestones Summary
 
@@ -264,14 +264,14 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-24
-Stopped at: Completed 34-04-PLAN.md (Chunking + Search Index)
+Last session: 2026-01-23
+Stopped at: Completed 34-06-PLAN.md (Intent-Scoped Rules)
 Resume file: None
-Next action: Execute 34-05-PLAN.md (Pin/Unpin Mechanics)
+Next action: Execute 34-07-PLAN.md (Transparency UI)
 
 ## What's Next
 
-**Phase 34: File Attachment Processing** — IN PROGRESS (4/8 plans)
+**Phase 34: File Attachment Processing** — IN PROGRESS (6/8 plans)
 
 **Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
 
@@ -280,8 +280,8 @@ Next action: Execute 34-05-PLAN.md (Pin/Unpin Mechanics)
 - 34-02: File Event Handler - COMPLETE
 - 34-03: Extraction Pipeline - COMPLETE
 - 34-04: Chunking + Search Index - COMPLETE
-- 34-05: Pin/Unpin Mechanics - PLANNED
-- 34-06: Intent-Scoped Rules - PLANNED
+- 34-05: Pin/Unpin Mechanics - COMPLETE
+- 34-06: Intent-Scoped Rules - COMPLETE
 - 34-07: Transparency UI - PLANNED
 - 34-08: Retrieval Context Injection - PLANNED
 
@@ -307,6 +307,18 @@ Phase 34-04 decisions:
 - PostgreSQL full-text search via tsvector (simpler than embeddings)
 - Chunk size 500 tokens with 50 token overlap
 - Only chunk documents > 500 characters
+
+Phase 34-05 decisions:
+- Pin/unpin via button handlers with file_id in payload
+- Ephemeral confirmation messages after pin/unpin actions
+- Status card shown after file processing with pin/show buttons
+- Attachment cards in processing completed handler (not shared event)
+
+Phase 34-06 decisions:
+- AttachmentPolicy enum with 6 policies (NONE, PINNED_ONLY, PINNED_RETRIEVAL, PINNED_STRUCTURAL, LOGS_RETRIEVAL, PINNED_CITED)
+- MODE_POLICIES maps all 5 SuperModes to policies
+- Token budgets: 2000 for pinned, 1500 for retrieval, top-5 chunks
+- Non-blocking: attachment resolution failures logged but don't break requests
 
 ---
 
