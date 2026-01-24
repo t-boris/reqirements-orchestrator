@@ -364,6 +364,13 @@ class GraphRunner:
                 "operation": decision_result.get("operation"),
                 "structured_draft": state.get("structured_draft"),
             }
+        elif action == "ops":
+            return {
+                "action": "ops",
+                "subtype": decision_result.get("subtype"),
+                "message": decision_result.get("message", ""),
+                "timestamp": decision_result.get("timestamp", ""),
+            }
         else:
             return {"action": "continue"}
 
