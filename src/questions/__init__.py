@@ -31,6 +31,10 @@ from src.questions.mode_manager import (
     detect_activation_reason,
     MODE_TIMEOUT_MINUTES,
 )
+from src.questions.provider import (
+    ProviderType,
+    QuestionProvider,
+)
 
 __all__ = [
     # Answer mapping
@@ -51,4 +55,7 @@ __all__ = [
     "ModeManager",
     "detect_activation_reason",
     "MODE_TIMEOUT_MINUTES",
+    # Provider interface (Phase 37)
+    "ProviderType",
+    "QuestionProvider",
 ]
