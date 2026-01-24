@@ -397,4 +397,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
-| 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-23 |
+| 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
