@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 30-decision-as-entity
-Plan: 6 of 8 in current phase
+Plan: 7 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 30-06-PLAN.md (Decision Preflight and managed sections)
+Last activity: 2026-01-24 — Completed 30-07-PLAN.md (Decision commands for /maro)
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 6/8 plans
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 7/8 plans
 
 ## Milestones Summary
 
@@ -206,9 +206,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 30-06-PLAN.md (Decision Preflight and managed sections)
+Stopped at: Completed 30-07-PLAN.md (Decision commands for /maro)
 Resume file: None
-Next action: Execute 30-07-PLAN.md (Graph routing for DECISION intent)
+Next action: Execute 30-08-PLAN.md
 
 ## What's Next
 
@@ -247,8 +247,9 @@ Next action: Execute 30-07-PLAN.md (Graph routing for DECISION intent)
 - 30.4: DecisionManager with canonical message pattern
 - 30.5: Decision UI blocks with four visual states
 - 30.6: Decision Preflight and managed sections for safe Jira writes
+- 30.7: Decision commands for /maro (list, show, change, deprecate)
 
-**Next:** Execute 30-07-PLAN.md (Graph routing for DECISION intent)
+**Next:** Execute 30-08-PLAN.md
 
 ---
 
