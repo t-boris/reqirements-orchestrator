@@ -128,6 +128,7 @@ class AttachmentRetriever:
         self,
         max_pinned_tokens: int = 2000,
         max_retrieval_tokens: int = 1500,
+        max_total_tokens: int = 4000,
         top_k_chunks: int = 5,
     ) -> None:
         """Initialize retriever.
@@ -135,10 +136,12 @@ class AttachmentRetriever:
         Args:
             max_pinned_tokens: Token budget for pinned content.
             max_retrieval_tokens: Token budget for retrieved chunks.
+            max_total_tokens: Total token budget for all content (prevents explosion).
             top_k_chunks: Number of chunks to retrieve.
         """
         self.max_pinned_tokens = max_pinned_tokens
         self.max_retrieval_tokens = max_retrieval_tokens
+        self.max_total_tokens = max_total_tokens
         self.top_k_chunks = top_k_chunks
 
     async def get_context(
@@ -241,6 +244,27 @@ class AttachmentRetriever:
                         query,
                     )
                     context.retrieved_chunks = chunks
+                    context.total_tokens += sum(
+                        c.get("tokens", 0) for c in chunks
+                    )
+
+        # Enforce total token budget (prevents context explosion)
+        if context.total_tokens > self.max_total_tokens:
+            logger.warning(
+                f"Attachment context exceeds budget: "
+                f"{context.total_tokens} > {self.max_total_tokens}, trimming"
+            )
+            # Trim retrieved chunks first (keep pinned as they're explicit)
+            while (
+                context.total_tokens > self.max_total_tokens
+                and context.retrieved_chunks
+            ):
+                removed = context.retrieved_chunks.pop()
+                context.total_tokens -= removed.get("tokens", 0)
+                logger.debug(
+                    f"Removed chunk from {removed.get('filename', 'unknown')}, "
+                    f"remaining tokens: {context.total_tokens}"
+                )
 
         return context
 
