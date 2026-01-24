@@ -710,7 +710,17 @@ async def intent_router_node(state: dict) -> dict:
                 "requested_scope": draft.requested_scope.value if hasattr(draft, 'requested_scope') and draft.requested_scope else None,
             }
 
-        result = await classify_intent(latest_human_message, conversation_context, active_draft)
+        # Phase 33-05: Use context-aware classification when thread_context available
+        thread_context = state.get("thread_context")
+        if thread_context:
+            result = await classify_intent_with_context(
+                latest_human_message,
+                thread_context,
+                conversation_context,
+                active_draft,
+            )
+        else:
+            result = await classify_intent(latest_human_message, conversation_context, active_draft)
 
     logger.info(
         f"IntentRouter: intent={result.intent.value}, "
