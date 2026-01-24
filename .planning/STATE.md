@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 35: Multi-Intent Task Orchestration (RESEARCHED)
+**Current focus:** v1.2 Developer Experience — Phase 35: Multi-Intent Task Orchestration (IN PROGRESS)
 
 ## Current Position
 
 Phase: 35-multi-intent-task-orchestration
-Plan: 0 of N in current phase
-Status: Researched — ready for planning
-Last activity: 2026-01-24 — Completed Phase 35 research
+Plan: 1 of N in current phase
+Status: In progress — executing plans
+Last activity: 2026-01-24 — Completed 35-01-PLAN.md (TaskPlan/Task schemas + TaskPlanStore)
 
-Progress: ░░░░░░░░░░ 0% (Phase 35: research complete, planning next)
+Progress: ░░░░░░░░░░ 1% (Phase 35: 1 plan complete)
 
 ## Milestones Summary
 
@@ -262,12 +262,18 @@ None.
 
 None.
 
+Phase 35-01 decisions:
+- Tasks stored as JSONB array in task_plans table (not separate table)
+- Optimistic locking via version check on update
+- SafetyLevel maps from SuperMode: THINK/CHAT -> AUTO_EXECUTE, BUILD/OPERATE/DECIDE -> REQUIRES_CONFIRMATION
+- TaskPlan.compute_status() derives plan status from aggregate task statuses
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Phase 35 research complete
+Stopped at: Completed 35-01-PLAN.md
 Resume file: None
-Next action: Run /gsd:plan-phase 35 to create execution plans
+Next action: Execute 35-02-PLAN.md (Intent -> TaskPlan conversion)
 
 ## What's Next
 
@@ -435,6 +441,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 35-01 COMPLETE — TaskPlan/Task schemas, TaskPlanStore persistence
 - 2026-01-24: Phase 35 RESEARCHED — Multi-Intent Task Orchestration (architecture gaps identified, integration points documented)
 - 2026-01-24: Phase 35 ADDED — Multi-Intent Task Orchestration (TaskPlan replaces single-intent classification)
 - 2026-01-24: Phase 34 ADDED — File Attachment Processing (read PDF/DOCX/MD from Slack messages)
