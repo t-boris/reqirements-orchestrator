@@ -11,6 +11,7 @@ from slack_sdk.web import WebClient
 from src.slack.session import SessionIdentity
 from src.graph.runner import get_runner
 from src.slack.handlers.core import _run_async
+from src.slack.handlers.attachments import handle_message_files
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,11 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
 
     channel = event.get("channel")
     team_id = context.get("team_id", "")
+
+    # Process any attached files (Phase 34)
+    files = event.get("files", [])
+    if files:
+        _run_async(_process_message_files(event, files))
 
     # Update listening context for ALL messages in enabled channels (Phase 11)
     # This runs async in background to not block message processing
@@ -73,6 +79,24 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
     if identity.session_id in _runners:
         # Active session - process message
         _run_async(_process_thread_message(identity, text, user, client, thread_ts, channel))
+
+
+async def _process_message_files(event: dict, files: list[dict]) -> None:
+    """Process file attachments in a message.
+
+    Registers supported files as Attachments for extraction pipeline.
+
+    Args:
+        event: Message event payload.
+        files: List of file objects from event["files"].
+    """
+    try:
+        registered_files = await handle_message_files(event, files)
+        if registered_files:
+            logger.info(f"Registered {len(registered_files)} files from message")
+    except Exception as e:
+        # Non-blocking - log and continue
+        logger.warning(f"Failed to process message files: {e}")
 
 
 async def _update_listening_context(
