@@ -35,6 +35,7 @@ from src.questions.provider import (
     ProviderType,
     QuestionProvider,
 )
+from src.questions.catalog_provider import CatalogProvider
 
 __all__ = [
     # Answer mapping
@@ -58,4 +59,5 @@ __all__ = [
     # Provider interface (Phase 37)
     "ProviderType",
     "QuestionProvider",
+    "CatalogProvider",
 ]
