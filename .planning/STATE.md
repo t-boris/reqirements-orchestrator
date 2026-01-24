@@ -12,12 +12,12 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 ## Current Position
 
-Phase: 32-product-invariants
-Plan: 6 of 6 in current phase
-Status: Phase complete
-Last activity: 2026-01-23 — Completed 32-06-PLAN.md (Documentation Update)
+Phase: 33-anchor-message-architecture
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-24 — Completed 33-02-PLAN.md (Thread Bindings Persistence)
 
-Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 6/6 plans (COMPLETE)
+Progress: ██████████ 100% (Phase 27-32 COMPLETE) | Phase 33: 1/5 plans
 
 ## Milestones Summary
 
@@ -264,25 +264,31 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 32-06-PLAN.md (Documentation Update)
+Last session: 2026-01-24
+Stopped at: Completed 33-02-PLAN.md (Thread Bindings Persistence)
 Resume file: None
-Next action: Phase 32 complete - run /gsd:progress
+Next action: Execute 33-03-PLAN.md (or next unexecuted plan in phase 33)
 
 ## What's Next
 
-**Phase 32: Product Invariants** — COMPLETE (6/6 plans)
+**Phase 33: Anchor Message Architecture** — IN PROGRESS (1/5 plans)
 
-**Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
+**Objective:** Shift from thread-centric to object-centric design. Canonical messages become anchors for entity lifecycles.
 
-**Invariants:**
-- I1: SuperMode = Sole UI Contract (intents never exposed to users)
-- I2: Slack = UI (handlers read-only, mutations via graph)
-- I3: Commit Log = Append-Only (event-sourced, canonical messages rebuildable)
-- I4: MANAGED_SECTION = Law (CI enforcement)
-- I5: Draft Lifecycle = 3 User-Facing States (Drafting/Ready/Published)
+**Mantra:** "Thread exists for managing a specific object of reality, not for conversation."
 
-**Next action:** Discuss phase vision, then create plans
+**Key Rules:**
+- A1: Any "created/approved/updated" message is an anchor message
+- A2: Each anchor has object_id and object_type
+- A3: Messages in thread inherit object_id as context
+- A4: Commands in thread default to the anchor's object
+
+**Progress:**
+- 33-01: AnchorMessage Schema - NOT EXECUTED
+- 33-02: Thread Bindings Persistence - COMPLETE
+- 33-03: Next to execute
+
+**Next action:** Execute 33-03-PLAN.md
 
 ---
 
