@@ -1,5 +1,9 @@
 """Result dispatching and content extraction logic.
 
+INVARIANT I1: SuperMode = sole UI contract
+All user-facing messages use super_mode, never intent.
+Intent is internal routing detail only.
+
 Handles dispatching graph results to appropriate skills and extracting
 content for ticket updates and comments.
 
