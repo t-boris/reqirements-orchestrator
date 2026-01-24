@@ -7,13 +7,86 @@ When user provides answers to open questions from a review, this node:
 
 Patch mode outputs only changes, not full regeneration.
 Full synthesis is triggered by "Show full architecture" button.
+
+Phase 37: Unified Question Engine integration
+- Uses FreeformProvider when user asks for questions
+- Generates structured questions via Question Engine
 """
 import logging
 from typing import Any
 
+from src.questions.freeform_provider import FreeformProvider
 from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+
+def _wants_questions_asked(user_message: str) -> bool:
+    """Detect if user wants bot to ask them questions."""
+    signals = [
+        "continue with questions",
+        "ask me",
+        "what questions",
+        "your open questions",
+        "ask the open questions",
+        "ask your questions",
+    ]
+    message_lower = user_message.lower()
+    return any(signal in message_lower for signal in signals)
+
+
+async def _generate_review_questions(
+    review_context: dict,
+    num_questions: int = 3,
+) -> list[str]:
+    """Generate review questions using FreeformProvider.
+
+    Args:
+        review_context: Current review context
+        num_questions: Number of questions to generate
+
+    Returns:
+        List of question strings
+    """
+    provider = FreeformProvider()
+
+    # Build context for provider
+    context = {
+        "topic": review_context.get("topic", "Architecture discussion"),
+        "assumptions": [],
+        "constraints": [],
+        "risks": [],
+    }
+
+    # Get previous summary to identify gaps
+    previous_summary = (
+        review_context.get("updated_recommendation") or
+        review_context.get("review_summary", "")
+    )
+
+    # Determine what's missing
+    missing_fields = []
+    if "assumption" not in previous_summary.lower():
+        missing_fields.append("assumptions")
+    if "constraint" not in previous_summary.lower():
+        missing_fields.append("constraints")
+    if "risk" not in previous_summary.lower():
+        missing_fields.append("risks")
+
+    if not missing_fields:
+        missing_fields = ["assumptions", "constraints", "risks"]
+
+    questions = []
+    for _ in range(num_questions):
+        if not missing_fields:
+            break
+        task = await provider.generate_question(context, missing_fields)
+        if task:
+            questions.append(task.question_text)
+            # Rotate to next field
+            missing_fields = missing_fields[1:] + missing_fields[:1]
+
+    return questions
 
 
 # Patch mode prompt - outputs only changes (4 sections, max 12 bullets)
@@ -204,6 +277,31 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         review_context.get("updated_recommendation") or
         review_context.get("review_summary", "")
     )
+
+    # Check if user wants to be asked questions - use FreeformProvider instead of LLM
+    if _wants_questions_asked(user_answers):
+        questions = await _generate_review_questions(review_context)
+        if questions:
+            response_content = "Great, here are the key questions we need to resolve:\n\n"
+            for i, q in enumerate(questions, 1):
+                response_content += f"{i}. {q}\n"
+            response_content += "\nPlease answer any or all of these."
+
+            return {
+                "decision_result": {
+                    "action": "review_continuation",
+                    "message": response_content,
+                    "persona": persona,
+                    "topic": topic,
+                    "version": current_version,
+                    "is_questions": True,
+                },
+                "review_context": {
+                    **review_context,
+                    "version": current_version,
+                    "awaiting_answers": True,
+                },
+            }
 
     # Single smart prompt - LLM decides if user wants full synthesis or patch
     prompt = SMART_CONTINUATION_PROMPT.format(
