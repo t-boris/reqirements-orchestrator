@@ -12,6 +12,8 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.3 Git Model
    - 1.4 LLM Providers
    - 1.5 StructuredDraft: The Design Model (Phase 28)
+   - 1.6 Preflight: Universal Guardrail (Phase 29)
+   - 1.7 Decision: First-Class Entity (Phase 30)
 2. [Intent Classification](#2-intent-classification)
 3. [Governance Rules](#3-governance-rules)
    - 3.1 Core Model
@@ -54,7 +56,8 @@ Graph Routing (LangGraph)
     ├─→ Change Request Flow (modify existing Jira issues)
     ├─→ Jira Command Flow (field modifications)
     ├─→ Sync Flow (bulk channel sync)
-    └─→ Jira Search Flow (search existing)
+    ├─→ Jira Search Flow (search existing)
+    └─→ Decision Flow (Phase 30) (extract decision → create entity → show card)
     ↓
 Slack Response
 ```
@@ -202,7 +205,183 @@ Every mutation:
 3. Logs to `change_log`
 4. Shows updated structure to user (R8)
 
+### 1.6 Preflight: Universal Guardrail (Phase 29)
+
+**Core principle:** Every write operation goes through preflight — no exceptions.
+
+Preflight is the "distributed version control for meaning". Before any Jira write:
+
+```
+Local State (what we think is true)
+    ↓
+Preflight Check (fetch current Jira state)
+    ↓
+Conflict Classification
+    ↓
+[IDEMPOTENT] → Auto-succeed, sync local
+[SAFE_DRIFT] → Proceed with warning
+[REAL_CONFLICT] → Block, require choice
+[STRUCTURAL] → Block, explain why
+```
+
+#### Conflict Types
+
+| Type | Meaning | Bot Action |
+|------|---------|------------|
+| **IDEMPOTENT** | Operation already done in Jira | Auto-succeed, update local to match |
+| **SAFE_DRIFT** | Changes don't overlap | Ask but default to proceed |
+| **REAL_CONFLICT** | Same fields changed | Block until user explicitly chooses |
+| **STRUCTURAL** | Invalid operation (ticket deleted, type mismatch) | Block with explanation |
+
+**Key insight:** IDEMPOTENT auto-succeeds. All others require user choice.
+
+#### Sync Tracking
+
+Each tracked issue has:
+```python
+jira_updated: datetime  # When Jira was last modified
+last_synced: datetime   # When we last fetched from Jira
+status: str             # Current Jira status
+assignee: str           # Current Jira assignee
+```
+
+This enables detecting external changes since last sync.
+
+#### Never Auto-Fix
+
+Conflicts are never auto-resolved. Human choice required:
+- "Use Jira version"
+- "Use channel version"
+- "Manual merge"
+
+This preserves the "communication is source of truth" principle.
+
+### 1.7 Decision: First-Class Entity (Phase 30)
+
+**Core shift:** Decisions are versioned entities. Jira is a projection, not the source.
+
+**Mantra:** "Decisions are versioned, Jira is a projection."
+
+#### Decision Entity
+
+```python
+class Decision:
+    id: str                    # UUID
+    channel_id: str            # Channel that owns this decision
+    decision_type: DecisionType  # ARCH, SCOPE, CONSTRAINT, PRIORITY, STRUCTURE, PROCESS
+    title: str
+    description: str
+    status: DecisionStatus     # PROPOSED → APPROVED → DEPRECATED/REPLACED
+    version: int               # Increments on every change
+    canonical_message_ts: str  # Slack message that represents this decision
+```
+
+#### Decision Types
+
+| Type | Description | Jira Projection |
+|------|-------------|-----------------|
+| **ARCH** | Architecture decisions | Description → Architecture section |
+| **SCOPE** | Scope boundaries | Description → Scope section |
+| **CONSTRAINT** | Technical constraints | Description → Constraints section |
+| **PRIORITY** | Priority decisions | Priority field / Labels |
+| **STRUCTURE** | Work structure (epic/story breakdown) | Parent/Link relations |
+| **PROCESS** | Process decisions | Labels / Custom field |
+
+#### Decision Lifecycle
+
+```
+PROPOSED → APPROVED → DEPRECATED/REPLACED
+    │          │              │
+    └─ Draft   └─ Active      └─ Historical (with pointer to replacement)
+```
+
+Same object, four visual identities:
+1. **Idea** → Compact card during discussion
+2. **Proposal** → Full block for approval ("are you sure?" moment)
+3. **Law** → Authoritative reference (no longer conversational)
+4. **Record** → Commit log entry (pure signal)
+
+#### Canonical Message Pattern
+
+Each Decision has **one canonical message** in the channel — like HEAD in git:
+
+```
+Channel (what is true now)
+    │
+    ├── Decision DEC-41 (canonical message, updated in place)
+    │       │
+    │       └── Thread (discussion, examples, wording changes)
+    │
+    ├── Decision DEC-42 (canonical message)
+    │       │
+    │       └── Thread
+    ...
+```
+
+- Canonical message is pinned
+- Always reflects current version
+- Never deleted, only updated or marked deprecated
+- Thread = working area for discussion
+
+**Key insight:** Channel shows "what is true now", not "what happened".
+
+#### Decision → Jira Projection
+
+When a decision is approved:
+1. Decision status → APPROVED
+2. Linked tickets identified (DecisionLink)
+3. Preflight runs on all linked tickets
+4. Managed sections updated in Jira descriptions
+
+#### Managed Sections
+
+MARO writes only to clearly marked sections:
+
+```markdown
+## Decisions (managed by MARO)
+• DEC-41 v4 – Use ISO 8601 dates
+• DEC-57 v2 – PostgreSQL for persistence
+---
+```
+
+Everything outside this block is user-owned. MARO never overwrites hand-written content.
+
+#### DecisionLink
+
+Maps decisions to Jira tickets:
+
+```python
+class DecisionLink:
+    decision_id: str
+    jira_key: str
+    field_path: JiraFieldPath  # Where in Jira this projects
+    synced_version: int        # Last version synced to this ticket
+    synced_at: datetime
+```
+
+This enables:
+- Deterministic mapping (decision type → known field)
+- Incremental sync (only update if version changed)
+- Audit trail (which version is in Jira)
+
 #### Version-Bound Approvals
+
+Every button includes decision ID + version:
+
+```json
+{
+  "decision_id": "abc-123",
+  "version": 4
+}
+```
+
+When clicked:
+- If `button.version == decision.version`: Proceed
+- If `button.version != decision.version`: "Decision updated, please review"
+
+This prevents acting on stale decisions after changes.
+
+#### Version-Bound Approvals (Drafts)
 
 Every button includes the draft version:
 ```json
@@ -237,6 +416,7 @@ The bot classifies every message into one of 9 intent types:
 | **JIRA_COMMAND** | Modify existing ticket fields | "change priority to high" |
 | **SYNC_REQUEST** | Bulk sync channel with Jira | "update Jira issues" |
 | **JIRA_SEARCH** | Search Jira for existing issues | "check if we have a ticket for this" |
+| **DECISION** | User stating a decision to record (Phase 30) | "we decided to use PostgreSQL" |
 | **REVIEW** | Analysis/feedback without Jira ops | "help me design the API" |
 | **DISCUSSION** | Greeting or simple question | "hi", "thanks" |
 | **META** | Questions about the bot | "what can you do?" |
@@ -777,12 +957,53 @@ START
     │    → jira_search (search existing)
     │    → END
     │
-    └─ sync_flow
-         → sync_trigger (bulk sync)
-         → END
+    ├─ sync_flow
+    │    → sync_trigger (bulk sync)
+    │    → END
+    │
+    └─ decision_flow (Phase 30)
+         → decision_extraction (extract from message)
+         → create Decision entity (PROPOSED status)
+         → show_decision_proposal card
+         → END (user approves/edits via buttons)
 ```
 
-### 5.2 WorkItem Flow Detail
+### 5.2 Decision Flow Detail (Phase 30)
+
+```
+User: "We decided to use PostgreSQL"
+    ↓
+intent_router → DECISION intent detected
+    ↓
+decision_extraction_node
+    ↓
+    ├─ Extract decision type (ARCH from keywords)
+    ├─ Extract title ("Use PostgreSQL")
+    ├─ Create Decision entity (PROPOSED status)
+    └─ Return action="show_decision_proposal"
+    ↓
+dispatch → show compact draft card
+    ├─ [Edit] → open modal
+    ├─ [Approve] → approve + sync to Jira
+    └─ [Discard] → deprecate
+```
+
+**Button handlers:**
+- `decision_approve`: Mark APPROVED → sync to all linked Jira tickets via preflight
+- `decision_edit`: Open modal to modify title/description
+- `decision_change`: Create new version (for approved decisions)
+- `decision_deprecate`: Mark DEPRECATED with reason
+
+**Canonical message lifecycle:**
+```
+PROPOSED: Compact card with [Edit][Approve][Discard]
+    ↓ (approve)
+APPROVED: Authoritative card with [Change][Deprecate][History]
+    ↓ (deprecate)
+DEPRECATED: Historical marker with pointer to replacement
+```
+
+### 5.3 WorkItem Flow Detail
 
 ```
 extraction
@@ -1174,32 +1395,53 @@ def compute_confidence(draft, duplicate):
 
 MARO's intelligence is built on:
 
+### Core Principles
 1. **WorkItem-centric model** — Channel is truth, Jira is deployment
-2. **Git-like semantics** — Threads propose, channels commit, Jira syncs
-3. **StructuredDraft as design object** — Draft is a typed data structure, not text (Phase 28)
-4. **Lifecycle state machine** — EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED
-5. **User input classification** — CHOICE/OPINION/QUESTION/ANSWER routing (Phase 28)
-6. **Form-dependent validation** — Epic validates goal/scope, Story validates AC (Phase 28)
-7. **Lifecycle-aware questions** — PLAN stage asks decomposition, not AC (Phase 28)
-8. **DRAFT_TRANSFORM intent** — Structural mutations triggered by semantic commands (Phase 28)
-9. **Version-bound approvals** — Stale buttons detected and rejected (Phase 28)
-10. **Structure visualization** — Show draft structure after every mutation (Phase 28)
-11. **No question repetition** — Answered questions never re-asked (Phase 28)
-12. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
-13. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
-14. **Rule-based governance** ensuring consistent behavior
-15. **Graph-based workflows** with conditional routing
-16. **Smart duplicate detection** — channel-first, then Jira
-17. **Human-in-the-loop** interrupts for critical decisions
-18. **Persona-based analysis** for different perspectives
+2. **Decision-centric model** — Decisions are versioned, Jira is a projection (Phase 30)
+3. **Git-like semantics** — Threads propose, channels commit, Jira syncs
+
+### Draft Model (Phase 28)
+4. **StructuredDraft as design object** — Draft is a typed data structure, not text
+5. **Lifecycle state machine** — EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED
+6. **User input classification** — CHOICE/OPINION/QUESTION/ANSWER routing
+7. **Form-dependent validation** — Epic validates goal/scope, Story validates AC
+8. **Lifecycle-aware questions** — PLAN stage asks decomposition, not AC
+9. **DRAFT_TRANSFORM intent** — Structural mutations triggered by semantic commands
+10. **Structure visualization** — Show draft structure after every mutation
+11. **No question repetition** — Answered questions never re-asked
+
+### Preflight Model (Phase 29)
+12. **Preflight as universal guardrail** — Every Jira write goes through conflict check
+13. **4-type conflict classification** — IDEMPOTENT, SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL
+14. **Never auto-fix** — Human choice required for any conflict resolution
+15. **Sync tracking** — jira_updated vs last_synced for drift detection
+
+### Decision Model (Phase 30)
+16. **Decision as first-class entity** — Versioned with lifecycle (PROPOSED → APPROVED → DEPRECATED)
+17. **Canonical message pattern** — One message per decision, updated in place
+18. **Managed sections** — MARO writes only to its block, preserves user content
+19. **Deterministic mapping** — Decision type → known Jira field, no LLM guessing
+20. **Decision approval = commit + sync** — Approval triggers immediate Jira projection
+
+### Supporting Systems
+21. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+22. **Version-bound approvals** — Stale buttons detected and rejected
+23. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
+24. **Rule-based governance** ensuring consistent behavior
+25. **Graph-based workflows** with conditional routing
+26. **Smart duplicate detection** — channel-first, then Jira
+27. **Human-in-the-loop** interrupts for critical decisions
+28. **Persona-based analysis** for different perspectives
 
 **Mantras:**
 - "Threads propose. Channels decide. Jira executes."
+- "Decisions are versioned, Jira is a projection." (Phase 30)
 - "Draft is a data structure representing the shape of work, not a paragraph of text." (Phase 28)
 - "If user input represents a decision, bot must act, not discuss." (Phase 28)
+- "Every write goes through preflight — no exceptions." (Phase 29)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
 ---
 
-*Last updated: 2026-01-23 (Phase 28 StructuredDraft evolution)*
+*Last updated: 2026-01-23 (Phase 30 Decision as First-Class Entity)*

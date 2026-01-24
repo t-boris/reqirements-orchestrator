@@ -2,10 +2,13 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-20)
+See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 30: Decision as First-Class Entity (IN PROGRESS)
+
+**Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
+
+**Current focus:** v1.2 Developer Experience — Phase 30: Decision as First-Class Entity (COMPLETE)
 
 ## Current Position
 
