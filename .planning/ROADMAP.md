@@ -178,7 +178,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 29: Sync on Demand
 
-**Status:** IN PROGRESS (1/4 plans complete)
+**Status:** COMPLETE (4/4 plans)
 
 **Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
 
@@ -303,4 +303,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 27.5 WorkItem Ownership & Audit | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
-| 29. Sync on Demand | v1.2 | 1/4 | In Progress | - |
+| 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
