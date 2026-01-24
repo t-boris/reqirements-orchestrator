@@ -1,16 +1,28 @@
-"""Slack blocks for ticket draft preview, approval, and rejection."""
+"""Slack blocks for ticket draft preview, approval, and rejection.
 
-from typing import Any, Optional
+INVARIANT I5: Draft Lifecycle = 3 User-Facing States
+Users see: Drafting, Ready, Published
+Internal: EMPTY, SINGLE_ITEM, PLAN, PLAN_REFINED, APPROVED, COMMITTED
+
+For StructuredDraft UI, always use UserDraftState (not DraftLifecycle).
+"""
+
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from src.schemas.structured_draft import StructuredDraft
 
 
 def get_draft_state_badge(state: str) -> str:
-    """Return emoji badge for draft state.
+    """Return emoji badge for draft state (legacy TicketDraft).
 
     Args:
         state: Draft lifecycle state (draft, approved, created, linked)
 
     Returns:
         Formatted badge string with emoji and state name
+
+    Note: For StructuredDraft, use get_structured_draft_state_badge() instead.
     """
     badges = {
         "draft": "Draft",
@@ -19,6 +31,27 @@ def get_draft_state_badge(state: str) -> str:
         "linked": "Linked",
     }
     return badges.get(state, "Draft")
+
+
+def get_structured_draft_state_badge(draft: "StructuredDraft") -> dict[str, Any]:
+    """Build state badge using user-facing state for StructuredDraft.
+
+    INVARIANT I5: Show UserDraftState, not DraftLifecycle.
+
+    Args:
+        draft: StructuredDraft to get state from
+
+    Returns:
+        Slack context block showing user-facing state
+    """
+    user_state = draft.user_state
+    return {
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": f"*Status:* {user_state.label}"
+        }]
+    }
 
 
 def build_session_card(
