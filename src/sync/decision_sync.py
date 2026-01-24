@@ -59,6 +59,14 @@ class DecisionSyncResult:
 class DecisionSyncService:
     """Service for projecting decisions to Jira tickets.
 
+    ARCHITECTURE:
+    - Database is truth
+    - Jira is projection (this service writes to Jira)
+    - Slack is presentation (NOT this service's concern)
+
+    This service does NOT depend on Slack message state.
+    Jira sync proceeds even if canonical message update failed.
+
     Handles:
     - Preflight checks for all linked tickets
     - Atomic sync (all or none, with partial tolerance)
@@ -86,6 +94,10 @@ class DecisionSyncService:
         force: bool = False,
     ) -> DecisionSyncResult:
         """Sync decision to all linked Jira tickets.
+
+        NOTE: This method does NOT depend on Slack message state.
+        Jira sync proceeds even if canonical message update failed.
+        Architecture: Database (truth) → Jira (projection) → Slack (presentation)
 
         Steps:
         1. Get decision and all links
