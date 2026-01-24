@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 35-multi-intent-task-orchestration
-Plan: 1 of N in current phase
+Plan: 2 of 8 in current phase
 Status: In progress — executing plans
-Last activity: 2026-01-24 — Completed 35-01-PLAN.md (TaskPlan/Task schemas + TaskPlanStore)
+Last activity: 2026-01-24 — Completed 35-02-PLAN.md (TaskPlanProposal + multi-intent classification)
 
-Progress: ░░░░░░░░░░ 1% (Phase 35: 1 plan complete)
+Progress: ██░░░░░░░░ 17% (Phase 35: 2/8 plans complete)
 
 ## Milestones Summary
 
@@ -268,12 +268,18 @@ Phase 35-01 decisions:
 - SafetyLevel maps from SuperMode: THINK/CHAT -> AUTO_EXECUTE, BUILD/OPERATE/DECIDE -> REQUIRES_CONFIRMATION
 - TaskPlan.compute_status() derives plan status from aggregate task statuses
 
+Phase 35-02 decisions:
+- Two-stage classification: single-intent first, multi-intent if signals detected
+- Multi-intent signals: conjunctions ("and", "also", "plus"), low confidence (<0.7), multiple action verbs (>=2)
+- TaskPlanProposal wraps multiple TaskProposals with dependency tracking
+- Backwards compatible via return_proposal=False default and to_single_intent()
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 35-01-PLAN.md
+Stopped at: Completed 35-02-PLAN.md
 Resume file: None
-Next action: Execute 35-02-PLAN.md (Intent -> TaskPlan conversion)
+Next action: Execute 35-03-PLAN.md (Task Decomposer Node)
 
 ## What's Next
 
