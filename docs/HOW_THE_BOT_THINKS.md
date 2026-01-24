@@ -23,6 +23,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 3.4 Context Rules
    - 3.5 Commit Semantics
    - 3.6 Commit Log vs State (Phase 31)
+   - 3.7 Sync Semantics (Phase 31)
 4. [LLM Prompts Reference](#4-llm-prompts-reference)
 5. [State Machine & Workflows](#5-state-machine--workflows)
 6. [Decision Logic](#6-decision-logic)
@@ -752,6 +753,41 @@ Canonical message updated (mutable current state)
 ```
 
 **Key insight:** The commit log is like git history — it records what happened. The canonical message is like the working tree — it shows what is true now. Never confuse these: you read the canonical message to know current state, you read the commit log to know history.
+
+### 3.7 Sync Semantics (Phase 31)
+
+**Core distinction:** Preflight and `/maro sync` serve different purposes.
+
+| Operation | Blocking? | Purpose |
+|-----------|-----------|---------|
+| **Preflight** | Yes | Guard before any Jira write |
+| **/maro sync** | No | Informational reconciliation |
+
+**Preflight (Blocking Guard):**
+- Called before create/update operations
+- Fetches current Jira state
+- Classifies conflicts (IDEMPOTENT, SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL)
+- Preflight result determines if operation proceeds
+- IDEMPOTENT auto-succeeds, all others require user choice
+
+**`/maro sync` (Informational Diagnostic):**
+- Reports drift between local state and Jira
+- Does NOT block any operation
+- Used for visibility and manual reconciliation
+- Shows which tickets have diverged and how
+
+**Both use the same conflict classification:**
+
+| Type | Meaning |
+|------|---------|
+| IDEMPOTENT | Already done in Jira |
+| SAFE_DRIFT | Changes don't overlap |
+| REAL_CONFLICT | Same fields changed |
+| STRUCTURAL | Invalid operation |
+
+**Key rule:** "Preflight = write guard. Sync = read-only diagnostic."
+
+Preflight is mandatory before writes. Sync is optional for visibility.
 
 ---
 
