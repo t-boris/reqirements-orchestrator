@@ -11,6 +11,8 @@
 > - **Phase 28: StructuredDraft Evolution** - Draft as typed design object
 > - **Phase 29: Preflight** - Universal guardrail for Jira writes
 > - **Phase 30: Decision as Entity** - Decisions are versioned, Jira is projection
+> - **Phase 31: Architecture Hardening** - Super-modes, MANAGED_SECTION_ONLY invariant
+> - **Phase 32: Product Invariants** - 5 invariants enforced as architecture
 
 A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
 
@@ -269,6 +271,137 @@ DecisionManager → SLACK (presentation, best effort)
 ```
 
 **Mantra:** "Feel like a product, not an OS kernel."
+
+---
+
+## Phase 32: Product Invariants (Latest)
+
+**Mantra:** "Invariants are physics, not rules."
+
+Phase 32 formalizes 5 product invariants as enforced architecture, not documentation. The system makes wrong paths hard, not just discouraged.
+
+### The 5 Invariants
+
+| ID | Invariant | Meaning |
+|----|-----------|---------|
+| **I1** | SuperMode = Sole UI Contract | Users see 5 modes, never 13 intents |
+| **I2** | Slack = UI | Handlers read-only, mutations via graph dispatch |
+| **I3** | Commit Log = Append-Only | Event source, canonical messages rebuildable |
+| **I4** | MANAGED_SECTION = Law | CI enforcement, no bypass without override |
+| **I5** | Draft Lifecycle = 3 States | Users see Drafting/Ready/Published only |
+
+### 4-Layer Protection Model
+
+```
+Layer 0: Types make wrong path hard
+         - InvariantViolation exception hierarchy
+         - PreflightToken, OverrideToken
+
+Layer 1: Boundaries make right path easy
+         - Gateway pattern (single door, single key)
+         - JiraGateway, SlackGateway, RegistryService
+
+Layer 2: Tokens prove checks passed
+         - Cannot construct token without passing check
+         - Write APIs require token to proceed
+
+Layer 3: CI makes wrong path unshippable
+         - Forbidden import tests
+         - Property-based invariant tests
+
+Layer 4: Runtime makes failures survivable
+         - Structured logs with invariant names
+         - Metrics for violations
+```
+
+### InvariantViolation Hierarchy
+
+```python
+class InvariantViolation(Exception):
+    """Base class for invariant violations."""
+    invariant_name: str = "UNKNOWN"
+
+class ManagedSectionViolation(InvariantViolation):
+    invariant_name = "MANAGED_SECTION_ONLY"
+
+class PreflightRequired(InvariantViolation):
+    invariant_name = "PREFLIGHT_REQUIRED"
+
+class SlackWriteFromHandler(InvariantViolation):
+    invariant_name = "SLACK_IS_UI"
+
+class CommitLogMutation(InvariantViolation):
+    invariant_name = "COMMIT_LOG_APPEND_ONLY"
+```
+
+### Token Pattern
+
+```python
+@dataclass(frozen=True)
+class PreflightToken:
+    """Proof that preflight check passed."""
+    id: str
+    jira_key: str
+    conflict_type: str
+    expires_at: datetime
+
+    def is_valid(self) -> bool:
+        return datetime.utcnow() < self.expires_at
+
+# Cannot construct without passing check
+# Write APIs require this token to proceed
+```
+
+### Escape Hatch Protocol
+
+Override = emergency bypass with audit trail:
+
+```python
+@dataclass(frozen=True)
+class OverrideToken:
+    granted_by: str      # admin/owner only
+    reason: str          # mandatory text
+    scope: str           # operation_type or "all"
+    expires_at: datetime # 10 min TTL
+
+# Bypass goes THROUGH the system, not around it
+# Must feel like pulling a fire alarm
+```
+
+On override use:
+1. Post to channel (not just log)
+2. Audit log entry with actor + reason
+3. Suggest `/maro sync` to reconcile
+
+### UserDraftState (I5)
+
+Users see 3 states, internal complexity hidden:
+
+| User State | Internal States |
+|------------|-----------------|
+| **Drafting** | EMPTY, SINGLE_ITEM, PLAN, PLAN_REFINED |
+| **Ready** | APPROVED |
+| **Published** | COMMITTED |
+
+### Architecture Flow
+
+```
+User Input
+    |
+Intent Router -> SuperMode (user) + Intent (routing)
+    |
+Graph Dispatch (mutations go through graph, not handlers)
+    |
+Truth Stores (DecisionStore, WorkItemStore, DraftStore)
+    |
+Commit Log (append-only event source)
+    |
+Jira Projection (via preflight token)
+    |
+Slack Presentation (best effort, non-blocking)
+```
+
+**Key insight:** Slack handlers are read-only for truth stores. All mutations dispatch through graph.
 
 ---
 
