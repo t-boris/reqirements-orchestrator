@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 32-product-invariants
-Plan: 5 of 6 in current phase
+Plan: 6 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 32-05-PLAN.md (Managed Section CI Gate)
+Last activity: 2026-01-24 — Completed 32-04-PLAN.md (Slack Layer Separation)
 
-Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 5/6 plans
+Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 5/6 plans (32-04 complete)
 
 ## Milestones Summary
 
@@ -233,6 +233,12 @@ Phase 32.3 decisions:
 - get_user_state() maps 4 internal states to DRAFTING, APPROVED to READY, COMMITTED to PUBLISHED
 - INVARIANT I5: Users see 3 states only (internal complexity hidden)
 
+Phase 32.4 decisions:
+- INVARIANT I2 documented at module docstring level in handlers
+- Truth-first ordering: Database (TRUTH) -> Jira (PROJECTION) -> Slack (PRESENTATION)
+- All Slack message updates wrapped in try/except (best-effort presentation)
+- Structured step comments to make invariant visible in code
+
 Phase 32.5 decisions:
 - Duplicated managed section parsing in tests to avoid circular imports
 - Gateway allowlist: client.py, managed_sections.py, sync_service.py
@@ -254,7 +260,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 32-05-PLAN.md (Managed Section CI Gate)
+Stopped at: Completed 32-04-PLAN.md (Slack Layer Separation)
 Resume file: None
 Next action: Execute 32-06-PLAN.md
 
