@@ -8,12 +8,27 @@ Generates a brief, helpful response WITHOUT:
 - Running validators
 
 This node ONLY generates a response and stops.
+
+Phase 34: Attachment context injection for RAG-enhanced discussions.
 """
 import logging
+from typing import TYPE_CHECKING
 
 from src.schemas.state import AgentState
+from src.prompts.context import build_rag_system_prompt, format_attachment_summary
+
+if TYPE_CHECKING:
+    from src.documents.retriever import AttachmentContext
 
 logger = logging.getLogger(__name__)
+
+
+DISCUSSION_BASE_PROMPT = '''You are MARO, a helpful assistant that turns discussions into Jira tickets and provides architectural/security reviews.
+
+Respond in 1-2 sentences max. Be helpful but brief.
+If they're asking what you can do, mention: creating Jira tickets, reviewing ideas as PM/Architect/Security.
+Don't offer to do anything specific unless asked.
+End with a natural conversation prompt if appropriate.'''
 
 
 DISCUSSION_PROMPT = '''You are MARO, a helpful assistant that turns discussions into Jira tickets and provides architectural/security reviews.
@@ -56,7 +71,22 @@ async def discussion_node(state: AgentState) -> dict:
     else:
         try:
             llm = get_llm()
-            prompt = DISCUSSION_PROMPT.format(message=latest_human_message)
+
+            # Phase 34: Build prompt with attachment context
+            attachment_context: "AttachmentContext | None" = state.get("attachment_context")
+            system_prompt = build_rag_system_prompt(
+                base_prompt=DISCUSSION_BASE_PROMPT,
+                attachment_context=attachment_context,
+                mode="default",
+            )
+
+            # Log what documents are being used
+            if attachment_context:
+                summary = format_attachment_summary(attachment_context)
+                if summary:
+                    logger.info(f"Discussion node {summary}")
+
+            prompt = f"{system_prompt}\n\nUser said: {latest_human_message}\n\nRespond:"
             response_text = await llm.chat(prompt)
         except Exception as e:
             logger.warning(f"LLM call failed in discussion node: {e}")

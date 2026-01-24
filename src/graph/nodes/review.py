@@ -7,15 +7,45 @@ The review is conversational and thorough - a discussion, not a ticket.
 
 Phase 25: Reviews are now stored as persistent ReviewArtifacts linked to
 commits/workitems.
+
+Phase 34: Attachment context injection for RAG-enhanced reviews.
 """
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.schemas.state import AgentState
 from src.personas import get_persona, get_default_persona, PersonaName
 from src.db.models import ArtifactKind
+from src.prompts.context import build_rag_system_prompt, format_attachment_summary
+
+if TYPE_CHECKING:
+    from src.documents.retriever import AttachmentContext
 
 logger = logging.getLogger(__name__)
+
+
+REVIEW_BASE_PROMPT = '''You are {persona_name}, a senior {persona_role}.
+
+{persona_overlay}
+
+Provide analysis covering:
+1. *Understanding* - What you understand about the request
+2. *Components & Flows* - Key technical elements involved
+3. *Risks & Concerns* - What could go wrong
+4. *Alternatives* - Other approaches to consider
+5. *Open Questions* - What needs clarification
+
+Be conversational and thorough. This is a discussion, not a ticket.
+Think out loud like a senior engineer would.
+
+IMPORTANT: Format for Slack (not Markdown):
+- Bold: *text* (single asterisks)
+- Italic: _text_ (underscores)
+- Code: `code`
+- Lists: Use bullet character • or dash -
+- NO ### headers (use *Bold Title* instead)
+- NO **double asterisks**
+'''
 
 
 REVIEW_PROMPT = '''You are {persona_name}, a senior {persona_role}.
@@ -322,14 +352,43 @@ async def review_node(state: AgentState) -> dict[str, Any]:
     # Build context string
     context = _build_context_string(state)
 
-    # Build prompt
-    prompt = REVIEW_PROMPT.format(
+    # Phase 34: Get attachment context and determine mode based on super_mode
+    attachment_context: "AttachmentContext | None" = state.get("attachment_context")
+    super_mode = state.get("super_mode")
+
+    # DECIDE mode uses "cited" formatting for source references
+    prompt_mode = "cited" if super_mode and super_mode.value == "decide" else "default"
+
+    # Build base prompt with persona (used for RAG injection)
+    base_prompt = REVIEW_BASE_PROMPT.format(
         persona_name=persona_name,
         persona_role=persona_role,
         persona_overlay=persona_overlay,
-        context=context,
-        message=latest_human_message,
     )
+
+    # Build system prompt with document context
+    system_prompt = build_rag_system_prompt(
+        base_prompt=base_prompt,
+        attachment_context=attachment_context,
+        mode=prompt_mode,
+    )
+
+    # Log what documents are being used
+    if attachment_context:
+        summary = format_attachment_summary(attachment_context)
+        if summary:
+            logger.info(f"Review node {summary}")
+
+    # Build full prompt with context and message
+    prompt = f"""{system_prompt}
+
+Analyze this request thoughtfully, as if thinking out loud:
+
+{context}
+
+User request: {latest_human_message}
+
+Provide your analysis:"""
 
     # Call LLM with higher max_tokens for comprehensive reviews
     llm = get_llm(max_tokens=8192)
