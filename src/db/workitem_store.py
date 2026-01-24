@@ -79,6 +79,13 @@ class WorkItemStore:
                 ADD COLUMN IF NOT EXISTS last_updated_by TEXT
             """)
 
+            # Migration: Add canonical message tracking (Phase 33)
+            await cur.execute("""
+                ALTER TABLE work_items
+                ADD COLUMN IF NOT EXISTS canonical_message_ts TEXT,
+                ADD COLUMN IF NOT EXISTS canonical_channel_id TEXT
+            """)
+
             # Index on channel_id for list queries
             await cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_work_items_channel_id
@@ -97,6 +104,13 @@ class WorkItemStore:
                 CREATE INDEX IF NOT EXISTS idx_work_items_parent_id
                 ON work_items(parent_id)
                 WHERE parent_id IS NOT NULL
+            """)
+
+            # Index on canonical message for anchor lookups (Phase 33)
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_work_items_canonical
+                ON work_items(canonical_channel_id, canonical_message_ts)
+                WHERE canonical_message_ts IS NOT NULL
             """)
 
             await self._conn.commit()
@@ -144,7 +158,8 @@ class WorkItemStore:
                 RETURNING id, channel_id, item_type, status, summary, description,
                           facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                           source_thread_ts, created_by, created_at, updated_at,
-                          owners, watchers, last_updated_by, readiness_score
+                          owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 """,
                 (
                     item_id,
@@ -183,7 +198,8 @@ class WorkItemStore:
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                        source_thread_ts, created_by, created_at, updated_at,
-                       owners, watchers, last_updated_by, readiness_score
+                       owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 FROM work_items
                 WHERE id = %s
                 """,
@@ -211,7 +227,8 @@ class WorkItemStore:
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                        source_thread_ts, created_by, created_at, updated_at,
-                       owners, watchers, last_updated_by, readiness_score
+                       owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 FROM work_items
                 WHERE jira_key = %s
                 """,
@@ -247,7 +264,8 @@ class WorkItemStore:
             SELECT id, channel_id, item_type, status, summary, description,
                    facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                    source_thread_ts, created_by, created_at, updated_at,
-                   owners, watchers, last_updated_by, readiness_score
+                   owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
             FROM work_items
             WHERE channel_id = %s
         """
@@ -361,7 +379,8 @@ class WorkItemStore:
             RETURNING id, channel_id, item_type, status, summary, description,
                       facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                       source_thread_ts, created_by, created_at, updated_at,
-                      owners, watchers, last_updated_by, readiness_score
+                      owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
         """
 
         async with self._conn.cursor() as cur:
@@ -408,7 +427,8 @@ class WorkItemStore:
                 SELECT id, channel_id, item_type, status, summary, description,
                        facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                        source_thread_ts, created_by, created_at, updated_at,
-                       owners, watchers, last_updated_by, readiness_score
+                       owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 FROM work_items
                 WHERE parent_id = %s
                 ORDER BY created_at DESC
@@ -480,14 +500,15 @@ class WorkItemStore:
 
         Args:
             row: Tuple from database query.
-                Expected order (19 columns):
+                Expected order (21 columns):
                 0: id, 1: channel_id, 2: item_type, 3: status,
                 4: summary, 5: description, 6: facts,
                 7: jira_key, 8: jira_sync_at, 9: jira_fingerprint,
                 10: parent_id, 11: source_thread_ts, 12: created_by,
                 13: created_at, 14: updated_at,
                 15: owners, 16: watchers, 17: last_updated_by,
-                18: readiness_score
+                18: readiness_score,
+                19: canonical_message_ts, 20: canonical_channel_id
 
         Returns:
             WorkItem model instance.
@@ -520,6 +541,8 @@ class WorkItemStore:
             watchers=watchers,
             last_updated_by=last_updated_by,
             readiness_score=row[18],
+            canonical_message_ts=row[19] if row[19] else None,
+            canonical_channel_id=row[20] if row[20] else None,
         )
 
     # -------------------------------------------------------------------------
@@ -584,7 +607,8 @@ class WorkItemStore:
             RETURNING id, channel_id, item_type, status, summary, description,
                       facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                       source_thread_ts, created_by, created_at, updated_at,
-                      owners, watchers, last_updated_by, readiness_score
+                      owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
         """
 
         async with self._conn.cursor() as cur:
@@ -626,7 +650,8 @@ class WorkItemStore:
                 RETURNING id, channel_id, item_type, status, summary, description,
                           facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                           source_thread_ts, created_by, created_at, updated_at,
-                          owners, watchers, last_updated_by, readiness_score
+                          owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 """,
                 (user_id, user_id, now, item_id),
             )
@@ -667,7 +692,8 @@ class WorkItemStore:
                 RETURNING id, channel_id, item_type, status, summary, description,
                           facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                           source_thread_ts, created_by, created_at, updated_at,
-                          owners, watchers, last_updated_by, readiness_score
+                          owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
                 """,
                 (user_id, user_id, now, item_id),
             )
@@ -706,7 +732,8 @@ class WorkItemStore:
             SELECT id, channel_id, item_type, status, summary, description,
                    facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
                    source_thread_ts, created_by, created_at, updated_at,
-                   owners, watchers, last_updated_by, readiness_score
+                   owners, watchers, last_updated_by, readiness_score,
+                          canonical_message_ts, canonical_channel_id
             FROM work_items
             WHERE {where_clause}
             ORDER BY updated_at DESC

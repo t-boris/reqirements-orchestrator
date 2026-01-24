@@ -362,6 +362,14 @@ class WorkItem(BaseModel):
         default=0.0, description="0.0-1.0 score for draft completeness"
     )
 
+    # Anchor message tracking (Phase 33)
+    canonical_message_ts: str | None = Field(
+        default=None, description="The anchor message timestamp in Slack"
+    )
+    canonical_channel_id: str | None = Field(
+        default=None, description="Channel where anchor posted"
+    )
+
 
 class ArtifactKind(str, Enum):
     """Type of review artifact."""
