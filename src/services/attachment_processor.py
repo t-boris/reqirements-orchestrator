@@ -18,8 +18,10 @@ from typing import Optional
 
 from slack_sdk.web.async_client import AsyncWebClient
 
+from src.db.attachment_chunk_store import AttachmentChunkStore
 from src.db.attachment_store import AttachmentStore
 from src.db.connection import get_connection
+from src.documents.chunker import chunk_document
 from src.documents.pipeline import extract_attachment, generate_summary
 from src.schemas.attachment import Attachment, AttachmentStatus
 
@@ -128,6 +130,17 @@ class AttachmentProcessor:
                 summary=summary,
                 token_count=token_count,
             )
+
+        # Chunk the document for retrieval
+        if extracted_text and len(extracted_text) > 500:
+            chunks = chunk_document(extracted_text)
+            async with get_connection() as conn:
+                chunk_store = AttachmentChunkStore(conn)
+                num_chunks = await chunk_store.store_chunks(
+                    attachment.id,
+                    chunks,
+                )
+            logger.info(f"Stored {num_chunks} chunks for {attachment.filename}")
 
         if success:
             logger.info(f"Attachment ready: {attachment.filename}")
