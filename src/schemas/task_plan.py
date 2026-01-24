@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any, Optional
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.intent import Intent, SuperMode
 
@@ -60,7 +60,7 @@ class Task(BaseModel):
     intent: Intent   # Internal routing intent
     title: str       # Human-readable title
     status: TaskStatus = TaskStatus.PENDING
-    safety_level: SafetyLevel
+    safety_level: Optional[SafetyLevel] = None  # Auto-set by validator if not provided
     side_effects: list[SideEffect] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)  # task_ids
     target: Optional[str] = None  # anchor: channel|thread|decision_id|jira_key
@@ -70,6 +70,31 @@ class Task(BaseModel):
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+    @model_validator(mode='after')
+    def set_safety_level(self) -> 'Task':
+        """Auto-set safety level based on mode and side effects."""
+        if self.safety_level is None:
+            from src.graph.safety import classify_task_safety
+            # Use object.__setattr__ to bypass frozen model restriction
+            object.__setattr__(self, 'safety_level', classify_task_safety(self))
+        return self
+
+    def can_auto_execute(self) -> bool:
+        """Check if this task can run without user confirmation.
+
+        Returns:
+            True if safety_level is AUTO_EXECUTE, False otherwise.
+        """
+        return self.safety_level == SafetyLevel.AUTO_EXECUTE
+
+    def needs_confirmation(self) -> bool:
+        """Check if this task requires user approval.
+
+        Returns:
+            True if safety_level is REQUIRES_CONFIRMATION, False otherwise.
+        """
+        return self.safety_level == SafetyLevel.REQUIRES_CONFIRMATION
 
 
 class TaskPlanStatus(str, Enum):
@@ -220,6 +245,30 @@ class TaskPlan(BaseModel):
 
         # Blocked on dependencies
         return TaskPlanStatus.BLOCKED
+
+    def get_safe_tasks(self) -> list[Task]:
+        """Get tasks that can auto-execute.
+
+        Returns:
+            List of tasks with safety_level AUTO_EXECUTE.
+        """
+        return [t for t in self.tasks if t.can_auto_execute()]
+
+    def get_confirmation_tasks(self) -> list[Task]:
+        """Get tasks requiring user confirmation.
+
+        Returns:
+            List of tasks with safety_level REQUIRES_CONFIRMATION.
+        """
+        return [t for t in self.tasks if t.needs_confirmation()]
+
+    def has_dangerous_tasks(self) -> bool:
+        """Check if any tasks need confirmation.
+
+        Returns:
+            True if any task has safety_level REQUIRES_CONFIRMATION.
+        """
+        return any(t.needs_confirmation() for t in self.tasks)
 
 
 # =============================================================================
