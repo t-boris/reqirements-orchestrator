@@ -38,7 +38,14 @@ def handle_decision_approve(ack, body, client: WebClient):
 
 
 async def _handle_decision_approve_async(body, client: WebClient):
-    """Async handler for decision approval."""
+    """Async handler for decision approval.
+
+    CRITICAL ORDER:
+    1. Database state update (truth)
+    2. Jira sync (projection)
+    3. Slack message (presentation - best effort)
+    Slack failure must NOT affect 1 or 2
+    """
     from src.db.connection import get_connection
     from src.db.decision_store import DecisionStore
     from src.db.decision_link_store import DecisionLinkStore
@@ -75,6 +82,8 @@ async def _handle_decision_approve_async(body, client: WebClient):
 
     settings = get_settings()
     jira_service = JiraService(settings)
+    linked_tickets: list[str] = []
+    sync_result = None
 
     try:
         async with get_connection() as conn:
@@ -100,23 +109,18 @@ async def _handle_decision_approve_async(body, client: WebClient):
                 )
                 return
 
-            # Approve decision
+            # =================================================================
+            # STEP 1: Database state update (TRUTH) - MUST succeed first
+            # =================================================================
             approved_decision = await store.approve(decision_id, user_id)
 
-            # Get linked tickets for UI
+            # Get linked tickets for UI and sync
             links = await link_store.get_links_for_decision(decision_id)
             linked_tickets = [link.jira_key for link in links]
 
-            # Update message with approved card
-            approved_blocks = build_approved_card(approved_decision, linked_tickets)
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                blocks=approved_blocks,
-                text=f"Decision DEC-{decision_id[:8]} approved",
-            )
-
-            # Sync to Jira if there are linked tickets
+            # =================================================================
+            # STEP 2: Jira sync (PROJECTION) - proceeds regardless of Slack
+            # =================================================================
             if links:
                 sync_service = DecisionSyncService(
                     jira_service=jira_service,
@@ -125,7 +129,31 @@ async def _handle_decision_approve_async(body, client: WebClient):
                 )
                 sync_result = await sync_service.sync_decision(decision_id)
 
-                # Report sync result
+        # =====================================================================
+        # STEP 3: Slack message (PRESENTATION) - best effort, doesn't block
+        # =====================================================================
+        try:
+            approved_blocks = build_approved_card(approved_decision, linked_tickets)
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                blocks=approved_blocks,
+                text=f"Decision DEC-{decision_id[:8]} approved",
+            )
+        except Exception as slack_err:
+            # Slack message update failed, but decision is approved and synced
+            logger.warning(
+                "Slack message update failed, but decision is approved and synced",
+                extra={
+                    "decision_id": decision_id,
+                    "version": approved_decision.version,
+                    "error": str(slack_err),
+                }
+            )
+
+        # Report sync result in thread (also best effort)
+        if sync_result:
+            try:
                 if sync_result.all_synced:
                     client.chat_postMessage(
                         channel=channel_id,
@@ -148,6 +176,14 @@ async def _handle_decision_approve_async(body, client: WebClient):
                         thread_ts=message_ts,
                         text=f"Synced to {sync_result.synced_count} ticket(s). {sync_result.failed_count} failed.",
                     )
+            except Exception as slack_thread_err:
+                logger.warning(
+                    "Failed to post sync result to thread",
+                    extra={
+                        "decision_id": decision_id,
+                        "error": str(slack_thread_err),
+                    }
+                )
 
         logger.info(
             "Decision approved",
