@@ -234,6 +234,37 @@ User: "Do you think only one epic is enough?"
 
 **Full requirements:** `.planning/phases/30-decision-as-entity/REQUIREMENTS.md`
 
+### Phase 31: Architecture Hardening
+
+**Status:** IN PROGRESS (1/4 plans complete)
+
+**Objective:** Consolidate intents into super-modes, elevate safety invariants to hard rules, and simplify over-specified systems.
+
+**Mantra:** "Feel like a product, not an OS kernel."
+
+**Key Changes:**
+
+| Area | Current | Target |
+|------|---------|--------|
+| **Intents** | 13 fine-grained intents | 5 super-modes (BUILD, OPERATE, DECIDE, THINK, CHAT) |
+| **Classifier** | Heavy "parse universe" prompt | Two-stage: lightweight classify + conditional extract |
+| **Decision projection** | Design note | Hard invariant: MANAGED_SECTION_ONLY |
+| **Canonical messages** | Implicit | Explicit: idempotent, version-checked, failure-safe |
+| **Commit log vs state** | Blurred | Clear: log=append-only, messages=mutable |
+| **Sync semantics** | Implied | Explicit: preflight=blocking, sync=informational |
+
+**Requirements:**
+- R1: Intent super-modes (5 conceptual groups)
+- R2: Two-stage intent classification
+- R3: Decision projection invariants (hard rules)
+- R4: Slack as UI, not authority
+- R5: Canonical message idempotency
+- R6: Commit log vs state separation
+- R7: Simplified draft lifecycle (evaluate)
+- R8: Sync semantics clarity
+
+**Full requirements:** `.planning/phases/31-architecture-hardening/REQUIREMENTS.md`
+
 ## Completed Milestones
 
 <details>
@@ -340,3 +371,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
+| 31. Architecture Hardening | v1.2 | 2/4 | In Progress | - |

@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (PLANNED)
+**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (IN PROGRESS)
 
 ## Current Position
 
 Phase: 31-architecture-hardening
-Plan: 0 of 4 in current phase (NOT STARTED)
-Status: Phase planned, ready for execution
-Last activity: 2026-01-23 — Created 4 plans for Phase 31
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-24 — Completed 31-02-PLAN.md
 
-Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 0/4 plans | Wave 1: 3 parallel, Wave 2: 1
+Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 1/4 plans | Wave 1: 3 parallel, Wave 2: 1
 
 ## Milestones Summary
 
@@ -199,6 +199,12 @@ Phase 30.8 decisions:
 - register_decision_handlers pattern for clean handler registration (like register_preflight_handlers)
 - Deprecate (not delete) for discard action to maintain audit trail
 
+Phase 31.2 decisions:
+- ManagedSectionError for invariant violations (reject rather than recover)
+- validate_section_boundaries() rejects nested markers and missing end markers
+- verify_user_content_preserved() helper for test assertions
+- INVARIANT docstring pattern for critical constraints
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -213,10 +219,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 30-08-PLAN.md (Decision Jira Projection)
+Last session: 2026-01-24
+Stopped at: Completed 31-02-PLAN.md (Enforce MANAGED_SECTION_ONLY invariant)
 Resume file: None
-Next action: Phase 30 COMPLETE - plan next phase or finalize v1.2
+Next action: Execute remaining Phase 31 plans (31-01, 31-03, 31-04)
 
 ## What's Next
 
