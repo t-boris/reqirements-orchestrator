@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 31-architecture-hardening
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 31-02-PLAN.md
+Last activity: 2026-01-24 — Completed 31-01-PLAN.md (SuperMode enum)
 
-Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 1/4 plans | Wave 1: 3 parallel, Wave 2: 1
+Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 2/4 plans | Wave 1: 3 parallel, Wave 2: 1
 
 ## Milestones Summary
 
@@ -199,6 +199,12 @@ Phase 30.8 decisions:
 - register_decision_handlers pattern for clean handler registration (like register_preflight_handlers)
 - Deprecate (not delete) for discard action to maintain audit trail
 
+Phase 31.1 decisions:
+- SuperMode enum with 5 values: BUILD, OPERATE, DECIDE, THINK, CHAT
+- OPS intent maps to CHAT (meta-level operations)
+- super_mode populated at classification time via get_super_mode()
+- 13 intents exist for routing, 5 modes exist for user communication
+
 Phase 31.2 decisions:
 - ManagedSectionError for invariant violations (reject rather than recover)
 - validate_section_boundaries() rejects nested markers and missing end markers
@@ -220,9 +226,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 31-02-PLAN.md (Enforce MANAGED_SECTION_ONLY invariant)
+Stopped at: Completed 31-01-PLAN.md (SuperMode enum for user-facing simplicity)
 Resume file: None
-Next action: Execute remaining Phase 31 plans (31-01, 31-03, 31-04)
+Next action: Execute remaining Phase 31 plans (31-03, 31-04)
 
 ## What's Next
 
