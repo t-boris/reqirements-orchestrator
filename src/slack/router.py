@@ -26,6 +26,7 @@ from src.slack.handlers import (
     handle_link_duplicate,
     handle_add_to_duplicate,
     handle_create_anyway,
+    handle_update_existing,
     handle_show_more_duplicates,
     handle_modal_link_duplicate,
     handle_modal_create_anyway,
@@ -148,6 +149,7 @@ def register_handlers(app: App) -> None:
     app.action("link_duplicate")(handle_link_duplicate)
     app.action("add_to_duplicate")(handle_add_to_duplicate)
     app.action("create_anyway")(handle_create_anyway)
+    app.action("update_existing")(handle_update_existing)
     app.action("show_more_duplicates")(handle_show_more_duplicates)
     # Modal link buttons - pattern matches modal_link_duplicate_PROJ-123
     app.action(re.compile(r"^modal_link_duplicate_.*"))(handle_modal_link_duplicate)
