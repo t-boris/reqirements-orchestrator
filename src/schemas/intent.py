@@ -34,6 +34,7 @@ class Intent(str, Enum):
     AMBIGUOUS = "ambiguous"              # Unclear intent
     CHANGE_REQUEST = "change_request"    # Diff-based updates (Phase 25.3)
     OPS = "ops"                          # Operational mode (debug/explain)
+    DECISION = "decision"                # User stating a decision to record (Phase 30)
 
     # Deprecated aliases
     TICKET = "ticket"  # @deprecated: Use WORKITEM_CREATE
@@ -80,3 +81,13 @@ class IntentResult(BaseModel):
         "change_scope",        # Switch between SINGLE, EPICS_ONLY, FULL_PLAN
         "remove_items",        # Delete specific items
     ]] = None
+    # For DECISION intent (Phase 30) - decision type hints
+    decision_type_hint: Optional[Literal[
+        "arch",        # Architecture decisions
+        "scope",       # Scope/boundary decisions
+        "constraint",  # Technical constraints
+        "priority",    # Priority/ordering decisions
+        "structure",   # Epic/Story decomposition
+        "process",     # Process/workflow decisions
+    ]] = None
+    decision_title_hint: Optional[str] = None  # Extracted title from decision statement
