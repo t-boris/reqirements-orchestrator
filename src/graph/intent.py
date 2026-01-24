@@ -11,11 +11,14 @@ Classifies user messages into pure user intents:
 - META: Questions about the bot itself
 - AMBIGUOUS: Intent unclear - triggers scope gate for user to decide
 - OPS: Operational mode (debug failures or explain decisions)
+- DECISION: User stating a decision to record (Phase 30)
 
-ALL classification is done by LLM with full conversation context.
-No pattern matching - LLM makes all decisions based on complete context.
+Pattern matching used for DECISION intent detection.
+LLM classification as fallback for all intents.
 """
 import logging
+import re
+from typing import Optional
 
 from src.schemas.intent import Intent, IntentResult, OpsSubtype
 
@@ -23,6 +26,102 @@ logger = logging.getLogger(__name__)
 
 # Re-export for backward compatibility
 IntentType = Intent  # Alias for legacy code
+
+
+# =============================================================================
+# Decision statement patterns (Phase 30)
+# Pattern-first detection for DECISION intent.
+# LLM fallback can still classify as DECISION if patterns miss.
+# =============================================================================
+
+DECISION_PATTERNS = [
+    # "We decided to use PostgreSQL"
+    (r"(?:we|I)\s+decided\s+(?:to\s+)?(.+)", "decided"),
+    # "The decision is to..."
+    (r"(?:the|our)\s+decision\s+is\s+(.+)", "decision_is"),
+    # "Approved: use Redis"
+    (r"approved[:.]?\s+(.+)", "approved"),
+    # "Let's go with option A"
+    (r"(?:let'?s|we(?:'ll)?)\s+go\s+with\s+(.+)", "go_with"),
+    # "The architecture will use..."
+    (r"(?:the|our)\s+architecture\s+will\s+(?:be|use)\s+(.+)", "arch_will"),
+    # "Agreed: ..."
+    (r"agreed[:.]?\s+(.+)", "agreed"),
+    # "Confirmed: ..."
+    (r"confirmed[:.]?\s+(.+)", "confirmed"),
+    # "Final call: ..."
+    (r"final\s+call[:.]?\s+(.+)", "final_call"),
+]
+
+# Decision type hints based on keywords
+# Maps from hint type to keywords that indicate it
+DECISION_TYPE_KEYWORDS: dict[str, list[str]] = {
+    "arch": [
+        "architecture", "tech stack", "framework", "library", "database",
+        "api design", "microservice", "monolith", "stack", "technology",
+        "infrastructure", "platform", "tool", "service",
+    ],
+    "scope": [
+        "scope", "boundary", "include", "exclude", "out of scope", "in scope",
+        "mvp", "phase 1", "first version", "later", "future",
+    ],
+    "constraint": [
+        "constraint", "limitation", "must not", "cannot", "required to",
+        "must have", "non-negotiable", "hard requirement", "compliance",
+    ],
+    "priority": [
+        "priority", "p0", "p1", "p2", "first", "before", "after", "order",
+        "blocker", "critical", "urgent", "important",
+    ],
+    "structure": [
+        "epic", "story", "breakdown", "split", "decompose", "structure",
+        "parent", "child", "hierarchy",
+    ],
+    "process": [
+        "process", "workflow", "procedure", "how we", "when we",
+        "review process", "approval", "deploy", "release",
+    ],
+}
+
+
+def _match_decision_patterns(message: str) -> tuple[bool, Optional[str], Optional[str]]:
+    """Match message against decision patterns.
+
+    Returns:
+        Tuple of (is_decision, title_hint, pattern_name)
+        - is_decision: True if message matches a decision pattern
+        - title_hint: Extracted title from pattern group
+        - pattern_name: Name of the matched pattern (for logging)
+    """
+    message_lower = message.lower().strip()
+
+    for pattern, pattern_name in DECISION_PATTERNS:
+        match = re.search(pattern, message_lower, re.IGNORECASE)
+        if match:
+            # Extract the captured group as title hint
+            title_hint = match.group(1).strip() if match.lastindex else None
+            # Capitalize first letter for nicer display
+            if title_hint:
+                title_hint = title_hint[0].upper() + title_hint[1:] if len(title_hint) > 1 else title_hint.upper()
+            return True, title_hint, pattern_name
+
+    return False, None, None
+
+
+def _detect_decision_type_hint(message: str) -> Optional[str]:
+    """Detect decision type from keywords in message.
+
+    Returns the decision type hint (arch, scope, etc.) if keywords match,
+    None otherwise.
+    """
+    message_lower = message.lower()
+
+    for type_hint, keywords in DECISION_TYPE_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in message_lower:
+                return type_hint
+
+    return None
 
 
 async def _llm_classify(
@@ -220,6 +319,24 @@ Classify the user's intent into ONE category:
 - META: Questions about the bot itself
   Examples: "what can you do?", "how do you work?"
 
+- DECISION: User is STATING a decision that should be recorded (Phase 30)
+  Key signals - DECLARATIVE statements (not questions):
+  - "We decided to use PostgreSQL"
+  - "The decision is to go with microservices"
+  - "Approved: Redis for caching"
+  - "Let's go with option A"
+  - "The architecture will use GraphQL"
+  - "Agreed: no external dependencies"
+  - "Confirmed: deploy to AWS"
+  Examples:
+  - "We decided to use PostgreSQL for the database" -> DECISION, decision_type_hint=arch
+  - "The decision is to include auth in MVP scope" -> DECISION, decision_type_hint=scope
+  - "Approved: no third-party analytics" -> DECISION, decision_type_hint=constraint
+  NOT DECISION:
+  - "Should we use PostgreSQL?" -> REVIEW (question, not statement)
+  - "What do you think about PostgreSQL?" -> REVIEW (asking for opinion)
+  - "Let's discuss the database options" -> REVIEW (discussion, not decision)
+
 - AMBIGUOUS: ONLY use when the message is truly unclear AND could equally be ticket OR review
   This should be RARE. Most requests are clearly REVIEW (discussion/help) or WORKITEM_CREATE (explicit creation).
 
@@ -248,7 +365,7 @@ IMPORTANT RULES:
 20. Simple "change priority" = JIRA_COMMAND, but "rename the work item" = CHANGE_REQUEST
 
 Respond in this exact format:
-INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|DRAFT_REFINE|DRAFT_TRANSFORM|TICKET|CHANGE_REQUEST|REVIEW|DISCUSSION|META|AMBIGUOUS>
+INTENT: <OPS|SYNC_REQUEST|JIRA_COMMAND|JIRA_SEARCH|TICKET_ACTION|WORKITEM_CREATE|DRAFT_REFINE|DRAFT_TRANSFORM|TICKET|CHANGE_REQUEST|DECISION|REVIEW|DISCUSSION|META|AMBIGUOUS>
 CONFIDENCE: <0.0-1.0>
 PERSONA: <pm|architect|security|none>
 TICKET_KEY: <extracted ticket key like SCRUM-123, or "none" if not applicable>
@@ -263,6 +380,8 @@ CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
 OPS_SUBTYPE: <debug|explain|none>
 CONTEXT_RELATION: <continue|refine|change|new_topic|none>
 TRANSFORM_OPERATION: <split_to_plan|add_items|merge_items|elevate_to_epic|decompose_to_stories|change_scope|remove_items|none>
+DECISION_TYPE_HINT: <arch|scope|constraint|priority|structure|process|none>
+DECISION_TITLE_HINT: <extracted decision title, or "none">
 REASON: <brief explanation>"""
 
     try:
@@ -284,6 +403,8 @@ REASON: <brief explanation>"""
         ops_subtype = None
         context_relation = None
         transform_operation = None
+        decision_type_hint = None
+        decision_title_hint = None
 
         for line in lines:
             line = line.strip()
@@ -292,7 +413,7 @@ REASON: <brief explanation>"""
                 valid_intents = [
                     "OPS", "TICKET", "WORKITEM_CREATE", "DRAFT_REFINE", "DRAFT_TRANSFORM",
                     "TICKET_ACTION", "JIRA_COMMAND", "JIRA_SEARCH", "SYNC_REQUEST",
-                    "CHANGE_REQUEST", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"
+                    "CHANGE_REQUEST", "DECISION", "REVIEW", "DISCUSSION", "META", "AMBIGUOUS"
                 ]
                 if intent_value in valid_intents:
                     intent_str = intent_value
@@ -353,6 +474,15 @@ REASON: <brief explanation>"""
                 ]
                 if op_value in valid_transform_ops:
                     transform_operation = op_value
+            elif line.upper().startswith("DECISION_TYPE_HINT:"):
+                type_value = line.split(":", 1)[1].strip().lower()
+                valid_types = ["arch", "scope", "constraint", "priority", "structure", "process"]
+                if type_value in valid_types:
+                    decision_type_hint = type_value
+            elif line.upper().startswith("DECISION_TITLE_HINT:"):
+                title_value = line.split(":", 1)[1].strip()
+                if title_value and title_value.lower() != "none":
+                    decision_title_hint = title_value
             elif line.upper().startswith("REASON:"):
                 reason = f"llm: {line.split(':', 1)[1].strip()}"
 
@@ -374,6 +504,8 @@ REASON: <brief explanation>"""
             ops_subtype=ops_subtype,
             context_relation=context_relation,
             transform_operation=transform_operation,
+            decision_type_hint=decision_type_hint,
+            decision_title_hint=decision_title_hint,
             reasons=[reason],
         )
 
@@ -391,7 +523,10 @@ async def classify_intent(
     conversation_context: dict | None = None,
     active_draft: dict | None = None,  # Phase 26
 ) -> IntentResult:
-    """Classify user message intent using LLM with full context.
+    """Classify user message intent using pattern matching + LLM.
+
+    Pattern matching is used first for DECISION intent detection.
+    LLM classification is used as fallback for all intents.
 
     Args:
         message: User's message text
@@ -401,6 +536,27 @@ async def classify_intent(
     Returns:
         IntentResult with intent type, confidence, and reasons
     """
+    # Phase 30: Pattern-first detection for DECISION intent
+    is_decision, title_hint, pattern_name = _match_decision_patterns(message)
+
+    if is_decision:
+        # Detect decision type from keywords
+        type_hint = _detect_decision_type_hint(message)
+
+        logger.info(
+            f"Decision detected by pattern matching: pattern={pattern_name}, "
+            f"type_hint={type_hint}, title_hint={title_hint[:50] if title_hint else None}"
+        )
+
+        return IntentResult(
+            intent=Intent.DECISION,
+            confidence=0.9,  # High confidence for pattern match
+            decision_type_hint=type_hint,
+            decision_title_hint=title_hint,
+            reasons=[f"pattern match: {pattern_name}"],
+        )
+
+    # LLM classification for all other intents
     result = await _llm_classify(message, conversation_context, active_draft)
     logger.info(
         f"Intent classified by LLM: {result.intent.value}, "
