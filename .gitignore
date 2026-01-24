@@ -53,3 +53,4 @@ logs/
 jira_*/
 
 .env.old
+.hypothesis/
