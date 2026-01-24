@@ -19,6 +19,14 @@ from src.schemas.question import (
     QuestionTask,
     QuestionType,
 )
+from src.schemas.review_state import (
+    Assumption,
+    Constraint,
+    OpenQuestion,
+    ProposedDecision,
+    ReviewState,
+    Risk,
+)
 from src.schemas.draft import (
     ConstraintStatus,
     DraftConstraint,
@@ -89,4 +97,11 @@ __all__ = [
     "QuestionStatus",
     "QuestionTask",
     "QuestionOption",
+    # ReviewState schemas (Phase 37)
+    "ReviewState",
+    "Assumption",
+    "Constraint",
+    "Risk",
+    "OpenQuestion",
+    "ProposedDecision",
 ]
