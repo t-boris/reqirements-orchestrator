@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 37 IN PROGRESS
+**Current focus:** v1.2 Developer Experience — Phase 37 COMPLETE
 
 ## Current Position
 
 Phase: 37-unified-question-engine
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-01-24 — Completed 37-04-PLAN.md
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-01-24 — Completed 37-05-PLAN.md
 
-Progress: ████████████████████ 4/5 plans
+Progress: █████████████████████████ 5/5 plans
 
 ## Milestones Summary
 
@@ -330,12 +330,17 @@ Phase 37-04 decisions:
 - ReviewState fields route to structured LLM extraction prompts
 - ReviewStateStore follows TaskPlanStore pattern (conn-based, not pool)
 
+Phase 37-05 decisions:
+- QuestionEngine wraps both providers with unified interface
+- Intent detection (_wants_questions_asked) happens BEFORE LLM call for determinism
+- FreeformProvider generates structured questions for review flow
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 37-04-PLAN.md
+Stopped at: Completed 37-05-PLAN.md (Phase 37 complete)
 Resume file: None
-Next action: Execute 37-05-PLAN.md
+Next action: Plan next phase or milestone review
 
 ## What's Next
 
@@ -503,6 +508,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 37 COMPLETE — Unified Question Engine (5/5 plans, QuestionEngine facade + review integration)
 - 2026-01-24: Phase 37 ADDED — Unified Question Engine (one mechanism, two providers: CatalogProvider for tickets, FreeformProvider for review)
 - 2026-01-24: Phase 36 COMPLETE — Question Engine: Conversation Driver (7/7 plans, 4 waves)
 - 2026-01-24: Phase 36 CONTEXT GATHERED — Question Engine vision documented (questions as tasks, active/passive mode, question budget, hybrid catalog/mapper)
