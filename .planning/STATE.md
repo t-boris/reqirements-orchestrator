@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 32-product-invariants
-Plan: 3 of 6 in current phase
+Plan: 5 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 32-03-PLAN.md (Draft Lifecycle 3-State)
+Last activity: 2026-01-24 — Completed 32-05-PLAN.md (Managed Section CI Gate)
 
-Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 3/6 plans
+Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 5/6 plans
 
 ## Milestones Summary
 
@@ -233,6 +233,12 @@ Phase 32.3 decisions:
 - get_user_state() maps 4 internal states to DRAFTING, APPROVED to READY, COMMITTED to PUBLISHED
 - INVARIANT I5: Users see 3 states only (internal complexity hidden)
 
+Phase 32.5 decisions:
+- Duplicated managed section parsing in tests to avoid circular imports
+- Gateway allowlist: client.py, managed_sections.py, sync_service.py
+- hypothesis>=6.92.0 for property-based testing in CI
+- AST-based import scanning for gateway enforcement
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -248,13 +254,13 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 32-03-PLAN.md (Draft Lifecycle 3-State)
+Stopped at: Completed 32-05-PLAN.md (Managed Section CI Gate)
 Resume file: None
-Next action: Execute 32-04-PLAN.md
+Next action: Execute 32-06-PLAN.md
 
 ## What's Next
 
-**Phase 32: Product Invariants** — IN PROGRESS (3/6 plans)
+**Phase 32: Product Invariants** — IN PROGRESS (5/6 plans)
 
 **Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
 
