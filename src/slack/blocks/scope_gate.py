@@ -1,6 +1,10 @@
 """Scope gate UI blocks for AMBIGUOUS intent.
 
 3-button scope gate with "Remember for this thread" option.
+
+INVARIANT I1: Display super_mode to users, not intent.
+User-facing text uses friendly labels like "Review" and "Create Ticket",
+not raw intent values. Debug mode can show intents (developer tool).
 """
 from typing import Optional
 
