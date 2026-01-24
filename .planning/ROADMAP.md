@@ -331,29 +331,61 @@ Jira = Projection
 
 ### Phase 34: File Attachment Processing
 
-**Status:** Not started
+**Status:** PLANNED (8 plans, 4 waves)
 
-**Objective:** Enable bot to read PDF, DOCX, Markdown attachments from Slack messages. Infrastructure exists in `src/documents/` but is not connected to message handling.
+**Objective:** Enable bot to read PDF, DOCX, Markdown attachments from Slack messages. Policy-based hybrid: deterministic rules + LLM for chunk retrieval.
 
-**Key Use Case:** User attaches requirements doc → bot reads it → creates WorkItems.
+**Mantra:** "Attachments are opt-in by default, pinned attachments become part of context, everything else is retrieval-based."
 
-**What Exists:**
-- `src/documents/extractor.py` — Extract text from PDF (pypdf), DOCX (python-docx), TXT, Markdown
-- `src/documents/slack.py` — `download_and_extract()` for Slack file downloads
+**Core Model:**
 
-**What's Missing:**
+1. **Attachment = First-Class Entity** (not just text in history)
+   - id, file_id, filename, mimetype, extracted_text, summary, status, pinned
 
-| Gap | Location |
-|-----|----------|
-| Detect files in message events | `handlers/misc.py` doesn't check `event["files"]` |
-| Include file content in context | `history.py` ignores file attachments |
-| FILE_ANALYSIS intent | `intent.py` has no document-related intent |
+2. **Two Usage Modes:**
+   - **Pinned** — User controls via button, auto-included in BUILD/THINK
+   - **On-Demand** — Retrieval-based, only when relevant + user references
 
-**Implementation:**
-1. Detect `files` array in Slack message events
-2. Download and extract text using existing `extractor.py`
-3. Include file content in conversation context for LLM
-4. Add FILE_ANALYSIS intent for "here's the spec, create tickets" scenarios
+3. **Intent-Scoped Rules:**
+
+   | Mode | Attachment Policy |
+   |------|-------------------|
+   | CHAT | Don't include. Offer: "I see an attachment, want me to use it?" |
+   | THINK | Pinned auto + top-K chunks from retrieval |
+   | BUILD | Pinned auto + structural fragments (requirements, AC) |
+   | OPERATE | Only logs, JSON, stacktraces — via retrieval |
+   | DECIDE | Pinned + cited chunks with source references |
+
+4. **Never "include whole file"** — only chunks (300-800 tokens), top 3-6 per retrieval
+
+5. **Transparency UI:** `📎 Used: spec.pdf (sections: Auth, Permissions)` + `[Show sources]` + `[Stop using]`
+
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 34-01, 34-02 | Foundation: Attachment schema/store, file event handling |
+| 2 | 34-03, 34-04 | Processing: Extraction pipeline, chunking + search index |
+| 3 | 34-05, 34-06 | Integration: Pin/unpin mechanics, intent-scoped rules |
+| 4 | 34-07, 34-08 | Polish: Transparency UI, retrieval context injection |
+
+**Plans:**
+
+- [ ] 34-01: Attachment Schema + AttachmentStore
+- [ ] 34-02: File Event Handler (file_shared, message files)
+- [ ] 34-03: Extraction Pipeline (download → extract → summarize)
+- [ ] 34-04: Chunking + Full-Text Search Index
+- [ ] 34-05: Pin/Unpin Mechanics + UI Buttons
+- [ ] 34-06: Intent-Scoped Inclusion Rules
+- [ ] 34-07: Transparency UI (Used, Show Sources, Stop Using)
+- [ ] 34-08: Retrieval Context Injection into Prompts
+
+**Existing Infrastructure:**
+- `src/documents/extractor.py` — PDF, DOCX, TXT, MD extraction (pypdf, python-docx)
+- `src/documents/slack.py` — `download_and_extract()` for Slack files
+
+**Full context:** `.planning/phases/34-file-attachment-processing/34-CONTEXT.md`
+**Research:** `.planning/phases/34-file-attachment-processing/34-RESEARCH.md`
 
 **Depends on:** Phase 33 (anchor messages for file-based WorkItems)
 
@@ -465,4 +497,5 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
-| 33. Anchor Message Architecture | v1.2 | 2/5 | In Progress | - |
+| 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
+| 34. File Attachment Processing | v1.2 | 0/8 | Planned | - |
