@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 2 of 8 in current phase
+Plan: 3 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 34-02-PLAN.md (File Event Handler)
+Last activity: 2026-01-23 — Completed 34-03-PLAN.md (Extraction Pipeline)
 
-Progress: ██░░░░░░░░ 25% (Phase 34: 2/8 plans complete)
+Progress: ███░░░░░░░ 38% (Phase 34: 3/8 plans complete)
 
 ## Milestones Summary
 
@@ -264,21 +264,21 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-24
-Stopped at: Completed 34-02-PLAN.md (File Event Handler)
+Last session: 2026-01-23
+Stopped at: Completed 34-03-PLAN.md (Extraction Pipeline)
 Resume file: None
-Next action: Execute 34-03-PLAN.md (Extraction Pipeline)
+Next action: Execute 34-04-PLAN.md (Chunking + Search Index)
 
 ## What's Next
 
-**Phase 34: File Attachment Processing** — IN PROGRESS (1/8 plans)
+**Phase 34: File Attachment Processing** — IN PROGRESS (3/8 plans)
 
 **Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
 
 **Progress:**
 - 34-01: Attachment Schema + AttachmentStore - COMPLETE
 - 34-02: File Event Handler - COMPLETE
-- 34-03: Extraction Pipeline - PLANNED
+- 34-03: Extraction Pipeline - COMPLETE
 - 34-04: Chunking + Search Index - PLANNED
 - 34-05: Pin/Unpin Mechanics - PLANNED
 - 34-06: Intent-Scoped Rules - PLANNED
@@ -295,6 +295,12 @@ Phase 34-02 decisions:
 - Process both file_shared events AND message files array for complete coverage
 - Non-blocking registration - errors logged but don't fail message processing
 - Size limit set to 10MB (matching typical Slack file size limits)
+
+Phase 34-03 decisions:
+- LLM summary generation with 3000 char content preview
+- Token estimation at 0.25 tokens per character
+- Semaphore-limited concurrency (max 3) for extraction
+- Fire-and-forget processing trigger (non-blocking via asyncio.create_task)
 
 ---
 
