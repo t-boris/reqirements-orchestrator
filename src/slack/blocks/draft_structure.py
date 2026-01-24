@@ -3,6 +3,12 @@
 Shows the draft's typed structure including kind, scope, lifecycle,
 and item hierarchy after mutations (R8).
 
+INVARIANT I5: Draft Lifecycle = 3 User-Facing States
+Users see: Drafting, Ready, Published
+Internal: EMPTY, SINGLE_ITEM, PLAN, PLAN_REFINED, APPROVED, COMMITTED
+
+UI must show user_state (3 states), never lifecycle (6 states).
+
 Phase 28.6: Structure Feedback UI
 - After each Draft form change, bot must show the new form (R8)
 - Buttons bound to draft version for stale detection (R9)
@@ -18,6 +24,7 @@ from src.schemas.structured_draft import (
     DraftLifecycle,
     DraftScope,
     StructuredDraft,
+    UserDraftState,
 )
 
 
@@ -113,7 +120,10 @@ def build_structure_blocks(
 
 
 def _build_header_block(draft: StructuredDraft) -> dict[str, Any]:
-    """Build header showing kind and scope."""
+    """Build header showing user-facing state.
+
+    INVARIANT I5: Show user_state, hide lifecycle.
+    """
     kind_emoji = "📋" if draft.kind == DraftKind.PLAN else "📝"
     scope_label = {
         DraftScope.SINGLE: "Single Item",
@@ -121,20 +131,18 @@ def _build_header_block(draft: StructuredDraft) -> dict[str, Any]:
         DraftScope.FULL_PLAN: "Full Plan",
     }.get(draft.scope, draft.scope.value)
 
-    lifecycle_emoji = {
-        DraftLifecycle.EMPTY: "⬜",
-        DraftLifecycle.SINGLE_ITEM: "📝",
-        DraftLifecycle.PLAN: "📋",
-        DraftLifecycle.PLAN_REFINED: "✨",
-        DraftLifecycle.APPROVED: "✅",
-        DraftLifecycle.COMMITTED: "🚀",
-    }.get(draft.lifecycle, "❓")
+    # INVARIANT I5: Use user_state (3 states) instead of lifecycle (6 states)
+    user_state_emoji = {
+        UserDraftState.DRAFTING: "📝",   # Yellow/warning
+        UserDraftState.READY: "✅",       # Green/good
+        UserDraftState.PUBLISHED: "🚀",   # Blue/primary
+    }.get(draft.user_state, "❓")
 
     return {
         "type": "header",
         "text": {
             "type": "plain_text",
-            "text": f"{kind_emoji} Draft Structure - {scope_label}",
+            "text": f"{kind_emoji} Draft Structure ({draft.user_state.label})",
             "emoji": True,
         },
     }
@@ -198,11 +206,14 @@ def _build_action_buttons(draft: StructuredDraft) -> dict[str, Any]:
 
 
 def _build_version_context(draft: StructuredDraft) -> dict[str, Any]:
-    """Build footer context with version info."""
+    """Build footer context with version info.
+
+    INVARIANT I5: Show user_state.label, not lifecycle.value.
+    """
     return {
         "type": "context",
         "elements": [{
             "type": "mrkdwn",
-            "text": f"Version {draft.version} | {len(draft.items)} items | {draft.lifecycle.value}",
+            "text": f"Version {draft.version} | {len(draft.items)} items | {draft.user_state.label}",
         }],
     }
