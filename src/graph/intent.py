@@ -550,6 +550,18 @@ REASON: <brief explanation>"""
         intent = Intent(intent_str.lower())
         super_mode = get_super_mode(intent)
 
+        # Fallback: infer ops_subtype from reason if not explicitly set
+        if intent == Intent.OPS and ops_subtype is None and reason:
+            reason_lower = reason.lower()
+            explain_signals = ["explain", "reasoning", "why did you", "show your", "logic"]
+            debug_signals = ["error", "failed", "exception", "timeout", "debug", "fix"]
+            if any(signal in reason_lower for signal in explain_signals):
+                ops_subtype = OpsSubtype.EXPLAIN
+                logger.debug("Inferred ops_subtype=EXPLAIN from reason text")
+            elif any(signal in reason_lower for signal in debug_signals):
+                ops_subtype = OpsSubtype.DEBUG
+                logger.debug("Inferred ops_subtype=DEBUG from reason text")
+
         return IntentResult(
             intent=intent,
             confidence=confidence,
