@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 37-unified-question-engine
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 37-02-PLAN.md
+Last activity: 2026-01-24 — Completed 37-03-PLAN.md
 
-Progress: ████████████████░░░░ 2/5 plans
+Progress: ████████████████████ 3/5 plans
 
 ## Milestones Summary
 
@@ -320,12 +320,17 @@ Phase 37-02 decisions:
 - Priority order: scope -> conflict -> required fields -> optional fields
 - Required fields: title, problem; Optional: acceptance_criteria, proposed_solution
 
+Phase 37-03 decisions:
+- FreeformProvider uses ASK_USER question type for all generated questions
+- Fallback questions provided when LLM parsing fails for reliability
+- Output maps to ReviewState fields: assumptions, constraints, risks
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 37-02-PLAN.md
+Stopped at: Completed 37-03-PLAN.md
 Resume file: None
-Next action: Execute 37-03-PLAN.md
+Next action: Execute 37-04-PLAN.md
 
 ## What's Next
 
