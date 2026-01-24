@@ -591,8 +591,20 @@ Bot: "To draft stories, pick approach:"
 
 **Depends on:** Phase 36 (Question Engine foundation)
 
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 37-01, 37-02 | Foundation: QuestionProvider interface, ReviewState schema, CatalogProvider |
+| 2 | 37-03, 37-04 | Providers: FreeformProvider, AnswerMapper extension, ReviewStateStore |
+| 3 | 37-05 | Integration: QuestionEngine facade, review_continuation |
+
 **Plans:**
-- [ ] TBD (run /gsd:plan-phase 37 to break down)
+- [ ] 37-01: QuestionProvider interface + ReviewState schema
+- [ ] 37-02: CatalogProvider extraction
+- [ ] 37-03: FreeformProvider implementation
+- [ ] 37-04: AnswerMapper extension + ReviewStateStore
+- [ ] 37-05: QuestionEngine + review_continuation integration
 
 **Full context:** `.planning/phases/37-unified-question-engine/37-CONTEXT.md`
 
@@ -708,4 +720,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
-| 37. Unified Question Engine | v1.2 | 0/? | Not Planned | - |
+| 37. Unified Question Engine | v1.2 | 0/5 | Planned | - |
