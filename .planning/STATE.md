@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 30-decision-as-entity
-Plan: 7 of 8 in current phase
-Status: In progress
-Last activity: 2026-01-24 — Completed 30-07-PLAN.md (Decision commands for /maro)
+Plan: 8 of 8 in current phase (COMPLETE)
+Status: Phase complete
+Last activity: 2026-01-23 — Completed 30-08-PLAN.md (Decision Jira Projection)
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 7/8 plans
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 8/8 plans COMPLETE
 
 ## Milestones Summary
 
@@ -191,6 +191,11 @@ Phase 30.6 decisions:
 - Decisions use same 4-type conflict classification as regular preflight (no privileges)
 - New links treated as SAFE_DRIFT with can_proceed=True (no prior state to conflict with)
 
+Phase 30.8 decisions:
+- Reused existing mark_synced and get_decisions_for_ticket methods (no new duplicates)
+- register_decision_handlers pattern for clean handler registration (like register_preflight_handlers)
+- Deprecate (not delete) for discard action to maintain audit trail
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -205,10 +210,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-24
-Stopped at: Completed 30-07-PLAN.md (Decision commands for /maro)
+Last session: 2026-01-23
+Stopped at: Completed 30-08-PLAN.md (Decision Jira Projection)
 Resume file: None
-Next action: Execute 30-08-PLAN.md
+Next action: Phase 30 COMPLETE - plan next phase or finalize v1.2
 
 ## What's Next
 
@@ -236,7 +241,7 @@ Next action: Execute 30-08-PLAN.md
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 - 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Phase 30: Decision as First-Class Entity** — IN PROGRESS (6/8 plans)
+**Phase 30: Decision as First-Class Entity** — COMPLETE (8/8 plans)
 
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
@@ -248,8 +253,9 @@ Next action: Execute 30-08-PLAN.md
 - 30.5: Decision UI blocks with four visual states
 - 30.6: Decision Preflight and managed sections for safe Jira writes
 - 30.7: Decision commands for /maro (list, show, change, deprecate)
+- 30.8: Decision Jira Projection (DecisionSyncService, button handlers)
 
-**Next:** Execute 30-08-PLAN.md
+**Next:** Phase 30 COMPLETE
 
 ---
 
