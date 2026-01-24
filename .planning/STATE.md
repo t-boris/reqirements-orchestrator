@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 7 of 8 in current phase
-Status: In progress
-Last activity: 2026-01-23 — Completed 34-07-PLAN.md (Transparency UI)
+Plan: 8 of 8 in current phase
+Status: Complete
+Last activity: 2026-01-23 — Completed 34-08-PLAN.md (Prompt Integration)
 
-Progress: ████████░░ 87% (Phase 34: 7/8 plans complete)
+Progress: ██████████ 100% (Phase 34: 8/8 plans complete)
 
 ## Milestones Summary
 
@@ -267,11 +267,11 @@ None.
 Last session: 2026-01-23
 Stopped at: Completed 34-07-PLAN.md (Transparency UI)
 Resume file: None
-Next action: Execute 34-08-PLAN.md (Retrieval Context Injection)
+Next action: Phase 34 complete — ready for next phase planning
 
 ## What's Next
 
-**Phase 34: File Attachment Processing** — IN PROGRESS (6/8 plans)
+**Phase 34: File Attachment Processing** — COMPLETE (8/8 plans)
 
 **Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
 
@@ -283,7 +283,7 @@ Next action: Execute 34-08-PLAN.md (Retrieval Context Injection)
 - 34-05: Pin/Unpin Mechanics - COMPLETE
 - 34-06: Intent-Scoped Rules - COMPLETE
 - 34-07: Transparency UI - COMPLETE
-- 34-08: Retrieval Context Injection - PLANNED
+- 34-08: Prompt Integration - COMPLETE
 
 Phase 34-01 decisions:
 - AttachmentStatus enum with 5 lifecycle states (pending, extracting, ready, failed, too_large)
@@ -325,6 +325,12 @@ Phase 34-07 decisions:
 - Sources modal displays up to 5 chunks per file, truncated at 1000 chars
 - Stop using button delegates to existing unpin handler (code reuse)
 - Created response.py module with post_response helper (separation of concerns)
+
+Phase 34-08 decisions:
+- Call resolve_attachment_context in intent_router_node after classification
+- Trim retrieved_chunks before pinned when enforcing token budget (pinned is user choice)
+- Store super_mode in state for downstream nodes (review uses for cite mode)
+- Default max_total_tokens=4000 to prevent context explosion
 
 ---
 
