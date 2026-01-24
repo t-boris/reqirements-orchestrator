@@ -1,5 +1,13 @@
 """Handlers for commit approval actions (Phase 23.3).
 
+INVARIANT I2: Slack = UI
+Handlers are READ-ONLY for truth stores.
+Mutations follow truth-first ordering:
+  1. Database state update (TRUTH) - must succeed first
+  2. Board update (PROJECTION) - proceeds regardless of message
+  3. Slack message (PRESENTATION) - best effort, failures logged not raised
+Message failures NEVER block state updates.
+
 Handles Approve & Commit, Edit, and Not now button clicks from commit preview.
 """
 import asyncio
@@ -75,38 +83,47 @@ async def _handle_approve_commit_async(
     client: AsyncWebClient,
     respond: Respond,
 ) -> None:
-    """Async handler for approve_commit action."""
+    """Async handler for approve_commit action.
+
+    Follows INVARIANT I2 truth-first ordering:
+    1. Create commit entry in database (TRUTH)
+    2. Update channel work board (PROJECTION)
+    3. Update Slack message (PRESENTATION - best effort)
+    """
+    # Extract action data
+    action = body.get("actions", [{}])[0]
+    value_str = action.get("value", "{}")
+
     try:
-        # Extract action data
-        action = body.get("actions", [{}])[0]
-        value_str = action.get("value", "{}")
+        data = json.loads(value_str)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse commit value: {value_str}")
+        respond(text="Error: Invalid commit data", response_type="ephemeral")
+        return
 
-        try:
-            data = json.loads(value_str)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to parse commit value: {value_str}")
-            respond(text="Error: Invalid commit data", response_type="ephemeral")
-            return
+    # Extract fields
+    commit_type_str = data.get("commit_type", "decision")
+    summary = data.get("summary", "")
+    channel_id = data.get("channel_id")
+    thread_ts = data.get("thread_ts")
+    user_id = data.get("user_id") or body.get("user", {}).get("id")
+    workitem_id = data.get("workitem_id")
 
-        # Extract fields
-        commit_type_str = data.get("commit_type", "decision")
-        summary = data.get("summary", "")
-        channel_id = data.get("channel_id")
-        thread_ts = data.get("thread_ts")
-        user_id = data.get("user_id") or body.get("user", {}).get("id")
-        workitem_id = data.get("workitem_id")
+    if not channel_id or not summary:
+        respond(text="Error: Missing channel or summary", response_type="ephemeral")
+        return
 
-        if not channel_id or not summary:
-            respond(text="Error: Missing channel or summary", response_type="ephemeral")
-            return
+    # Map string to CommitType enum
+    try:
+        commit_type = CommitType(commit_type_str)
+    except ValueError:
+        commit_type = CommitType.DECISION
 
-        # Map string to CommitType enum
-        try:
-            commit_type = CommitType(commit_type_str)
-        except ValueError:
-            commit_type = CommitType.DECISION
-
-        # Create commit entry
+    entry = None
+    try:
+        # =====================================================================
+        # STEP 1: Database state update (TRUTH) - must succeed first
+        # =====================================================================
         async with get_connection() as conn:
             store = CommitStore(conn)
             await store.create_tables()
@@ -130,11 +147,33 @@ async def _handle_approve_commit_async(
                 }
             )
 
-            # Update the channel work board
-            board_manager = ChannelWorkBoardManager()
-            await board_manager.post_or_update(client, channel_id, conn)
+            # =================================================================
+            # STEP 2: Board update (PROJECTION) - best effort
+            # =================================================================
+            try:
+                board_manager = ChannelWorkBoardManager()
+                await board_manager.post_or_update(client, channel_id, conn)
+            except Exception as board_err:
+                logger.warning(
+                    "Board update failed, but commit is recorded",
+                    extra={
+                        "commit_id": entry.id,
+                        "error": str(board_err),
+                    }
+                )
 
-        # Replace preview with success message
+    except Exception as e:
+        logger.error(f"Failed to create commit: {e}", exc_info=True)
+        respond(
+            text="Sorry, I couldn't process the commit. Please try again.",
+            response_type="ephemeral",
+        )
+        return
+
+    # =========================================================================
+    # STEP 3: Slack message (PRESENTATION) - best effort, doesn't block state
+    # =========================================================================
+    try:
         success_blocks = build_commit_success_blocks(
             commit_type=commit_type.value,
             summary=summary,
@@ -148,10 +187,12 @@ async def _handle_approve_commit_async(
             text=f"Committed: {summary}",
             replace_original=True,
         )
-
-    except Exception as e:
-        logger.error(f"Failed to handle approve_commit: {e}", exc_info=True)
-        respond(
-            text="Sorry, I couldn't process the commit. Please try again.",
-            response_type="ephemeral",
+    except Exception as slack_err:
+        # Slack message failed, but commit is already recorded
+        logger.warning(
+            "Slack message update failed, but commit is recorded",
+            extra={
+                "commit_id": entry.id if entry else None,
+                "error": str(slack_err),
+            }
         )
