@@ -36,6 +36,7 @@ from src.questions.provider import (
     QuestionProvider,
 )
 from src.questions.catalog_provider import CatalogProvider
+from src.questions.freeform_provider import FreeformProvider
 
 __all__ = [
     # Answer mapping
@@ -60,4 +61,5 @@ __all__ = [
     "ProviderType",
     "QuestionProvider",
     "CatalogProvider",
+    "FreeformProvider",
 ]
