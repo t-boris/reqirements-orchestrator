@@ -720,4 +720,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
-| 37. Unified Question Engine | v1.2 | 1/5 | In Progress | - |
+| 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
