@@ -20,7 +20,7 @@ import logging
 import re
 from typing import Optional
 
-from src.schemas.intent import Intent, IntentResult, OpsSubtype
+from src.schemas.intent import Intent, IntentResult, OpsSubtype, SuperMode, get_super_mode
 
 logger = logging.getLogger(__name__)
 
@@ -490,8 +490,12 @@ REASON: <brief explanation>"""
         if intent_str == "TICKET":
             intent_str = "WORKITEM_CREATE"
 
+        # Resolve intent and super_mode
+        intent = Intent(intent_str.lower())
+        super_mode = get_super_mode(intent)
+
         return IntentResult(
-            intent=Intent(intent_str.lower()),
+            intent=intent,
             confidence=confidence,
             persona_hint=persona_hint,
             ticket_key=ticket_key,
@@ -506,6 +510,7 @@ REASON: <brief explanation>"""
             transform_operation=transform_operation,
             decision_type_hint=decision_type_hint,
             decision_title_hint=decision_title_hint,
+            super_mode=super_mode,
             reasons=[reason],
         )
 
@@ -514,6 +519,7 @@ REASON: <brief explanation>"""
         return IntentResult(
             intent=Intent.REVIEW,
             confidence=0.5,
+            super_mode=SuperMode.THINK,  # REVIEW maps to THINK
             reasons=["llm classification failed, default to REVIEW"],
         )
 
@@ -553,6 +559,7 @@ async def classify_intent(
             confidence=0.9,  # High confidence for pattern match
             decision_type_hint=type_hint,
             decision_title_hint=title_hint,
+            super_mode=SuperMode.DECIDE,  # DECISION maps to DECIDE
             reasons=[f"pattern match: {pattern_name}"],
         )
 
@@ -602,6 +609,7 @@ async def intent_router_node(state: dict) -> dict:
         result = IntentResult(
             intent=Intent.REVIEW,
             confidence=0.5,
+            super_mode=SuperMode.THINK,  # REVIEW maps to THINK
             reasons=["no message found, default to REVIEW"],
         )
     else:
