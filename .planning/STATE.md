@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 33-anchor-message-architecture
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 33-03-PLAN.md (WorkItem Canonical Message Tracking)
+Last activity: 2026-01-24 — Completed 33-04-PLAN.md (Context Resolution)
 
-Progress: ██████████ 100% (Phase 27-32 COMPLETE) | Phase 33: 3/5 plans
+Progress: ██████████ 100% (Phase 27-32 COMPLETE) | Phase 33: 4/5 plans
 
 ## Milestones Summary
 
@@ -265,13 +265,13 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 33-03-PLAN.md (WorkItem Canonical Message Tracking)
+Stopped at: Completed 33-04-PLAN.md (Context Resolution)
 Resume file: None
-Next action: Execute 33-04-PLAN.md
+Next action: Execute 33-05-PLAN.md
 
 ## What's Next
 
-**Phase 33: Anchor Message Architecture** — IN PROGRESS (3/5 plans)
+**Phase 33: Anchor Message Architecture** — IN PROGRESS (4/5 plans)
 
 **Objective:** Shift from thread-centric to object-centric design. Canonical messages become anchors for entity lifecycles.
 
@@ -287,7 +287,8 @@ Next action: Execute 33-04-PLAN.md
 - 33-01: AnchorMessage Schema - COMPLETE
 - 33-02: Thread Bindings Persistence - COMPLETE
 - 33-03: WorkItem Canonical Message Tracking - COMPLETE
-- 33-04: Next to execute
+- 33-04: Context Resolution - COMPLETE
+- 33-05: Next to execute
 
 Phase 33-01 decisions:
 - object_id as string to support both UUIDs (workitem) and formatted IDs (DEC-41)
@@ -299,7 +300,13 @@ Phase 33-03 decisions:
 - Type emojis: purple=epic, blue=story, white=task, red=bug, orange=spike
 - Status-based action buttons (draft vs active vs done)
 
-**Next action:** Execute 33-04-PLAN.md
+Phase 33-04 decisions:
+- ContextResolver uses multi-tier resolution: AnchorStore -> DecisionStore -> WorkItemStore -> ThreadBindingStore
+- WorkItemStore resolution uses source_thread_ts (no canonical_message_ts field exists yet)
+- ThreadContext as dataclass (not TypedDict) for property support
+- resolve_thread_context() convenience function for single-use resolution
+
+**Next action:** Execute 33-05-PLAN.md
 
 ---
 
