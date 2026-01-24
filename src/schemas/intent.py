@@ -178,11 +178,27 @@ class TaskPlanProposal(BaseModel):
         if not self.tasks:
             return IntentResult(intent=Intent.DISCUSSION, confidence=0.5)
         top = max(self.tasks, key=lambda t: t.confidence)
+        # Carry over params from TaskProposal to IntentResult
+        params = top.params or {}
+        ops_subtype = None
+        if params.get("ops_subtype"):
+            ops_subtype = OpsSubtype(params["ops_subtype"])
         return IntentResult(
             intent=top.intent,
             confidence=top.confidence,
             super_mode=top.super_mode,
             reasons=self.reasons,
+            # Carry over intent-specific params
+            ticket_key=params.get("ticket_key"),
+            action_type=params.get("action_type"),
+            command_type=params.get("command_type"),
+            command_field=params.get("command_field"),
+            command_value=params.get("command_value"),
+            search_query=params.get("search_query"),
+            transform_operation=params.get("transform_operation"),
+            decision_type_hint=params.get("decision_type_hint"),
+            decision_title_hint=params.get("decision_title_hint"),
+            ops_subtype=ops_subtype,
         )
 
 

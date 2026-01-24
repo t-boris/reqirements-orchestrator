@@ -190,7 +190,6 @@ async def ops_node(state: AgentState) -> dict:
     # Get intent result to determine subtype
     intent_result = state.get("intent_result", {})
     ops_subtype_str = intent_result.get("ops_subtype")
-    logger.info(f"ops_node received ops_subtype={ops_subtype_str!r} from intent_result")
 
     # Parse subtype
     if ops_subtype_str == "debug" or ops_subtype_str == OpsSubtype.DEBUG:

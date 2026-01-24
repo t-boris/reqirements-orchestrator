@@ -549,11 +549,9 @@ REASON: <brief explanation>"""
         # Resolve intent and super_mode
         intent = Intent(intent_str.lower())
         super_mode = get_super_mode(intent)
-        logger.info(f"_llm_classify parsed: intent={intent}, intent_str={intent_str}, ops_subtype={ops_subtype}")
 
         # Fallback: infer ops_subtype from reason if not explicitly set
         if intent == Intent.OPS:
-            logger.info(f"OPS intent detected, ops_subtype={ops_subtype}, reason={reason[:80] if reason else 'None'}")
             if ops_subtype is None and reason:
                 reason_lower = reason.lower()
                 explain_signals = ["explain", "reasoning", "why did you", "show your", "logic"]
@@ -897,6 +895,8 @@ def _extract_intent_params(result: IntentResult) -> dict:
         params["decision_type_hint"] = result.decision_type_hint
     if result.decision_title_hint:
         params["decision_title_hint"] = result.decision_title_hint
+    if result.ops_subtype:
+        params["ops_subtype"] = result.ops_subtype.value  # Serialize to string
     return params
 
 
