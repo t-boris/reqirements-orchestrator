@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 29: Sync on Demand (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 30: Decision as First-Class Entity (IN PROGRESS)
 
 ## Current Position
 
-Phase: 29-sync-on-demand
-Plan: 4 of 4 in current phase
-Status: Complete
-Last activity: 2026-01-23 — Completed 29-04-PLAN.md (Preflight sync integration into handlers)
+Phase: 30-decision-as-entity
+Plan: 2 of 8 in current phase
+Status: In progress
+Last activity: 2026-01-24 — Completed 30-02-PLAN.md (DecisionLink table for decision-to-Jira mapping)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 4/4 plans COMPLETE
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 2/8 plans
 
 ## Milestones Summary
 
@@ -160,6 +160,11 @@ Phase 29.4 decisions:
 - Button payloads include pending_action for stateful handling
 - preflight_use_jira same as pull_only; preflight_use_channel same as proceed
 
+Phase 30.2 decisions:
+- JiraFieldPath enum with 7 values (6 decision types + CUSTOM_FIELD extension point)
+- Sync tracking is per-link (each decision-ticket pair tracks its own sync version)
+- Deterministic mapping via DECISION_MAPPING_RULES (no LLM involved in field selection)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -174,10 +179,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 29-04-PLAN.md (Preflight sync integration into handlers)
+Last session: 2026-01-24
+Stopped at: Completed 30-02-PLAN.md (DecisionLink table for decision-to-Jira mapping)
 Resume file: None
-Next action: Finalize Phase 29 or begin Phase 30
+Next action: Execute 30-03-PLAN.md (DecisionStore integration)
 
 ## What's Next
 
@@ -205,12 +210,21 @@ Next action: Finalize Phase 29 or begin Phase 30
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 - 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Next:** Finalize Phase 29 or begin Phase 30
+**Phase 30: Decision as First-Class Entity** — IN PROGRESS (2/8 plans)
+
+**Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
+
+**Plans completed:**
+- 30.1: Decision entity and DecisionStore with versioning (uncommitted - work in progress)
+- 30.2: DecisionLink table for decision-to-Jira mappings
+
+**Next:** Execute 30-03-PLAN.md (DecisionStore integration)
 
 ---
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 30 STARTED — Decision as First-Class Entity
 - 2026-01-23: Phase 30 ADDED — Decision as First-Class Entity (versioned decisions, Jira as projection)
 - 2026-01-23: Phase 28 ADDED — Structured Draft Evolution (typed, versioned design object)
 - 2026-01-23: Phase 27 COMPLETE — Multi-User Support (auditable multi-user operation in channels)
