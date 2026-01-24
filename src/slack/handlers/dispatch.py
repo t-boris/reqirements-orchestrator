@@ -2,12 +2,17 @@
 
 Handles dispatching graph results to appropriate skills and extracting
 content for ticket updates and comments.
+
+Phase 29.4: Preflight Sync integration.
+- Check for conflicts before ticket updates and transitions
+- Show preflight UI when conflicts detected
+- Handle user choices via button handlers
 """
 
 import json
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from slack_sdk.web import WebClient
 
@@ -16,6 +21,7 @@ from src.graph.runner import get_runner
 
 if TYPE_CHECKING:
     from src.slack.progress import ProgressTracker
+    from src.sync.preflight import PreflightResult
 
 logger = logging.getLogger(__name__)
 
@@ -556,12 +562,88 @@ async def _dispatch_result(
         )
 
 
+async def _check_preflight_for_action(
+    channel_id: str,
+    ticket_key: str,
+    action_type: str,
+    fields_to_update: Optional[dict] = None,
+    target_status: Optional[str] = None,
+) -> Optional["PreflightResult"]:
+    """Check preflight before ticket action.
+
+    Runs preflight check for update or transition operations.
+
+    Args:
+        channel_id: Slack channel ID.
+        ticket_key: Jira ticket key.
+        action_type: Type of action ("update" or "transition").
+        fields_to_update: Dict of fields to update (for update action).
+        target_status: Target status (for transition action).
+
+    Returns:
+        PreflightResult if conflict detected, None if safe to proceed.
+    """
+    from src.sync.preflight import PreflightService, ConflictType
+    from src.jira.client import JiraService
+    from src.db.jira_registry import JiraRegistryStore
+    from src.db import get_connection
+    from src.config.settings import get_settings
+
+    try:
+        settings = get_settings()
+        jira_service = JiraService(settings)
+
+        async with get_connection() as conn:
+            registry = JiraRegistryStore(conn)
+            await registry.create_tables()
+
+            preflight = PreflightService(jira_service, registry)
+
+            if action_type == "transition" and target_status:
+                result = await preflight.check_transition(
+                    channel_id, ticket_key, target_status
+                )
+            elif action_type == "update" and fields_to_update:
+                result = await preflight.check_update(
+                    channel_id, ticket_key, fields_to_update
+                )
+            else:
+                await jira_service.close()
+                return None
+
+            await jira_service.close()
+
+            # IDEMPOTENT auto-succeeds without UI
+            if result.conflict_type == ConflictType.IDEMPOTENT:
+                logger.info(
+                    "Preflight: IDEMPOTENT - operation already done",
+                    extra={
+                        "ticket_key": ticket_key,
+                        "action_type": action_type,
+                    }
+                )
+                return result  # Return so caller can handle auto-success messaging
+
+            # For SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL - return result for UI
+            if result.needs_choice:
+                return result
+
+            return None
+
+    except Exception as e:
+        logger.warning(f"Preflight check failed, proceeding: {e}")
+        return None
+
+
 async def _handle_ticket_action(
     result: dict,
     identity: SessionIdentity,
     client: WebClient,
 ):
-    """Handle operations on existing tickets (Phase 13.1)."""
+    """Handle operations on existing tickets (Phase 13.1).
+
+    Phase 29.4: Adds preflight checks before update operations.
+    """
     ticket_key = result.get("ticket_key")
     action_type = result.get("action_type")
     already_bound_to_same = result.get("already_bound_to_same", False)
@@ -622,10 +704,13 @@ async def _handle_ticket_action(
 
     elif action_type == "update":
         # Show update preview with confirmation flow (conversational)
+        # Phase 29.4: Check preflight before showing preview
         from src.jira.client import JiraService
         from src.config.settings import get_settings
         from src.slack.blocks.update_preview import build_update_preview_blocks
+        from src.slack.blocks.preflight import build_preflight_blocks
         from src.schemas.state import PendingAction, WorkflowStep
+        from src.sync.preflight import ConflictType
 
         jira_service = None
         try:
@@ -650,6 +735,74 @@ async def _handle_ticket_action(
                 )
                 return
 
+            # Phase 29.4: Preflight check before showing preview
+            preflight_result = await _check_preflight_for_action(
+                channel_id=identity.channel_id,
+                ticket_key=ticket_key,
+                action_type="update",
+                fields_to_update={"description": update_content},
+            )
+
+            if preflight_result:
+                if preflight_result.conflict_type == ConflictType.IDEMPOTENT:
+                    # Already done - notify user
+                    client.chat_postMessage(
+                        channel=identity.channel_id,
+                        thread_ts=identity.thread_ts,
+                        text=f":information_source: {preflight_result.message}\nNo update needed.",
+                    )
+                    return
+
+                # Conflict detected - show preflight UI with pending action stored
+                runner = get_runner(identity)
+                state = await runner._get_current_state()
+
+                # Store pending action for button handlers
+                pending_preflight = {
+                    "action_type": "update",
+                    "ticket_key": ticket_key,
+                    "ticket_url": ticket_url,
+                    "proposed_content": update_content,
+                    "conflict_type": preflight_result.conflict_type.value,
+                }
+                state["pending_preflight"] = pending_preflight
+                await runner.update_state(state)
+
+                # Build and show preflight blocks
+                preflight_blocks = build_preflight_blocks(preflight_result)
+
+                # Add pending action info to button payloads
+                # The blocks already have JSON payloads, we need to extend them
+                for block in preflight_blocks:
+                    if block.get("type") == "actions":
+                        for element in block.get("elements", []):
+                            if element.get("type") == "button" and element.get("value"):
+                                try:
+                                    payload = json.loads(element["value"])
+                                    payload["channel_id"] = identity.channel_id
+                                    payload["thread_ts"] = identity.thread_ts
+                                    payload["pending_action"] = pending_preflight
+                                    element["value"] = json.dumps(payload)
+                                except json.JSONDecodeError:
+                                    pass
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts,
+                    blocks=preflight_blocks,
+                    text=f"Conflict detected for {ticket_key}",
+                )
+
+                logger.info(
+                    "Preflight conflict shown for update",
+                    extra={
+                        "ticket_key": ticket_key,
+                        "conflict_type": preflight_result.conflict_type.value,
+                    }
+                )
+                return
+
+            # No conflict - proceed with normal preview flow
             # Get runner to store pending update state
             runner = get_runner(identity)
             state = await runner._get_current_state()
