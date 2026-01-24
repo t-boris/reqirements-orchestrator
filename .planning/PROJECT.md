@@ -65,6 +65,39 @@ StructuredDraft
 
 User choices mutate the structure (split, merge, elevate, decompose), not just append text.
 
+### Multi-Intent Task Orchestration
+
+The bot parses the full universe of user intent, not just top-1 classification:
+
+```
+User: "create stories from the decisions and check for duplicates"
+       ↓
+TaskPlan:
+  ├── Task 1: Check duplicates (OPERATE, auto-execute)
+  ├── Task 2: Create stories (BUILD, requires approval)
+  └── depends_on: [1 → 2]
+```
+
+**Canonical UX response:**
+```
+I see 2 actions:
+1. Check Jira duplicates
+2. Create stories from decisions
+
+Executing 1 now. For 2 — OK?
+```
+
+**Safety Classification:**
+
+| Mode | Safety Level | Side Effects |
+|------|--------------|--------------|
+| THINK, CHAT | AUTO_EXECUTE | None, Slack only |
+| BUILD, OPERATE, DECIDE | REQUIRES_CONFIRMATION | Jira, Registry |
+
+Safe tasks run immediately. Dangerous tasks block for approval. Version-bound buttons prevent stale clicks.
+
+**Status Card:** Single editable message showing all tasks with live status updates (throttled to 1.5s to avoid Slack rate limits).
+
 ### Preflight as Universal Guardrail
 
 Every write operation goes through preflight — no exceptions:
@@ -84,7 +117,7 @@ Decisions don't get "privileges". Same rules as regular sync.
 
 ## Current State (v1.2 in progress)
 
-**Latest:** 2026-01-23
+**Latest:** 2026-01-24
 
 **Tech stack:** Python 3.11, LangGraph, Slack Bolt, PostgreSQL, Docker
 
@@ -131,6 +164,28 @@ Decisions don't get "privileges". Same rules as regular sync.
   - Decision preflight with same 4-type conflict classification
   - `/maro decisions`, `/maro decision show/change/deprecate` commands
   - DECISION intent with pattern-based detection
+- Phase 31: Architecture Hardening
+  - SuperMode enum (BUILD, OPERATE, DECIDE, THINK, CHAT) for user-facing simplicity
+  - MANAGED_SECTION_ONLY invariant for decision projection safety
+  - Slack as UI pattern (message failures don't block state updates)
+- Phase 32: Product Invariants
+  - 5 enforced invariants (SuperMode UI, Slack separation, Commit log, Managed sections, Draft lifecycle)
+  - CI gate for managed section enforcement
+- Phase 33: Anchor Message Architecture
+  - Object-centric design (threads exist to manage objects, not for conversation)
+  - Thread bindings inherit object context automatically
+  - Implicit commands default to anchor's object
+- Phase 34: File Attachment Processing
+  - Attachments as first-class entities with lifecycle states
+  - Intent-scoped inclusion rules (CHAT offers, THINK retrieves, BUILD extracts structure)
+  - Pin/unpin mechanics with transparency UI
+- Phase 35: Multi-Intent Task Orchestration
+  - **Core shift:** Parse full universe of user intent, not just top-1 classification
+  - TaskPlan model with tasks, dependencies, safety levels
+  - Two-stage classification (single-intent first, multi-intent if signals detected)
+  - Task executor with dependency-aware execution and cascade cancel
+  - Status card UI with throttled updates (1.5s minimum)
+  - Version-bound button handlers for idempotency
 
 ## Requirements
 
@@ -243,6 +298,13 @@ Decisions don't get "privileges". Same rules as regular sync.
 | Managed sections in Jira | MARO writes only to its block, preserves user content (Phase 30) | ✓ Good |
 | Deterministic decision mapping | Decision type → known Jira field, no LLM guessing (Phase 30) | ✓ Good |
 | Decision approval = commit + sync | Approval triggers immediate Jira projection (Phase 30) | ✓ Good |
+| SuperMode as sole UI contract | Users see 5 modes, 13 intents hidden (Phase 31) | ✓ Good |
+| Commit log = append-only | Event-sourced history, canonical messages rebuildable (Phase 32) | ✓ Good |
+| Anchor message architecture | Threads exist to manage objects, not for conversation (Phase 33) | ✓ Good |
+| Attachments as first-class entities | Lifecycle states, pinning, intent-scoped retrieval (Phase 34) | ✓ Good |
+| Multi-intent task orchestration | Parse full universe of user intent, not just top-1 (Phase 35) | ✓ Good |
+| Two-stage intent classification | Single-intent first, re-classify if multi-intent signals detected (Phase 35) | ✓ Good |
+| Safety-based auto-execution | THINK/CHAT auto-execute, BUILD/OPERATE/DECIDE require approval (Phase 35) | ✓ Good |
 
 ---
-*Last updated: 2026-01-23 after Phase 30 (v1.2)*
+*Last updated: 2026-01-24 after Phase 35 (v1.2)*
