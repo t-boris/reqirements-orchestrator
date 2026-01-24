@@ -4,7 +4,7 @@ Defines the intent classification types and subtypes used throughout the system.
 """
 
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -137,6 +137,63 @@ class IntentResult(BaseModel):
     decision_title_hint: Optional[str] = None  # Extracted title from decision statement
     # Super-mode for user-facing presentation (Phase 31)
     super_mode: Optional["SuperMode"] = None
+
+
+# =============================================================================
+# Multi-Intent Classification (Phase 35)
+# Enables detection and handling of compound requests.
+# =============================================================================
+
+class TaskProposal(BaseModel):
+    """Single task proposal from multi-intent classification."""
+    intent: Intent
+    super_mode: SuperMode
+    confidence: float = Field(ge=0.0, le=1.0)
+    title: str  # Human-readable task title
+    params: dict[str, Any] = Field(default_factory=dict)  # Intent-specific params
+    depends_on_indices: list[int] = Field(default_factory=list)  # Index refs to other tasks
+
+
+class TaskPlanProposal(BaseModel):
+    """Result of multi-intent classification.
+
+    When user sends compound request like "create stories and check duplicates",
+    this contains multiple TaskProposals instead of single IntentResult.
+    """
+    tasks: list[TaskProposal]
+    is_multi_intent: bool = False  # True if multiple distinct intents detected
+    low_confidence_signal: bool = False  # True if top-1 had low confidence
+    trigger_message: str  # Original message (tasks come from here only)
+    reasons: list[str] = Field(default_factory=list)
+
+    @property
+    def primary_mode(self) -> SuperMode:
+        """Get the primary mode (highest confidence task's mode)."""
+        if not self.tasks:
+            return SuperMode.CHAT
+        return max(self.tasks, key=lambda t: t.confidence).super_mode
+
+    def to_single_intent(self) -> IntentResult:
+        """Convert to legacy single IntentResult for backwards compat."""
+        if not self.tasks:
+            return IntentResult(intent=Intent.DISCUSSION, confidence=0.5)
+        top = max(self.tasks, key=lambda t: t.confidence)
+        return IntentResult(
+            intent=top.intent,
+            confidence=top.confidence,
+            super_mode=top.super_mode,
+            reasons=self.reasons,
+        )
+
+
+# Multi-intent detection helpers
+MULTI_INTENT_MARKERS = ["and", "also", "plus", "then", "after that", "as well"]
+
+
+def has_multi_intent_markers(text: str) -> bool:
+    """Check if text contains conjunctions suggesting multiple intents."""
+    text_lower = text.lower()
+    return any(f" {marker} " in f" {text_lower} " for marker in MULTI_INTENT_MARKERS)
 
 
 # =============================================================================
