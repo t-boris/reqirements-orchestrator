@@ -19,6 +19,11 @@ from typing import Optional
 from src.schemas.decision import Decision, JiraFieldPath
 
 
+class ManagedSectionError(Exception):
+    """Raised when managed section operation would violate invariants."""
+    pass
+
+
 # Section markers
 SECTION_START = "## Decisions (managed by MARO)"
 SECTION_END = "---"  # Horizontal rule marks end
@@ -57,6 +62,100 @@ def extract_managed_section(
     )
 
 
+def validate_section_boundaries(description: str) -> bool:
+    """Validate managed section boundaries are well-formed.
+
+    Checks:
+    - If section exists: start marker is followed by end marker (not reversed)
+    - No nested section markers
+    - Section boundaries are clear
+
+    Args:
+        description: Jira description to validate
+
+    Returns:
+        True if valid
+
+    Raises:
+        ManagedSectionError: If boundaries are malformed
+    """
+    if not description:
+        return True  # Empty description is valid (no section)
+
+    start_positions = [m.start() for m in re.finditer(re.escape(SECTION_START), description)]
+    # Find --- that appears after a section start (not arbitrary ---)
+    # Only count --- on its own line after SECTION_START
+    end_positions = []
+    for start_pos in start_positions:
+        # Search for --- after this start
+        remaining = description[start_pos:]
+        # Match newline + --- + (newline or end)
+        end_match = re.search(r'\n---(?:\n|$)', remaining)
+        if end_match:
+            end_positions.append(start_pos + end_match.start() + 1)  # +1 for the newline
+
+    # No markers at all - valid (no section)
+    if not start_positions:
+        return True
+
+    # Check for multiple start markers (nested)
+    if len(start_positions) > 1:
+        raise ManagedSectionError(
+            f"Nested section markers detected: found {len(start_positions)} start markers"
+        )
+
+    # Exactly one start marker - must have matching end
+    if len(start_positions) == 1:
+        # Use the pattern to find a valid section
+        match = SECTION_PATTERN.search(description)
+        if not match:
+            raise ManagedSectionError(
+                "Section start marker found but no valid end marker (---) follows"
+            )
+        return True
+
+    return True
+
+
+def _extract_user_content(description: str) -> str:
+    """Extract user content (everything outside managed section).
+
+    Args:
+        description: Full Jira description
+
+    Returns:
+        Content outside the managed section, or full description if no section
+    """
+    section = extract_managed_section(description)
+    if not section:
+        return description
+
+    # User content is everything before and after the section
+    before = description[:section.start_pos]
+    after = description[section.end_pos:]
+
+    return before + after
+
+
+def verify_user_content_preserved(before: str, after: str) -> bool:
+    """Verify user content is identical between two descriptions.
+
+    Use in tests to double-check the MANAGED_SECTION_ONLY invariant.
+
+    Args:
+        before: Description before update
+        after: Description after update
+
+    Returns:
+        True if user content is identical (preserving whitespace normalization)
+    """
+    before_user = _extract_user_content(before)
+    after_user = _extract_user_content(after)
+
+    # Normalize whitespace for comparison (trailing/leading newlines)
+    return before_user.strip() == after_user.strip()
+
+
 def render_managed_section(
     decisions: list[Decision],
 ) -> str:
@@ -85,6 +184,9 @@ def update_description_with_managed_section(
 ) -> str:
     """Update Jira description, only modifying the managed section.
 
+    INVARIANT: Only touches content between section markers.
+    User content above/below is NEVER modified.
+
     If no managed section exists, appends one at the end.
     User-written content is preserved.
 
@@ -94,7 +196,13 @@ def update_description_with_managed_section(
 
     Returns:
         Updated description with managed section
+
+    Raises:
+        ManagedSectionError: If section boundaries are malformed
     """
+    # Validate section boundaries before modifying
+    validate_section_boundaries(description)
+
     new_section = render_managed_section(decisions)
 
     existing = extract_managed_section(description)
