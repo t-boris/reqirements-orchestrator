@@ -118,6 +118,10 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro debug status - Quick health check
     - /maro debug state - Full internal state dump
     - /maro explain - Explain MARO's last action/decision (OPS:EXPLAIN)
+    - /maro decisions - List channel decisions with filters
+    - /maro decision show <id> - Show decision details with linked tickets
+    - /maro decision change <id> - Propose change to decision
+    - /maro decision deprecate <id> - Mark decision as deprecated
     """
     channel = command.get("channel_id")
     team_id = command.get("team_id", "")
@@ -176,6 +180,13 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
         # /maro explain - Trigger OPS:EXPLAIN flow
         thread_ts = command.get("thread_ts")
         await _handle_maro_explain(channel, team_id, user_id, thread_ts, client, say)
+    elif subcommand == "decisions":
+        # /maro decisions - List channel decisions
+        from src.slack.handlers.decision_commands import _handle_decisions_command_async
+        await _handle_decisions_command_async(command, client)
+    elif subcommand == "decision":
+        # /maro decision show|change|deprecate <id>
+        await _handle_decision_subcommand(command, args, client, say)
     else:
         # Default to help for empty or unknown
         await _handle_maro_help(channel, client)
@@ -1262,5 +1273,56 @@ async def _handle_maro_explain(
         logger.error(f"Failed to run OPS:EXPLAIN: {e}", exc_info=True)
         say(
             text="Sorry, I couldn't explain my decisions right now. Please try again.",
+            channel=channel_id,
+        )
+
+
+# --- Decision Commands (Phase 30) ---
+
+async def _handle_decision_subcommand(
+    command: dict,
+    args: list[str],
+    client: WebClient,
+    say,
+):
+    """Handle /maro decision <subcommand> commands.
+
+    Subcommands:
+    - show <id> - Show decision details
+    - change <id> - Open change modal
+    - deprecate <id> - Open deprecation modal
+    """
+    from src.slack.handlers.decision_commands import (
+        _handle_decision_show_async,
+        _handle_decision_change_async,
+        _handle_decision_deprecate_async,
+    )
+
+    channel_id = command.get("channel_id")
+
+    if not args:
+        say(
+            text="Usage:\n"
+                 "- `/maro decision show <id>` - Show decision details\n"
+                 "- `/maro decision change <id>` - Propose a change\n"
+                 "- `/maro decision deprecate <id>` - Deprecate decision",
+            channel=channel_id,
+        )
+        return
+
+    subcommand = args[0].lower()
+    # Rebuild text with remaining args for the handlers
+    command["text"] = " ".join(args)
+
+    if subcommand == "show":
+        await _handle_decision_show_async(command, client)
+    elif subcommand == "change":
+        await _handle_decision_change_async(command, client)
+    elif subcommand == "deprecate":
+        await _handle_decision_deprecate_async(command, client)
+    else:
+        say(
+            text=f"Unknown decision subcommand: `{subcommand}`\n\n"
+                 "Available: show, change, deprecate",
             channel=channel_id,
         )
