@@ -1,5 +1,13 @@
 """Decision button handlers for lifecycle management.
 
+INVARIANT I2: Slack = UI
+Handlers are READ-ONLY for truth stores.
+Mutations go through graph dispatch or follow truth-first ordering:
+  1. Database state update (TRUTH) - must succeed first
+  2. Jira sync (PROJECTION) - proceeds regardless of Slack
+  3. Slack message (PRESENTATION) - best effort, failures logged not raised
+Message failures NEVER block state updates.
+
 Handles button clicks on decision cards:
 - decision_approve: Approve a proposed decision -> triggers Jira sync
 - decision_edit: Open edit modal for proposed decision
@@ -395,21 +403,33 @@ async def _handle_decision_discard_async(body, client: WebClient):
             reason="Discarded before approval",
         )
 
-    # Update message to show discarded state
-    client.chat_update(
-        channel=channel_id,
-        ts=message_ts,
-        text=f"Decision DEC-{decision_id[:8]} discarded",
-        blocks=[
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"~Decision DEC-{decision_id[:8]} discarded~",
+    # =========================================================================
+    # Slack message update (PRESENTATION) - best effort, doesn't block state
+    # =========================================================================
+    try:
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=f"Decision DEC-{decision_id[:8]} discarded",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"~Decision DEC-{decision_id[:8]} discarded~",
+                    },
                 },
-            },
-        ],
-    )
+            ],
+        )
+    except Exception as slack_err:
+        # Slack message update failed, but decision is already discarded
+        logger.warning(
+            "Slack message update failed, but decision is discarded",
+            extra={
+                "decision_id": decision_id,
+                "error": str(slack_err),
+            }
+        )
 
     logger.info(
         "Decision discarded",
@@ -969,6 +989,9 @@ async def _handle_decision_edit_modal_submit_async(body, client: WebClient):
     new_title = values["title_block"]["title_input"]["value"]
     new_description = values["description_block"]["description_input"]["value"]
 
+    # =========================================================================
+    # STEP 1: Database state update (TRUTH) - must succeed first
+    # =========================================================================
     async with get_connection() as conn:
         store = DecisionStore(conn)
         decision = await store.update(
@@ -979,14 +1002,27 @@ async def _handle_decision_edit_modal_submit_async(body, client: WebClient):
             change_reason="Edited before approval",
         )
 
-    # Update original message with new draft card
-    blocks = build_compact_draft_card(decision)
-    client.chat_update(
-        channel=channel_id,
-        ts=message_ts,
-        blocks=blocks,
-        text=f"Decision DEC-{decision_id[:8]} updated",
-    )
+    # =========================================================================
+    # STEP 2: Slack message update (PRESENTATION) - best effort
+    # =========================================================================
+    try:
+        blocks = build_compact_draft_card(decision)
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            blocks=blocks,
+            text=f"Decision DEC-{decision_id[:8]} updated",
+        )
+    except Exception as slack_err:
+        # Slack message update failed, but decision is already updated
+        logger.warning(
+            "Slack message update failed, but decision is updated",
+            extra={
+                "decision_id": decision_id,
+                "new_version": decision.version,
+                "error": str(slack_err),
+            }
+        )
 
     logger.info(
         "Decision edited",
@@ -1022,6 +1058,9 @@ async def _handle_decision_change_modal_submit_async(body, client: WebClient):
     new_description = values["description_block"]["description_input"]["value"]
     change_reason = values["reason_block"]["reason_input"]["value"]
 
+    # =========================================================================
+    # STEP 1: Database state update (TRUTH) - must succeed first
+    # =========================================================================
     async with get_connection() as conn:
         store = DecisionStore(conn)
         decision = await store.update(
@@ -1032,13 +1071,26 @@ async def _handle_decision_change_modal_submit_async(body, client: WebClient):
             change_reason=change_reason,
         )
 
-    # Post new version for approval
-    blocks = build_approval_block(decision)
-    client.chat_postMessage(
-        channel=channel_id,
-        blocks=blocks,
-        text=f"Decision DEC-{decision_id[:8]} v{decision.version} proposed",
-    )
+    # =========================================================================
+    # STEP 2: Slack message (PRESENTATION) - best effort
+    # =========================================================================
+    try:
+        blocks = build_approval_block(decision)
+        client.chat_postMessage(
+            channel=channel_id,
+            blocks=blocks,
+            text=f"Decision DEC-{decision_id[:8]} v{decision.version} proposed",
+        )
+    except Exception as slack_err:
+        # Slack message failed, but decision is already updated
+        logger.warning(
+            "Slack message failed, but decision change is recorded",
+            extra={
+                "decision_id": decision_id,
+                "new_version": decision.version,
+                "error": str(slack_err),
+            }
+        )
 
     logger.info(
         "Decision change proposed",
@@ -1089,6 +1141,9 @@ async def _handle_decision_deprecate_modal_submit_async(body, client: WebClient)
                     replacement = d
                     break
 
+        # =====================================================================
+        # Database state update (TRUTH) - must succeed first
+        # =====================================================================
         decision = await store.deprecate(
             decision_id=decision_id,
             deprecated_by=user_id,
@@ -1096,20 +1151,32 @@ async def _handle_decision_deprecate_modal_submit_async(body, client: WebClient)
             replaced_by=replacement.id if replacement else None,
         )
 
-    # Update original message with deprecated card
-    blocks = build_deprecated_decision_blocks(decision, replacement)
-    if message_ts:
-        client.chat_update(
-            channel=channel_id,
-            ts=message_ts,
-            blocks=blocks,
-            text=f"Decision DEC-{decision_id[:8]} deprecated",
-        )
-    else:
-        client.chat_postMessage(
-            channel=channel_id,
-            blocks=blocks,
-            text=f"Decision DEC-{decision_id[:8]} deprecated",
+    # =========================================================================
+    # Slack message (PRESENTATION) - best effort, doesn't block state
+    # =========================================================================
+    try:
+        blocks = build_deprecated_decision_blocks(decision, replacement)
+        if message_ts:
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                blocks=blocks,
+                text=f"Decision DEC-{decision_id[:8]} deprecated",
+            )
+        else:
+            client.chat_postMessage(
+                channel=channel_id,
+                blocks=blocks,
+                text=f"Decision DEC-{decision_id[:8]} deprecated",
+            )
+    except Exception as slack_err:
+        # Slack message failed, but decision is already deprecated
+        logger.warning(
+            "Slack message failed, but decision is deprecated",
+            extra={
+                "decision_id": decision_id,
+                "error": str(slack_err),
+            }
         )
 
     logger.info(
