@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 29-sync-on-demand
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 29-02-PLAN.md (Preflight Sync service)
+Last activity: 2026-01-23 — Completed 29-03-PLAN.md (/maro sync diagnostic command)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 2/4 plans
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 3/4 plans
 
 ## Milestones Summary
 
@@ -147,6 +147,12 @@ Phase 29.2 decisions:
 - IDEMPOTENT auto-succeeds, all others require user choice
 - JSON button payloads contain jira_key, operation, fields for stateful handling
 
+Phase 29.3 decisions:
+- JiraSyncService uses JiraRegistryStore for local state comparison
+- _find_missing_children() uses JQL parent filter for epic children
+- Button payloads use JSON with channel_id and keys for stateful tracking
+- Response URL used for updating original message after button click
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -162,9 +168,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 29-02-PLAN.md (Preflight Sync service)
+Stopped at: Completed 29-03-PLAN.md (/maro sync diagnostic command)
 Resume file: None
-Next action: Execute 29-03-PLAN.md
+Next action: Execute 29-04-PLAN.md or finalize Phase 29
 
 ## What's Next
 
@@ -182,18 +188,19 @@ Next action: Execute 29-03-PLAN.md
 
 **Next action:** Create 28.7-PLAN.md or finalize Phase 28
 
-**Phase 29: Sync on Demand** — IN PROGRESS (2/4 plans)
+**Phase 29: Sync on Demand** — IN PROGRESS (3/4 plans)
 
 **Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
 
 **Plans completed:**
 - 29.1: JiraRegistryStore sync tracking fields (status, assignee, jira_updated, last_synced)
 - 29.2: Preflight Sync service with 4-type conflict classification
+- 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 
 **Plans remaining:**
-- 29.3, 29.4
+- 29.4
 
-**Next:** Execute 29-03-PLAN.md
+**Next:** Execute 29-04-PLAN.md (if exists) or finalize Phase 29
 
 ---
 
