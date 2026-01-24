@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 32: Product Invariants (NOT STARTED)
+**Current focus:** v1.2 Developer Experience — Phase 32: Product Invariants (IN PROGRESS)
 
 ## Current Position
 
 Phase: 32-product-invariants
-Plan: 0 of 6 in current phase
-Status: Requirements defined
-Last activity: 2026-01-24 — Created Phase 32 requirements
+Plan: 3 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-24 — Completed 32-03-PLAN.md (Draft Lifecycle 3-State)
 
-Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 0/6 plans
+Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 3/6 plans
 
 ## Milestones Summary
 
@@ -216,6 +216,11 @@ Phase 31.4 decisions:
 - Preflight is blocking guard, /maro sync is informational diagnostic
 - Both preflight and sync use same 4-type conflict classification (IDEMPOTENT, SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL)
 
+Phase 32.3 decisions:
+- UserDraftState enum with 3 values: DRAFTING, READY, PUBLISHED
+- get_user_state() maps 4 internal states to DRAFTING, APPROVED to READY, COMMITTED to PUBLISHED
+- INVARIANT I5: Users see 3 states only (internal complexity hidden)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -231,13 +236,13 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 31-04-PLAN.md (Documentation updates)
+Stopped at: Completed 32-03-PLAN.md (Draft Lifecycle 3-State)
 Resume file: None
-Next action: Discuss Phase 32 vision, then create plans
+Next action: Execute 32-04-PLAN.md
 
 ## What's Next
 
-**Phase 32: Product Invariants** — NOT STARTED (0/6 plans)
+**Phase 32: Product Invariants** — IN PROGRESS (3/6 plans)
 
 **Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
 

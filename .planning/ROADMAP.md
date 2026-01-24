@@ -267,7 +267,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 32: Product Invariants
 
-**Status:** Not Started
+**Status:** In Progress (3/6 plans)
 
 **Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
 
@@ -397,4 +397,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
-| 32. Product Invariants | v1.2 | 0/6 | Not Started | - |
+| 32. Product Invariants | v1.2 | 3/6 | In Progress | - |
