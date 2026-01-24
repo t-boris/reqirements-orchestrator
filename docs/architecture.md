@@ -185,6 +185,93 @@ Enables:
 
 ---
 
+## Phase 31: Architecture Hardening (Latest)
+
+**Mantra:** "Feel like a product, not an OS kernel."
+
+Phase 31 hardens the architecture for production without adding features.
+
+### Super-Modes: User-Facing Simplicity
+
+13 intents exist for routing, but users see 5 modes:
+
+| Super-Mode | User Perception | Internal Intents |
+|------------|-----------------|------------------|
+| **BUILD** | "I'm building something" | WORKITEM_CREATE, DRAFT_REFINE, DRAFT_TRANSFORM |
+| **OPERATE** | "I'm managing Jira" | JIRA_COMMAND, CHANGE_REQUEST, SYNC_REQUEST, TICKET_ACTION |
+| **DECIDE** | "I'm recording a decision" | DECISION |
+| **THINK** | "Help me think" | REVIEW, JIRA_SEARCH |
+| **CHAT** | "Just talking" | DISCUSSION, META, AMBIGUOUS |
+
+The `super_mode` field on IntentResult is populated at classification time via `get_super_mode()`.
+
+### MANAGED_SECTION_ONLY Invariant
+
+Decision projection MUST only touch the managed section:
+
+```markdown
+## Decisions (managed by MARO)
+• DEC-41 v4 – Use ISO 8601 dates
+---
+```
+
+**Rules:**
+- Decision projection touches ONLY this block
+- User content outside is NEVER modified
+- Projection must fail if boundaries unclear
+- Removal of managed section restores original description
+
+### Slack as UI
+
+Message failures don't block state or Jira sync:
+
+```
+Decision approved
+    ↓
+DecisionStore.approve() ← STATE (truth)
+    ↓
+DecisionSyncService → JIRA (projection)
+    ↓
+DecisionManager → SLACK (presentation, best effort)
+```
+
+Database is truth. Jira is projection. Slack is presentation.
+
+### Canonical Message Idempotency
+
+- Version-checked: Only update if decision.version matches
+- Failure-safe: Edit failure doesn't change decision state
+- Retry-safe: Same version → same blocks
+
+### Commit Log vs State
+
+| Concept | Nature | Mutability |
+|---------|--------|------------|
+| Canonical Message | Current state (HEAD) | Mutable |
+| Commit Log | Historical record | Append-only |
+
+Canonical messages show "what is true now". Commit logs show "what became true".
+
+### Architecture Flow
+
+```
+User Input
+    ↓
+Intent Router → SuperMode (user) + Intent (routing)
+    ↓
+Decision Flow
+    ↓
+DecisionStore.approve() ← STATE (truth)
+    ↓
+DecisionSyncService → JIRA (projection)
+    ↓
+DecisionManager → SLACK (presentation, best effort)
+```
+
+**Mantra:** "Feel like a product, not an OS kernel."
+
+---
+
 ## Table of Contents
 
 1. [System Overview](#system-overview)
