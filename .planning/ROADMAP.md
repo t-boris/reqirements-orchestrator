@@ -176,6 +176,29 @@ User: "Do you think only one epic is enough?"
 
 **Full requirements:** `.planning/phases/28-structured-draft-evolution/REQUIREMENTS.md`
 
+### Phase 29: Sync on Demand
+
+**Status:** IN PROGRESS (1/4 plans complete)
+
+**Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
+
+**Two Components:**
+
+| Component | Purpose | Trigger |
+|-----------|---------|---------|
+| **Preflight Sync** | Automatic safety layer before Jira operations | Before jira_create/update/transition |
+| **/maro sync** | Diagnostic and reconciliation command | Manual operator command |
+
+**Conflict Types:**
+1. **Idempotent** - Operation already done in Jira, auto-success + sync
+2. **Safe Drift** - Changes don't overlap, ask but default to proceed
+3. **Real Conflict** - Same fields changed, block + choice
+4. **Structural** - Invalid operation, block + explanation
+
+**Philosophy:** "Distributed version control for meaning" - never auto-fix, always human choice.
+
+**Full context:** `.planning/milestones/v1.2/phase-29-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -280,3 +303,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 27.5 WorkItem Ownership & Audit | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
+| 29. Sync on Demand | v1.2 | 1/4 | In Progress | - |

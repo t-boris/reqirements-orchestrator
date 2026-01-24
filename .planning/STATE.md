@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 28: Structured Draft Evolution (IN PROGRESS)
+**Current focus:** v1.2 Developer Experience — Phase 29: Sync on Demand (IN PROGRESS)
 
 ## Current Position
 
-Phase: 28-structured-draft-evolution
-Plan: 6 of ? in current phase
+Phase: 29-sync-on-demand
+Plan: 1 of 4 in current phase
 Status: In Progress
-Last activity: 2026-01-23 — Completed 28.6-PLAN.md (Structure Feedback UI)
+Last activity: 2026-01-23 — Completed 29-01-PLAN.md (JiraRegistryStore sync fields)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans complete
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 1/4 plans
 
 ## Milestones Summary
 
@@ -24,7 +24,7 @@ Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | Complete | 2026-01-20 |
 | v1.2 | Developer Experience | 24+ | 6+ | In Progress | - |
 
-**Total:** 28 phases, 118 plans shipped (v1.2: 12 plans complete)
+**Total:** 29 phases, 119 plans shipped (v1.2: 13 plans complete)
 
 ## v1.1 Summary
 
@@ -135,6 +135,12 @@ Phase 28.6 decisions:
 - Edit button prompts user to describe changes, routes to DRAFT_TRANSFORM intent
 - Version binding: JSON payloads with {draft_id, version} in action buttons
 
+Phase 29.1 decisions:
+- Sync tracking via jira_updated (from API) vs last_synced (our fetch time)
+- COALESCE pattern in register() to preserve existing data when new values None
+- mark_deleted() uses DELETED_EXTERNALLY status (preserves registry history)
+- get_stale_issues() returns NULLs first (never synced = most stale)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -150,9 +156,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 28.6-PLAN.md (Structure Feedback UI)
+Stopped at: Completed 29-01-PLAN.md (JiraRegistryStore sync fields)
 Resume file: None
-Next action: Create 28.7-PLAN.md or complete Phase 28
+Next action: Execute 29-02-PLAN.md
 
 ## What's Next
 
@@ -170,16 +176,17 @@ Next action: Create 28.7-PLAN.md or complete Phase 28
 
 **Next action:** Create 28.7-PLAN.md or finalize Phase 28
 
-**Phase 29: Sync on Demand** — CONTEXT READY
+**Phase 29: Sync on Demand** — IN PROGRESS (1/4 plans)
 
 **Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
 
-**Vision captured:**
-- Preflight Sync: Automatic safety layer with 4 conflict types (Idempotent/Safe drift/Real conflict/Structural)
-- /maro sync: Diagnostic command with reconciliation offers
-- Philosophy: "Distributed version control for meaning" — never auto-fix, always human choice
+**Plans completed:**
+- 29.1: JiraRegistryStore sync tracking fields (status, assignee, jira_updated, last_synced)
 
-**Next:** `/gsd:research-phase 29` or `/gsd:plan-phase 29`
+**Plans remaining:**
+- 29.2, 29.3, 29.4
+
+**Next:** Execute 29-02-PLAN.md
 
 ---
 
