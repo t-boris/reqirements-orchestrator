@@ -290,6 +290,45 @@ User: "Do you think only one epic is enough?"
 
 **Full requirements:** `.planning/phases/32-product-invariants/REQUIREMENTS.md`
 
+### Phase 33: Anchor Message Architecture
+
+**Status:** NOT STARTED
+
+**Objective:** Shift from thread-centric to object-centric design. Canonical messages become anchors for entity lifecycles — threads exist to manage objects, not for conversation.
+
+**Mantra:** "Thread exists for managing a specific object of reality, not for conversation."
+
+**Core Insight:**
+```
+Channel = Repository
+Canonical Message = Object HEAD
+Thread = Working Tree for that object
+Registry = Database of objects
+Jira = Projection
+```
+
+**Key Rules:**
+
+| Rule | Description |
+|------|-------------|
+| A1 | Any "created/approved/updated" message is an anchor message |
+| A2 | Each anchor has object_id (DEC-41, SCRUM-166) and object_type (Decision, WorkItem) |
+| A3 | Messages in thread inherit object_id as context automatically |
+| A4 | Commands in thread default to the anchor's object ("update", "deprecate", "add story") |
+
+**What Changes:**
+
+| Current | Target |
+|---------|--------|
+| Thread exists → discussion happens → tickets emerge | Object created → canonical message → thread = lifecycle |
+| Thread binding is optional metadata | Thread binding is mandatory object reference |
+| Commands require explicit ID | Commands inherit ID from anchor |
+| Bot is chat participant | Bot is state management interface |
+
+**Depends on:** Phase 32 (invariants provide foundation)
+
+**Full requirements:** `.planning/phases/33-anchor-message-architecture/REQUIREMENTS.md`
+
 ## Completed Milestones
 
 <details>
@@ -398,3 +437,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
+| 33. Anchor Message Architecture | v1.2 | 0/? | Not Started | - |

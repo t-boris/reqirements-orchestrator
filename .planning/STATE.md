@@ -342,6 +342,8 @@ Next action: Phase 32 complete - run /gsd:progress
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 33 ADDED — Anchor Message Architecture (threads exist for objects, not conversation)
+- 2026-01-24: Phase 32 COMPLETE — Product Invariants (6/6 plans)
 - 2026-01-24: Phase 32 ADDED — Product Invariants (enforce architectural principles as hard rules)
 - 2026-01-24: Phase 31 COMPLETE — Architecture Hardening (4/4 plans)
 - 2026-01-23: Phase 31 ADDED — Architecture Hardening (super-modes, invariants, simplification)
