@@ -201,7 +201,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 30: Decision as First-Class Entity
 
-**Status:** IN PROGRESS (2/8 plans)
+**Status:** IN PROGRESS (5/8 plans)
 
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
