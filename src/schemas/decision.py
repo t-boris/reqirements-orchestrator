@@ -107,3 +107,45 @@ class DecisionVersion(BaseModel):
         default=None,
         description="Why this change was made",
     )
+
+
+class JiraFieldPath(str, Enum):
+    """Standardized Jira field paths for decision projection.
+
+    Decisions map to specific sections/fields in Jira.
+    This enables deterministic projection: Decision type -> Jira field.
+    No LLM guessing - the mapping is explicit.
+    """
+
+    DESC_ARCHITECTURE = "description.architecture"  # ARCH decisions
+    DESC_SCOPE = "description.scope"  # SCOPE decisions
+    DESC_CONSTRAINTS = "description.constraints"  # CONSTRAINT decisions
+    PRIORITY = "priority"  # PRIORITY decisions
+    LABELS = "labels"  # PROCESS decisions
+    PARENT_LINK = "parent"  # STRUCTURE decisions (epic link)
+    CUSTOM_FIELD = "custom_field"  # Extension point
+
+
+class DecisionLink(BaseModel):
+    """Link between a Decision and a Jira ticket field.
+
+    Enables deterministic projection: Decision type -> Jira field.
+    Tracks which decisions are linked to which Jira tickets
+    and at which version they were last synced.
+    """
+
+    id: str = Field(description="UUID for this link")
+    decision_id: str = Field(description="UUID of the linked decision")
+    jira_key: str = Field(description="Jira issue key (e.g., SCRUM-123)")
+    field_path: JiraFieldPath = Field(description="Where in Jira the decision appears")
+    linked_at: datetime = Field(description="When this link was established")
+    linked_by: str = Field(description="User ID who created the link")
+    # Version of decision that was last synced
+    synced_version: Optional[int] = Field(
+        default=None,
+        description="Version of decision that was last synced to this ticket",
+    )
+    synced_at: Optional[datetime] = Field(
+        default=None,
+        description="When the decision was last synced to this ticket",
+    )
