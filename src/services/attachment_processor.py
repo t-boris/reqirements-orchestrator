@@ -144,10 +144,48 @@ class AttachmentProcessor:
 
         if success:
             logger.info(f"Attachment ready: {attachment.filename}")
+
+            # Post attachment card with pin button
+            await self._post_attachment_card(attachment)
+
             return "ready"
         else:
             logger.error(f"Failed to save extracted content: {attachment.filename}")
             return "failed"
+
+    async def _post_attachment_card(self, attachment: Attachment) -> None:
+        """Post attachment card to channel after processing.
+
+        Shows file info, summary, and pin button.
+        Posted as a reply in thread or to channel.
+
+        Args:
+            attachment: Processed attachment with summary.
+        """
+        try:
+            # Fetch updated attachment with summary
+            async with get_connection() as conn:
+                store = AttachmentStore(conn)
+                updated = await store.get(attachment.id)
+
+            if not updated or updated.status != AttachmentStatus.READY:
+                return
+
+            from src.slack.blocks.attachments import build_attachment_card
+            blocks = build_attachment_card(updated, show_pin_button=True)
+
+            # Post as reply in thread (or channel if no thread)
+            await self.client.chat_postMessage(
+                channel=updated.channel_id,
+                thread_ts=updated.thread_ts,
+                text=f":paperclip: Processed: {updated.filename}",
+                blocks=blocks,
+            )
+
+            logger.debug(f"Posted attachment card for {updated.filename}")
+        except Exception as e:
+            # Don't fail processing if card posting fails
+            logger.warning(f"Failed to post attachment card: {e}")
 
     async def _update_status(
         self,
