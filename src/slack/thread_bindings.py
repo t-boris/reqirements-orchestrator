@@ -1,12 +1,17 @@
 """Thread to Jira ticket binding store.
 
-Manages thread → Jira ticket bindings for duplicate linking.
-MVP: In-memory storage. Can migrate to DB later.
+Manages thread -> Jira ticket bindings for duplicate linking.
+
+Phase 33-02: Database-backed persistence.
+Legacy store: binds threads to Jira keys.
+For entity-based bindings, see AnchorStore.
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+
+from psycopg import AsyncConnection
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +28,60 @@ class ThreadBinding:
 
 
 class ThreadBindingStore:
-    """Store thread → Jira ticket bindings.
+    """Database-backed store for thread-to-Jira bindings.
 
-    MVP: In-memory dict storage. Thread-safe for single process.
+    Persists bindings so context survives bot restarts.
+    Legacy store: binds threads to Jira keys.
+    For entity-based bindings, see AnchorStore.
+
+    Usage:
+        async with get_connection() as conn:
+            store = ThreadBindingStore(conn)
+            await store.create_tables()
+            binding = await store.bind(channel_id, thread_ts, issue_key, bound_by)
     """
 
-    def __init__(self):
-        """Initialize empty binding store."""
-        # Key format: "channel_id:thread_ts"
-        self._bindings: dict[str, ThreadBinding] = {}
+    def __init__(self, conn: AsyncConnection) -> None:
+        """Initialize store with an async connection.
 
-    def _make_key(self, channel_id: str, thread_ts: str) -> str:
-        """Create storage key from channel and thread."""
-        return f"{channel_id}:{thread_ts}"
+        Args:
+            conn: Async psycopg connection from the pool.
+        """
+        self._conn = conn
+
+    async def create_tables(self) -> None:
+        """Create thread_bindings table if not exists.
+
+        Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
+        """
+        async with self._conn.cursor() as cur:
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS thread_bindings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    channel_id TEXT NOT NULL,
+                    thread_ts TEXT NOT NULL,
+                    issue_key TEXT NOT NULL,
+                    bound_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    bound_by TEXT NOT NULL,
+
+                    -- One binding per thread
+                    UNIQUE(channel_id, thread_ts)
+                )
+            """)
+
+            # Fast lookups by thread
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_thread_bindings_thread
+                    ON thread_bindings(channel_id, thread_ts)
+            """)
+
+            # Fast lookups by issue
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_thread_bindings_issue
+                    ON thread_bindings(issue_key)
+            """)
+
+            await self._conn.commit()
 
     async def bind(
         self,
@@ -46,6 +92,8 @@ class ThreadBindingStore:
     ) -> ThreadBinding:
         """Bind a thread to a Jira ticket.
 
+        Creates or updates the binding. Uses UPSERT to handle rebinding.
+
         Args:
             channel_id: Slack channel ID
             thread_ts: Thread timestamp
@@ -53,19 +101,31 @@ class ThreadBindingStore:
             bound_by: Slack user ID who created the binding
 
         Returns:
-            Created ThreadBinding
+            Created or updated ThreadBinding
         """
-        key = self._make_key(channel_id, thread_ts)
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO thread_bindings (channel_id, thread_ts, issue_key, bound_by, bound_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (channel_id, thread_ts)
+                DO UPDATE SET issue_key = EXCLUDED.issue_key, bound_at = EXCLUDED.bound_at
+                RETURNING channel_id, thread_ts, issue_key, bound_at, bound_by
+                """,
+                (channel_id, thread_ts, issue_key, bound_by, now),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
 
         binding = ThreadBinding(
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-            issue_key=issue_key,
-            bound_at=datetime.utcnow(),
-            bound_by=bound_by,
+            channel_id=row[0],
+            thread_ts=row[1],
+            issue_key=row[2],
+            bound_at=row[3],
+            bound_by=row[4],
         )
-
-        self._bindings[key] = binding
 
         logger.info(
             "Thread bound to Jira ticket",
@@ -93,8 +153,27 @@ class ThreadBindingStore:
         Returns:
             ThreadBinding if exists, None otherwise
         """
-        key = self._make_key(channel_id, thread_ts)
-        return self._bindings.get(key)
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT channel_id, thread_ts, issue_key, bound_at, bound_by
+                FROM thread_bindings
+                WHERE channel_id = %s AND thread_ts = %s
+                """,
+                (channel_id, thread_ts),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return None
+
+        return ThreadBinding(
+            channel_id=row[0],
+            thread_ts=row[1],
+            issue_key=row[2],
+            bound_at=row[3],
+            bound_by=row[4],
+        )
 
     async def unbind(
         self,
@@ -110,10 +189,19 @@ class ThreadBindingStore:
         Returns:
             True if binding existed and was removed, False otherwise
         """
-        key = self._make_key(channel_id, thread_ts)
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                DELETE FROM thread_bindings
+                WHERE channel_id = %s AND thread_ts = %s
+                RETURNING id
+                """,
+                (channel_id, thread_ts),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
 
-        if key in self._bindings:
-            del self._bindings[key]
+        if row:
             logger.info(
                 "Thread unbound from Jira ticket",
                 extra={
@@ -125,14 +213,57 @@ class ThreadBindingStore:
 
         return False
 
+    async def get_bindings_for_issue(
+        self,
+        issue_key: str,
+    ) -> list[ThreadBinding]:
+        """Get all thread bindings for a Jira issue.
 
-# Global singleton for MVP
-_binding_store: Optional[ThreadBindingStore] = None
+        Args:
+            issue_key: Jira issue key
+
+        Returns:
+            List of ThreadBinding objects for this issue
+        """
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT channel_id, thread_ts, issue_key, bound_at, bound_by
+                FROM thread_bindings
+                WHERE issue_key = %s
+                ORDER BY bound_at DESC
+                """,
+                (issue_key,),
+            )
+            rows = await cur.fetchall()
+
+        return [
+            ThreadBinding(
+                channel_id=row[0],
+                thread_ts=row[1],
+                issue_key=row[2],
+                bound_at=row[3],
+                bound_by=row[4],
+            )
+            for row in rows
+        ]
 
 
-def get_binding_store() -> ThreadBindingStore:
-    """Get or create global ThreadBindingStore singleton."""
-    global _binding_store
-    if _binding_store is None:
-        _binding_store = ThreadBindingStore()
-    return _binding_store
+# Convenience function to get a store with connection
+async def get_binding_store_with_conn() -> tuple[ThreadBindingStore, AsyncConnection]:
+    """Get ThreadBindingStore with a database connection.
+
+    Returns tuple of (store, conn) - caller must manage connection lifecycle.
+
+    Usage:
+        store, conn = await get_binding_store_with_conn()
+        try:
+            binding = await store.get_binding(channel_id, thread_ts)
+        finally:
+            # Connection returns to pool when context exits
+            pass
+    """
+    from src.db import get_connection
+
+    conn = await get_connection().__aenter__()
+    return ThreadBindingStore(conn), conn

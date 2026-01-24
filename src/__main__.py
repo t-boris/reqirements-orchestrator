@@ -87,6 +87,12 @@ async def init_database() -> None:
         conflict_store = ConflictStore(conn)
         await conflict_store.ensure_table()
 
+        # Phase 33-02: Thread bindings for context inheritance
+        from src.slack.thread_bindings import ThreadBindingStore
+
+        thread_binding_store = ThreadBindingStore(conn)
+        await thread_binding_store.create_tables()
+
     logger.info("Database initialized")
 
 
