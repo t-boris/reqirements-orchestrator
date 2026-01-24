@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Chat is the source of truth. The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
-**Current focus:** v1.2 Developer Experience — Phase 29: Sync on Demand (IN PROGRESS)
+**Current focus:** v1.2 Developer Experience — Phase 29: Sync on Demand (COMPLETE)
 
 ## Current Position
 
 Phase: 29-sync-on-demand
-Plan: 3 of 4 in current phase
-Status: In Progress
-Last activity: 2026-01-23 — Completed 29-03-PLAN.md (/maro sync diagnostic command)
+Plan: 4 of 4 in current phase
+Status: Complete
+Last activity: 2026-01-23 — Completed 29-04-PLAN.md (Preflight sync integration into handlers)
 
-Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 3/4 plans
+Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 plans | Phase 29: 4/4 plans COMPLETE
 
 ## Milestones Summary
 
@@ -24,7 +24,7 @@ Progress: ██████████ 100% (Phase 27 COMPLETE) | Phase 28: 6 
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | Complete | 2026-01-20 |
 | v1.2 | Developer Experience | 24+ | 6+ | In Progress | - |
 
-**Total:** 29 phases, 119 plans shipped (v1.2: 13 plans complete)
+**Total:** 29 phases, 120 plans shipped (v1.2: 14 plans complete)
 
 ## v1.1 Summary
 
@@ -153,6 +153,13 @@ Phase 29.3 decisions:
 - Button payloads use JSON with channel_id and keys for stateful tracking
 - Response URL used for updating original message after button click
 
+Phase 29.4 decisions:
+- Create preflight as duplicate detection via summary matching
+- Update preflight uses PreflightService check_update()
+- IDEMPOTENT auto-succeeds without UI (just message)
+- Button payloads include pending_action for stateful handling
+- preflight_use_jira same as pull_only; preflight_use_channel same as proceed
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -168,9 +175,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 29-03-PLAN.md (/maro sync diagnostic command)
+Stopped at: Completed 29-04-PLAN.md (Preflight sync integration into handlers)
 Resume file: None
-Next action: Execute 29-04-PLAN.md or finalize Phase 29
+Next action: Finalize Phase 29 or begin Phase 30
 
 ## What's Next
 
@@ -188,7 +195,7 @@ Next action: Execute 29-04-PLAN.md or finalize Phase 29
 
 **Next action:** Create 28.7-PLAN.md or finalize Phase 28
 
-**Phase 29: Sync on Demand** — IN PROGRESS (3/4 plans)
+**Phase 29: Sync on Demand** — COMPLETE (4/4 plans)
 
 **Objective:** Pull changes from Jira for all tracked tickets. Detect external modifications and update local database.
 
@@ -196,11 +203,9 @@ Next action: Execute 29-04-PLAN.md or finalize Phase 29
 - 29.1: JiraRegistryStore sync tracking fields (status, assignee, jira_updated, last_synced)
 - 29.2: Preflight Sync service with 4-type conflict classification
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
+- 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Plans remaining:**
-- 29.4
-
-**Next:** Execute 29-04-PLAN.md (if exists) or finalize Phase 29
+**Next:** Finalize Phase 29 or begin Phase 30
 
 ---
 
