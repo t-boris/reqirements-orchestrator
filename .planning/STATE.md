@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (IN PROGRESS)
+**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (COMPLETE)
 
 ## Current Position
 
 Phase: 31-architecture-hardening
-Plan: 2 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-24 — Completed 31-01-PLAN.md (SuperMode enum)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-24 — Completed 31-04-PLAN.md (Documentation)
 
-Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 2/4 plans | Wave 1: 3 parallel, Wave 2: 1
+Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 31: 4/4 plans
 
 ## Milestones Summary
 
@@ -211,6 +211,11 @@ Phase 31.2 decisions:
 - verify_user_content_preserved() helper for test assertions
 - INVARIANT docstring pattern for critical constraints
 
+Phase 31.4 decisions:
+- Commit log entries are immutable, canonical messages are mutable
+- Preflight is blocking guard, /maro sync is informational diagnostic
+- Both preflight and sync use same 4-type conflict classification (IDEMPOTENT, SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -226,13 +231,27 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 31-01-PLAN.md (SuperMode enum for user-facing simplicity)
+Stopped at: Completed 31-04-PLAN.md (Documentation updates)
 Resume file: None
-Next action: Execute remaining Phase 31 plans (31-03, 31-04)
+Next action: Phase 31 complete, ready for next milestone
 
 ## What's Next
 
-**Phase 28: Structured Draft Evolution** — IN PROGRESS
+**Phase 31: Architecture Hardening** — COMPLETE (4/4 plans)
+
+**Objective:** Consolidate intents into super-modes, elevate safety invariants to hard rules, and simplify over-specified systems for production readiness.
+
+**Plans completed:**
+- 31.1: SuperMode enum with 5 values for user-facing simplicity
+- 31.2: MANAGED_SECTION_ONLY invariant for decision projection safety
+- 31.3: Slack as UI pattern (message failures don't block state)
+- 31.4: Documentation updates (commit log vs state, sync semantics)
+
+**Next action:** Phase complete, ready for next milestone
+
+---
+
+**Phase 28: Structured Draft Evolution** — COMPLETE
 
 **Objective:** Transform Draft from "text container for a ticket" to "typed, versioned design object with lifecycle states and structural mutations."
 

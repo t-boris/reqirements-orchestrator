@@ -236,7 +236,7 @@ User: "Do you think only one epic is enough?"
 
 ### Phase 31: Architecture Hardening
 
-**Status:** IN PROGRESS (1/4 plans complete)
+**Status:** COMPLETE (4/4 plans)
 
 **Objective:** Consolidate intents into super-modes, elevate safety invariants to hard rules, and simplify over-specified systems.
 
@@ -371,4 +371,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
-| 31. Architecture Hardening | v1.2 | 2/4 | In Progress | - |
+| 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
