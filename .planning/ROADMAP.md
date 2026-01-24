@@ -389,6 +389,57 @@ Jira = Projection
 
 **Depends on:** Phase 33 (anchor messages for file-based WorkItems)
 
+### Phase 35: Multi-Intent Task Orchestration
+
+**Status:** NOT STARTED
+
+**Objective:** Replace single-intent classification with TaskPlan orchestration. Messages become task lists where each intent is a task with priority and side-effect type.
+
+**Mantra:** "Parse the universe of user intent, not just the top-1 classification."
+
+**Problem:**
+- Users write compound requests: "create stories, check duplicates, and review architecture"
+- Single-winner classification loses context and frustrates users
+- Bot appears to "not understand" multi-part requests
+
+**Solution (Variant 3: TaskPlan):**
+
+1. **LLM returns TaskPlan** instead of single intent:
+   ```
+   TaskPlan:
+     - task_id, intent, mode (BUILD/OPERATE/DECIDE/THINK/CHAT)
+     - requires_user_input: bool
+     - side_effects: NONE | SLACK | JIRA | REGISTRY
+     - dependencies: [task_id...]
+     - confidence
+   ```
+
+2. **Executor applies ordering rules:**
+   - First: OPERATE/SAFETY (preflight, duplicates, conflicts)
+   - Then: BUILD (draft/transform)
+   - Then: THINK (review)
+   - Last: DECIDE (approval) — only with explicit user confirmation
+
+3. **Canonical UX response:**
+   ```
+   I see 3 actions:
+   1. Create Epics from Decisions
+   2. Check Jira duplicates
+   3. Provide architecture recommendations
+
+   Executing 1 and 2 now. For 3 — OK?
+   ```
+
+**Key Rules:**
+- Safe tasks execute automatically (analysis, preview, search, draft collection)
+- Dangerous tasks require confirmation (Jira create/update, deprecate, mass changes)
+- History determines context/anchor, but new tasks come only from trigger message
+- Multi-intent detection: multiple intents returned, low top-1 confidence, or "and/also/plus" in text
+
+**Depends on:** Phase 34 (attachment context in task execution)
+
+**Full context:** `.planning/phases/35-multi-intent-task-orchestration/35-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -499,3 +550,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
+| 35. Multi-Intent Task Orchestration | v1.2 | 0/? | Not Started | - |

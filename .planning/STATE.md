@@ -435,6 +435,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 35 ADDED — Multi-Intent Task Orchestration (TaskPlan replaces single-intent classification)
 - 2026-01-24: Phase 34 ADDED — File Attachment Processing (read PDF/DOCX/MD from Slack messages)
 - 2026-01-24: Phase 33 COMPLETE — Anchor Message Architecture (5/5 plans)
 - 2026-01-24: Phase 33 ADDED — Anchor Message Architecture (threads exist for objects, not conversation)
