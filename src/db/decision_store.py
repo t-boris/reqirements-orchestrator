@@ -536,6 +536,42 @@ class DecisionStore:
 
         return self._row_to_decision(row)
 
+    async def get_by_canonical_message(
+        self,
+        channel_id: str,
+        message_ts: str,
+    ) -> Optional[Decision]:
+        """Get decision by its canonical Slack message timestamp.
+
+        Used for thread binding — when someone posts in a decision thread,
+        we need to find which decision it belongs to.
+
+        Args:
+            channel_id: Slack channel ID
+            message_ts: Message timestamp of the canonical message
+
+        Returns:
+            Decision if found, None otherwise
+        """
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, channel_id, decision_type, title, description,
+                       status, version, created_by, created_at, updated_at,
+                       approved_by, approved_at, replaced_by, deprecation_reason,
+                       canonical_message_ts, discussion_thread_ts
+                FROM decisions
+                WHERE channel_id = %s AND canonical_message_ts = %s
+                """,
+                (channel_id, message_ts),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return None
+
+        return self._row_to_decision(row)
+
     def _row_to_decision(self, row: tuple) -> Decision:
         """Convert database row to Decision model.
 
