@@ -22,6 +22,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 3.3 Registry Rules
    - 3.4 Context Rules
    - 3.5 Commit Semantics
+   - 3.6 Commit Log vs State (Phase 31)
 4. [LLM Prompts Reference](#4-llm-prompts-reference)
 5. [State Machine & Workflows](#5-state-machine--workflows)
 6. [Decision Logic](#6-decision-logic)
@@ -726,6 +727,31 @@ Each channel maintains a commit log (append-only):
 - `jira_synced=false` means local-only truth
 - Sync is explicit: "Publish to Jira" or `/maro sync`
 - Jira updates flow back as CHANGE commits
+
+### 3.6 Commit Log vs State (Phase 31)
+
+**Core distinction:** Canonical messages and commit logs serve different purposes.
+
+| Concept | Nature | Mutability | Purpose |
+|---------|--------|------------|---------|
+| **Canonical Message** | Current state (HEAD) | Mutable (updated in place) | What IS true now |
+| **Commit Log** | Historical record | Append-only (never edited) | What BECAME true |
+
+**Rules:**
+1. **Commit log entries are immutable after creation** — Once a commit is recorded, it cannot be modified or deleted
+2. **Canonical messages are updated to reflect current version** — The pinned message always shows the latest state
+3. **Never merge these concepts in code or docs** — They serve different purposes and have different lifecycles
+
+**Example flow:**
+```
+Decision approved
+    ↓
+Commit log entry created (immutable historical record)
+    ↓
+Canonical message updated (mutable current state)
+```
+
+**Key insight:** The commit log is like git history — it records what happened. The canonical message is like the working tree — it shows what is true now. Never confuse these: you read the canonical message to know current state, you read the commit log to know history.
 
 ---
 
