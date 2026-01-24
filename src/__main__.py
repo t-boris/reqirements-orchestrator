@@ -99,6 +99,12 @@ async def init_database() -> None:
         anchor_store = AnchorStore(conn)
         await anchor_store.create_tables()
 
+        # Phase 34-01: File attachment processing
+        from src.db.attachment_store import AttachmentStore
+
+        attachment_store = AttachmentStore(conn)
+        await attachment_store.create_tables()
+
     logger.info("Database initialized")
 
 
