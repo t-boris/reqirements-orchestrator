@@ -547,7 +547,7 @@ Bot: "To draft stories, pick approach:"
 
 ### Phase 37: Unified Question Engine
 
-**Status:** NOT PLANNED
+**Status:** IN PROGRESS (1/5 plans)
 
 **Objective:** Abstract Question Engine from providers. Unify the mechanism for asking questions while allowing different sources (catalog vs LLM-generated).
 
@@ -600,7 +600,7 @@ Bot: "To draft stories, pick approach:"
 | 3 | 37-05 | Integration: QuestionEngine facade, review_continuation |
 
 **Plans:**
-- [ ] 37-01: QuestionProvider interface + ReviewState schema
+- [x] 37-01: QuestionProvider interface + ReviewState schema (2026-01-24)
 - [ ] 37-02: CatalogProvider extraction
 - [ ] 37-03: FreeformProvider implementation
 - [ ] 37-04: AnswerMapper extension + ReviewStateStore
@@ -720,4 +720,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
-| 37. Unified Question Engine | v1.2 | 0/5 | Planned | - |
+| 37. Unified Question Engine | v1.2 | 1/5 | In Progress | - |

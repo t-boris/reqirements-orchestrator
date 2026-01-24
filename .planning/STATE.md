@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 36 COMPLETE
+**Current focus:** v1.2 Developer Experience — Phase 37 IN PROGRESS
 
 ## Current Position
 
-Phase: 36-question-engine-conversation-driver
-Plan: All 7 plans executed
-Status: COMPLETE
-Last activity: 2026-01-24 — Phase 36 complete (7/7 plans, 4 waves)
+Phase: 37-unified-question-engine
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-24 — Completed 37-01-PLAN.md
 
-Progress: Phase complete (7/7 plans)
+Progress: ███████████░░░░░░░░░ 1/5 plans
 
 ## Milestones Summary
 
@@ -310,12 +310,17 @@ Phase 35-08 decisions:
 - task_decomposer returns decision_result with action="task_plan_created"
 - End-to-end flow: multi-intent → decompose → post card → execute/block → complete
 
+Phase 37-01 decisions:
+- Protocol pattern for QuestionProvider (not ABC) - enables structural subtyping
+- ReviewState mirrors WorkItemDraft as FreeformProvider target
+- OpenQuestion tracks maps_to field for answer routing
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Phase 36 complete
+Stopped at: Completed 37-01-PLAN.md
 Resume file: None
-Next action: Determine next phase or milestone
+Next action: Execute 37-02-PLAN.md
 
 ## What's Next
 
