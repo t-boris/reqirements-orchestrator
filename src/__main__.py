@@ -111,6 +111,12 @@ async def init_database() -> None:
         chunk_store = AttachmentChunkStore(conn)
         await chunk_store.create_tables()
 
+        # Phase 35-01: Multi-Intent Task Orchestration
+        from src.db.task_plan_store import TaskPlanStore
+
+        task_plan_store = TaskPlanStore(conn)
+        await task_plan_store.create_tables()
+
     logger.info("Database initialized")
 
 
