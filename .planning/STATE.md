@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 32: Product Invariants (NOT STARTED)
 
 ## Current Position
 
-Phase: 31-architecture-hardening
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-01-24 — Completed 31-04-PLAN.md (Documentation)
+Phase: 32-product-invariants
+Plan: 0 of 6 in current phase
+Status: Requirements defined
+Last activity: 2026-01-24 — Created Phase 32 requirements
 
-Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 31: 4/4 plans
+Progress: ██████████ 100% (Phase 27-31 COMPLETE) | Phase 32: 0/6 plans
 
 ## Milestones Summary
 
@@ -233,9 +233,24 @@ None.
 Last session: 2026-01-24
 Stopped at: Completed 31-04-PLAN.md (Documentation updates)
 Resume file: None
-Next action: Phase 31 complete, ready for next milestone
+Next action: Discuss Phase 32 vision, then create plans
 
 ## What's Next
+
+**Phase 32: Product Invariants** — NOT STARTED (0/6 plans)
+
+**Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
+
+**Invariants:**
+- I1: SuperMode = Sole UI Contract (intents never exposed to users)
+- I2: Slack = UI (handlers read-only, mutations via graph)
+- I3: Commit Log = Append-Only (event-sourced, canonical messages rebuildable)
+- I4: MANAGED_SECTION = Law (CI enforcement)
+- I5: Draft Lifecycle = 3 User-Facing States (Drafting/Ready/Published)
+
+**Next action:** Discuss phase vision, then create plans
+
+---
 
 **Phase 31: Architecture Hardening** — COMPLETE (4/4 plans)
 
@@ -246,8 +261,6 @@ Next action: Phase 31 complete, ready for next milestone
 - 31.2: MANAGED_SECTION_ONLY invariant for decision projection safety
 - 31.3: Slack as UI pattern (message failures don't block state)
 - 31.4: Documentation updates (commit log vs state, sync semantics)
-
-**Next action:** Phase complete, ready for next milestone
 
 ---
 
@@ -295,6 +308,8 @@ Next action: Phase 31 complete, ready for next milestone
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 32 ADDED — Product Invariants (enforce architectural principles as hard rules)
+- 2026-01-24: Phase 31 COMPLETE — Architecture Hardening (4/4 plans)
 - 2026-01-23: Phase 31 ADDED — Architecture Hardening (super-modes, invariants, simplification)
 - 2026-01-23: Phase 30 COMPLETE — Decision as First-Class Entity (8/8 plans)
 - 2026-01-23: Phase 30 ADDED — Decision as First-Class Entity (versioned decisions, Jira as projection)

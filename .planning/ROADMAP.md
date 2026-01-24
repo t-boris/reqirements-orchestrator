@@ -265,6 +265,31 @@ User: "Do you think only one epic is enough?"
 
 **Full requirements:** `.planning/phases/31-architecture-hardening/REQUIREMENTS.md`
 
+### Phase 32: Product Invariants
+
+**Status:** Not Started
+
+**Objective:** Formalize the system's architectural principles as enforced invariants. Stop being "smart" and become reliable.
+
+**Mantra:** "This is no longer a bot. It's a conversation-native version control system."
+
+**Invariants:**
+
+| ID | Invariant | Enforcement |
+|----|-----------|-------------|
+| I1 | SuperMode = Sole UI Contract | User messages use super-modes only, intents hidden |
+| I2 | Slack = UI (State Ownership) | Handlers read-only, mutations via graph dispatch |
+| I3 | Commit Log = Append-Only | Event-sourced history, canonical messages rebuildable |
+| I4 | MANAGED_SECTION = Law | CI gate, lint rules, never-catch ManagedSectionError |
+| I5 | Draft Lifecycle = 3 States | Drafting/Ready/Published (internal complexity hidden) |
+
+**Implementation Waves:**
+- Wave 1: Foundations (32-01 to 32-03) — SuperMode UI, Commit log schema, Draft states
+- Wave 2: Enforcement (32-04 to 32-05) — Slack layer separation, CI gate
+- Wave 3: Documentation (32-06) — Architecture docs update
+
+**Full requirements:** `.planning/phases/32-product-invariants/REQUIREMENTS.md`
+
 ## Completed Milestones
 
 <details>
@@ -372,3 +397,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
+| 32. Product Invariants | v1.2 | 0/6 | Not Started | - |
