@@ -11,9 +11,12 @@ This module provides separated state models that reflect this architecture.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Optional, TypedDict
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from src.documents.retriever import AttachmentContext
 
 
 class Phase(str, Enum):
@@ -125,6 +128,9 @@ class AgentState(TypedDict, total=False):
     # Debug/operational
     recent_errors: list
     debug_collector: Any
+
+    # Attachment context (resolved by retriever - Phase 34)
+    attachment_context: Optional["AttachmentContext"]
 
 
 def get_thread_phase(state: AgentState) -> Phase:
