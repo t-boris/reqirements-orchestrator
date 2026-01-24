@@ -24,6 +24,16 @@ class DecisionManager:
     """Manages canonical Slack messages for decisions.
 
     Ensures each decision has exactly one message that reflects current truth.
+
+    ARCHITECTURE:
+    - Database is truth
+    - Jira is projection
+    - Slack is presentation (UI layer)
+
+    FAILURE TOLERANCE:
+    - Message update failures are logged, not raised
+    - Caller can continue with approval/sync regardless of Slack
+    - Retries are safe (idempotent updates)
     """
 
     def __init__(self, client: AsyncWebClient):
@@ -77,17 +87,25 @@ class DecisionManager:
         self,
         decision: Decision,
         blocks: list[dict],
+        expected_version: int | None = None,
     ) -> bool:
-        """Update the canonical message to reflect current decision state.
+        """Update canonical message with idempotency guarantee.
+
+        IDEMPOTENT: Same version produces same blocks. Safe to retry.
+        VERSION-CHECKED: Stale updates are skipped silently.
+        FAILURE-SAFE: Update failure doesn't change decision state.
 
         This is the "update in place" pattern — the message moves in time.
 
         Args:
             decision: The updated Decision entity
             blocks: New Slack blocks for the decision card
+            expected_version: For idempotency check - if provided and doesn't
+                match decision.version, update is skipped (stale)
 
         Returns:
-            True if updated, False if no canonical message exists
+            True if updated (or skipped as stale), False if no canonical message
+            or Slack API error
         """
         if not decision.canonical_message_ts:
             logger.warning(
@@ -95,6 +113,21 @@ class DecisionManager:
                 extra={"decision_id": decision.id}
             )
             return False
+
+        # Version check for idempotency
+        if expected_version is not None and decision.version != expected_version:
+            logger.warning(
+                "Skipping stale update: expected v%d, decision at v%d",
+                expected_version,
+                decision.version,
+                extra={
+                    "decision_id": decision.id,
+                    "expected_version": expected_version,
+                    "actual_version": decision.version,
+                }
+            )
+            # Stale update is success - no action needed
+            return True
 
         try:
             await self._client.chat_update(
@@ -115,6 +148,8 @@ class DecisionManager:
             return True
 
         except Exception as e:
+            # Log error but don't raise - Slack is presentation layer
+            # Architecture: Database (truth) → Jira (projection) → Slack (presentation)
             logger.error(
                 "Failed to update canonical message",
                 extra={
