@@ -1,0 +1,170 @@
+"""Attachment extraction pipeline.
+
+Downloads files from Slack and extracts text content.
+Uses existing extractors for PDF, DOCX, TXT, MD.
+
+Pipeline: download -> extract -> summarize -> store
+
+Anti-pattern avoided: Don't build custom extractors.
+Use existing src/documents/extractor.py functions.
+"""
+import logging
+from typing import Optional
+
+import aiohttp
+from slack_sdk.web.async_client import AsyncWebClient
+
+from src.documents.extractor import extract_from_file, normalize_for_llm
+from src.llm.client import get_llm
+from src.schemas.attachment import Attachment
+
+logger = logging.getLogger(__name__)
+
+# Constants
+MAX_EXTRACT_LENGTH = 50000  # Max characters to extract
+MAX_SUMMARY_LENGTH = 500    # Max characters for summary
+TOKENS_PER_CHAR = 0.25      # Rough estimate for token counting
+
+
+async def download_file(
+    client: AsyncWebClient,
+    file_id: str,
+) -> Optional[bytes]:
+    """Download file content from Slack.
+
+    Args:
+        client: Slack async client.
+        file_id: Slack file ID.
+
+    Returns:
+        File content as bytes, or None on failure.
+    """
+    try:
+        # Get file info with download URL
+        result = await client.files_info(file=file_id)
+        file_info = result.get("file", {})
+
+        url = file_info.get("url_private_download")
+        if not url:
+            logger.error(f"No download URL for file {file_id}")
+            return None
+
+        # Download using aiohttp with Slack auth
+        headers = {"Authorization": f"Bearer {client.token}"}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    logger.error(
+                        f"Download failed for {file_id}: {response.status}"
+                    )
+                    return None
+                return await response.read()
+
+    except Exception as e:
+        logger.error(f"Failed to download file {file_id}: {e}")
+        return None
+
+
+async def extract_attachment(
+    client: AsyncWebClient,
+    attachment: Attachment,
+) -> dict:
+    """Extract content from an attachment.
+
+    Downloads file from Slack and extracts text.
+
+    Args:
+        client: Slack client for file download.
+        attachment: Attachment record to process.
+
+    Returns:
+        Dict with extracted_text, summary, token_count, error.
+    """
+    result = {
+        "extracted_text": None,
+        "summary": None,
+        "token_count": None,
+        "error": None,
+    }
+
+    try:
+        # Download file from Slack
+        content = await download_file(client, attachment.file_id)
+        if content is None:
+            result["error"] = "Failed to download file from Slack"
+            return result
+
+        # Extract text based on file type
+        extracted_text = extract_from_file(
+            content,
+            attachment.filename,
+        )
+
+        if not extracted_text:
+            result["error"] = "No text content extracted"
+            return result
+
+        # Normalize for LLM (clean whitespace, truncate)
+        extracted_text = normalize_for_llm(
+            extracted_text,
+            max_length=MAX_EXTRACT_LENGTH,
+        )
+
+        # Estimate token count
+        token_count = int(len(extracted_text) * TOKENS_PER_CHAR)
+
+        result["extracted_text"] = extracted_text
+        result["token_count"] = token_count
+
+        logger.info(
+            f"Extracted {len(extracted_text)} chars "
+            f"(~{token_count} tokens) from {attachment.filename}"
+        )
+
+    except Exception as e:
+        logger.error(f"Extraction failed for {attachment.filename}: {e}")
+        result["error"] = str(e)
+
+    return result
+
+
+async def generate_summary(
+    extracted_text: str,
+    filename: str,
+) -> Optional[str]:
+    """Generate a 1-3 line summary of extracted content.
+
+    Uses LLM to create a brief summary for context preview.
+
+    Args:
+        extracted_text: Full extracted text.
+        filename: Original filename for context.
+
+    Returns:
+        Summary string or None on failure.
+    """
+    if len(extracted_text) < 100:
+        # Too short to summarize meaningfully
+        return extracted_text[:MAX_SUMMARY_LENGTH]
+
+    try:
+        llm = get_llm()
+
+        prompt = f"""Summarize this document in 1-3 lines (max {MAX_SUMMARY_LENGTH} chars).
+Focus on: what type of document it is, key topics, main purpose.
+
+Filename: {filename}
+
+Content (first 3000 chars):
+{extracted_text[:3000]}
+
+Summary:"""
+
+        summary = await llm.chat(prompt)
+        summary = summary.strip()[:MAX_SUMMARY_LENGTH]
+        return summary
+
+    except Exception as e:
+        logger.warning(f"Summary generation failed: {e}")
+        # Fallback: first 500 chars
+        return extracted_text[:MAX_SUMMARY_LENGTH].strip()
