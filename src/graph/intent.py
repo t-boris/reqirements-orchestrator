@@ -549,6 +549,7 @@ REASON: <brief explanation>"""
         # Resolve intent and super_mode
         intent = Intent(intent_str.lower())
         super_mode = get_super_mode(intent)
+        logger.info(f"_llm_classify parsed: intent={intent}, intent_str={intent_str}, ops_subtype={ops_subtype}")
 
         # Fallback: infer ops_subtype from reason if not explicitly set
         if intent == Intent.OPS:
