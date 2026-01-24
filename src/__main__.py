@@ -105,6 +105,12 @@ async def init_database() -> None:
         attachment_store = AttachmentStore(conn)
         await attachment_store.create_tables()
 
+        # Phase 34-04: Attachment chunking for retrieval
+        from src.db.attachment_chunk_store import AttachmentChunkStore
+
+        chunk_store = AttachmentChunkStore(conn)
+        await chunk_store.create_tables()
+
     logger.info("Database initialized")
 
 
