@@ -47,6 +47,8 @@ from src.slack.handlers import (
     handle_link_decision,
     handle_skip_decision_link,
     handle_decision_link_prompt,
+    # Decision button handlers (Phase 30)
+    register_decision_handlers,
     # Multi-ticket handlers (Phase 22)
     handle_multi_ticket_confirm_quantity,
     handle_multi_ticket_split,
@@ -238,4 +240,7 @@ def register_handlers(app: App) -> None:
     # Preflight sync actions (Phase 29.4)
     register_preflight_handlers(app)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight")
+    # Decision button handlers (Phase 30)
+    register_decision_handlers(app)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons")

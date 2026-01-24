@@ -168,6 +168,11 @@ from src.slack.handlers.preflight import (
     register_preflight_handlers,
 )
 
+# Decision button handlers (Phase 30)
+from src.slack.handlers.decision_buttons import (
+    register_decision_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -271,4 +276,6 @@ __all__ = [
     "handle_preflight_cancel",
     "handle_preflight_link_existing",
     "register_preflight_handlers",
+    # Decision button handlers (Phase 30)
+    "register_decision_handlers",
 ]
