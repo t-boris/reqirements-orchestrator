@@ -94,6 +94,7 @@ from src.slack.handlers.change_request import (
     handle_change_request_cancel,
     handle_change_request_edit,
 )
+from src.slack.handlers.preflight import register_preflight_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -234,4 +235,7 @@ def register_handlers(app: App) -> None:
     # Draft conflict actions (Phase 27.3)
     register_draft_conflict_handlers(app)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict")
+    # Preflight sync actions (Phase 29.4)
+    register_preflight_handlers(app)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight")

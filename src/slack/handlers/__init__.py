@@ -157,6 +157,17 @@ from src.slack.handlers.draft_conflict import (
     register_draft_conflict_handlers,
 )
 
+# Preflight sync handlers (Phase 29.4)
+from src.slack.handlers.preflight import (
+    handle_preflight_proceed,
+    handle_preflight_pull_only,
+    handle_preflight_use_jira,
+    handle_preflight_use_channel,
+    handle_preflight_cancel,
+    handle_preflight_link_existing,
+    register_preflight_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -252,4 +263,12 @@ __all__ = [
     "handle_draft_conflict_resolve_existing",
     "handle_draft_conflict_resolve_proposed",
     "register_draft_conflict_handlers",
+    # Preflight sync handlers (Phase 29.4)
+    "handle_preflight_proceed",
+    "handle_preflight_pull_only",
+    "handle_preflight_use_jira",
+    "handle_preflight_use_channel",
+    "handle_preflight_cancel",
+    "handle_preflight_link_existing",
+    "register_preflight_handlers",
 ]
