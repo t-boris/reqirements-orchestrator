@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 37-unified-question-engine
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 37-01-PLAN.md
+Last activity: 2026-01-24 — Completed 37-02-PLAN.md
 
-Progress: ███████████░░░░░░░░░ 1/5 plans
+Progress: ████████████████░░░░ 2/5 plans
 
 ## Milestones Summary
 
@@ -315,12 +315,17 @@ Phase 37-01 decisions:
 - ReviewState mirrors WorkItemDraft as FreeformProvider target
 - OpenQuestion tracks maps_to field for answer routing
 
+Phase 37-02 decisions:
+- CatalogProvider wraps QuestionCatalog (composition over inheritance)
+- Priority order: scope -> conflict -> required fields -> optional fields
+- Required fields: title, problem; Optional: acceptance_criteria, proposed_solution
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 37-01-PLAN.md
+Stopped at: Completed 37-02-PLAN.md
 Resume file: None
-Next action: Execute 37-02-PLAN.md
+Next action: Execute 37-03-PLAN.md
 
 ## What's Next
 
