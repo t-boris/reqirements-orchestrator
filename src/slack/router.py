@@ -99,6 +99,7 @@ from src.slack.handlers.change_request import (
 )
 from src.slack.handlers.preflight import register_preflight_handlers
 from src.slack.handlers.attachments import on_file_shared, register_attachment_handlers
+from src.slack.handlers.task_plan import register_task_plan_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -252,4 +253,7 @@ def register_handlers(app: App) -> None:
     # Attachment pin/unpin handlers (Phase 34)
     register_attachment_handlers(app)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, file_shared, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons, attachment_pin_unpin")
+    # TaskPlan button handlers (Phase 35)
+    register_task_plan_handlers(app)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, file_shared, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons, attachment_pin_unpin, task_plan")
