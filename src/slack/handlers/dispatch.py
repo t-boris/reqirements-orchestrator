@@ -26,6 +26,8 @@ from src.graph.runner import get_runner
 if TYPE_CHECKING:
     from src.slack.progress import ProgressTracker
     from src.sync.preflight import PreflightResult
+    from src.graph.state import AgentState
+    from src.schemas.intent import SuperMode
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,69 @@ Review context (if available):
 
 Return a concise comment summarizing the key points. 1-3 sentences.
 '''
+
+
+async def resolve_attachment_context(
+    state: "AgentState",
+    mode: "SuperMode",
+) -> "AgentState":
+    """Resolve attachment context based on mode policy.
+
+    Called after intent classification to populate attachment_context
+    in state before graph nodes process the request.
+
+    Intent-scoped rules:
+    - CHAT: Don't include, offer available attachments
+    - THINK: Pinned auto + top-K chunks if retrieval high
+    - BUILD: Pinned auto + structural (requirements, AC)
+    - OPERATE: Only logs, JSON, stacktraces via retrieval
+    - DECIDE: Pinned + cited chunks with source refs
+
+    Args:
+        state: Current AgentState with channel_id and thread_ts.
+        mode: SuperMode determining attachment policy.
+
+    Returns:
+        Updated AgentState with attachment_context populated.
+    """
+    from src.documents.retriever import AttachmentRetriever
+
+    channel_id = state.get("channel_id")
+    thread_ts = state.get("thread_ts")
+    message = state.get("user_message", "")
+
+    if not channel_id:
+        return state
+
+    try:
+        retriever = AttachmentRetriever()
+        context = await retriever.get_context(
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            mode=mode,
+            query=message,
+        )
+
+        state["attachment_context"] = context
+
+        logger.debug(
+            "Resolved attachment context",
+            extra={
+                "channel_id": channel_id,
+                "thread_ts": thread_ts,
+                "mode": mode.value,
+                "pinned_count": len(context.pinned),
+                "retrieved_count": len(context.retrieved_chunks),
+                "available_count": len(context.offer_available),
+                "total_tokens": context.total_tokens,
+            }
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to resolve attachment context: {e}")
+        # Non-blocking - continue without attachment context
+
+    return state
 
 
 async def _extract_update_content(
