@@ -461,6 +461,90 @@ Jira = Projection
 **Full context:** `.planning/phases/35-multi-intent-task-orchestration/35-CONTEXT.md`
 **Research:** `.planning/phases/35-multi-intent-task-orchestration/35-RESEARCH.md`
 
+### Phase 36: Question Engine — Conversation Driver
+
+**Status:** NOT STARTED
+
+**Objective:** Transform MARO from "event recorder" to "conversation leader". Questions become first-class tasks in TaskPlan, and the bot actively drives toward complete information.
+
+**Mantra:** "Questions are actions, not text responses."
+
+**Problem:**
+- Bot reacts but doesn't lead — it records events but doesn't drive conversations
+- When information is missing, bot loops silently or asks generic questions
+- No structured question types — "acceptance criteria?" is too philosophical
+- No question budget — bot can become annoying or give up too early
+
+**Solution: Question Engine as State Machine**
+
+1. **Question Tasks in TaskPlan:**
+   ```
+   TaskType:
+     - ASK_USER (side_effect: SLACK) — generic question
+     - COLLECT_FIELD — get specific field value
+     - CONFIRM_SCOPE — choice from options
+     - RESOLVE_CONFLICT — pick A or B
+   ```
+
+2. **Two Triggers for Bot-Led Questions:**
+   - **Trigger A:** Blocked by missing info → generate ASK_USER task
+   - **Trigger B:** High uncertainty (2-3 interpretations close in confidence) → CONFIRM_SCOPE
+
+3. **Question Budget:**
+   - Max 2 questions in a row without new user signal
+   - After 2 unanswered → show partial preview with [Proceed] [Wait] [Cancel]
+
+4. **Structured Question Types:**
+   | Type | Example |
+   |------|---------|
+   | Scope | "Stories only under SCRUM-166?" [Yes] [Different parent] [New epic] |
+   | Enumeration | "Give me 5-10 story titles or workstreams" |
+   | Constraint | "Must-have: auth? audit logging?" |
+   | Conflict | "Epic can't have parent. Remove parent or change type?" |
+
+5. **Active/Passive Mode:**
+   - **Active:** On @mention, /command, or BLOCKED task — bot leads
+   - **Passive:** Plan DONE/CANCELED or 10min timeout — bot listens
+
+**Canonical UX:**
+```
+User: "@Maro create all user stories under SCRUM-166"
+
+Bot: "Got it. I see parent SCRUM-166. Creating stories plan."
+Card:
+  ✅ Duplicate check
+  ⏳ Draft stories
+  ⏸ Create in Jira (needs approval)
+
+Bot: "To draft stories, pick approach:"
+  [5 workstreams] (Bot suggests categories)
+  [Give me titles] (User provides list)
+  [Infer from decisions] (if decisions exist)
+```
+
+**Key Requirement:**
+> When TaskPlan is BLOCKED due to missing info or ambiguity, MARO must generate an ASK_USER task and ask the minimal question needed to unblock progress, with buttons/options whenever possible. MARO must not silently stop or loop on empty extraction.
+
+**Depends on:** Phase 35 (TaskPlan foundation)
+
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 36-01, 36-02 | Foundation: QuestionTask schema, ConversationMode, StatePatch |
+| 2 | 36-03, 36-04 | Core: QuestionCatalog, AnswerMapper, BudgetTracker |
+| 3 | 36-05, 36-06 | Integration: Question executor, Mode integration |
+| 4 | 36-07 | UI: Question blocks, Button handlers |
+
+**Plans:**
+- [ ] 36-01: QuestionTask Schema (extends Task with question fields)
+- [ ] 36-02: ConversationMode + StatePatch (Active/Passive state machine)
+- [ ] 36-03: QuestionCatalog (hybrid template/LLM question generators)
+- [ ] 36-04: AnswerMapper + BudgetTracker (button/text processing, limits)
+- [ ] 36-05: Question Executor Integration (task_executor changes)
+- [ ] 36-06: Mode Integration + Budget Handler (dispatch integration)
+- [ ] 36-07: Question UI + Button Handlers (Slack UI)
+
 ## Completed Milestones
 
 <details>
@@ -572,3 +656,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
+| 36. Question Engine | v1.2 | 0/7 | Planned | - |
