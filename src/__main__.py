@@ -93,6 +93,12 @@ async def init_database() -> None:
         thread_binding_store = ThreadBindingStore(conn)
         await thread_binding_store.create_tables()
 
+        # Phase 33-01: Anchor message architecture
+        from src.db.anchor_store import AnchorStore
+
+        anchor_store = AnchorStore(conn)
+        await anchor_store.create_tables()
+
     logger.info("Database initialized")
 
 
