@@ -391,7 +391,7 @@ Jira = Projection
 
 ### Phase 35: Multi-Intent Task Orchestration
 
-**Status:** NOT STARTED
+**Status:** PLANNED (8 plans in 4 waves)
 
 **Objective:** Replace single-intent classification with TaskPlan orchestration. Messages become task lists where each intent is a task with priority and side-effect type.
 
@@ -438,7 +438,28 @@ Jira = Projection
 
 **Depends on:** Phase 34 (attachment context in task execution)
 
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 35-01, 35-02 | Foundation: TaskPlan schema/store, multi-intent classification |
+| 2 | 35-03, 35-04 | Integration: Safety classification, state integration |
+| 3 | 35-05, 35-06 | Execution: Task executor, Status Card UI |
+| 4 | 35-07, 35-08 | Polish: Button handlers, dispatch integration |
+
+**Plans:**
+
+- [ ] 35-01: TaskPlan Schema + Store
+- [ ] 35-02: Multi-Intent Classification
+- [ ] 35-03: Task Safety Classification
+- [ ] 35-04: TaskPlan State Integration
+- [ ] 35-05: Task Executor Orchestration
+- [ ] 35-06: UI Status Card
+- [ ] 35-07: Button Handlers + Version Binding
+- [ ] 35-08: Integration + Dispatch Updates
+
 **Full context:** `.planning/phases/35-multi-intent-task-orchestration/35-CONTEXT.md`
+**Research:** `.planning/phases/35-multi-intent-task-orchestration/35-RESEARCH.md`
 
 ## Completed Milestones
 
