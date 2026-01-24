@@ -18,6 +18,10 @@ class OpsSubtype(str, Enum):
 class SuperMode(str, Enum):
     """User-facing super-modes (5 modes for simplicity).
 
+    SuperMode = sole UI contract.
+    Users see modes, never intents.
+    Debug mode can show intents (developer tool).
+
     Users should think in 5 modes, not 13 intents.
     This is presentation layer only — internal routing still uses fine-grained intents.
     """
@@ -26,6 +30,33 @@ class SuperMode(str, Enum):
     DECIDE = "decide"      # "I'm recording a decision"
     THINK = "think"        # "Help me think"
     CHAT = "chat"          # "Just talking"
+
+    @property
+    def label(self) -> str:
+        """User-facing label for this mode.
+
+        Returns action-oriented display string for status messages.
+        """
+        labels = {
+            SuperMode.BUILD: "Building",
+            SuperMode.OPERATE: "Operating",
+            SuperMode.DECIDE: "Deciding",
+            SuperMode.THINK: "Thinking",
+            SuperMode.CHAT: "Chatting",
+        }
+        return labels.get(self, "Processing")
+
+    @property
+    def emoji(self) -> str:
+        """Emoji for this mode (optional, for status lines)."""
+        emojis = {
+            SuperMode.BUILD: ":hammer:",
+            SuperMode.OPERATE: ":gear:",
+            SuperMode.DECIDE: ":brain:",
+            SuperMode.THINK: ":thought_balloon:",
+            SuperMode.CHAT: ":speech_balloon:",
+        }
+        return emojis.get(self, ":robot_face:")
 
 
 class Intent(str, Enum):
@@ -147,3 +178,24 @@ def get_super_mode(intent: Intent) -> SuperMode:
         The corresponding SuperMode for user presentation
     """
     return INTENT_TO_SUPER_MODE.get(intent, SuperMode.CHAT)
+
+
+def get_mode_status_line(super_mode: SuperMode, action_description: str) -> str:
+    """Get a formatted status line for user-facing messages.
+
+    INVARIANT I1: SuperMode = sole UI contract.
+    Users see modes (5), never intents (13).
+    Debug mode can show intents (developer tool).
+
+    Args:
+        super_mode: The user-facing super-mode
+        action_description: Description of the current action
+
+    Returns:
+        Formatted status line: "[Building] Creating ticket draft"
+
+    Example:
+        >>> get_mode_status_line(SuperMode.BUILD, "Creating ticket draft")
+        "[Building] Creating ticket draft"
+    """
+    return f"[{super_mode.label}] {action_description}"
