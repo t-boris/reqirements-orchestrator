@@ -616,7 +616,13 @@ def register_preflight_handlers(app) -> None:
     app.action("preflight_use_channel")(handle_preflight_use_channel)
     app.action("preflight_cancel")(handle_preflight_cancel)
     app.action("preflight_link_existing")(handle_preflight_link_existing)
-    # View existing is just a link button - no handler needed (opens URL)
+
+    # URL buttons still fire actions for tracking - just ack them
+    @app.action("view_linked_ticket")
+    async def handle_view_linked_ticket(ack):
+        """No-op handler for URL button - just acknowledge."""
+        await ack()
+
     # preflight_show_diff, preflight_remove_tracking, preflight_reopen can be added later
 
     logger.info("Preflight handlers registered")
