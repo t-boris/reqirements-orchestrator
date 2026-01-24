@@ -37,6 +37,7 @@ from src.questions.provider import (
 )
 from src.questions.catalog_provider import CatalogProvider
 from src.questions.freeform_provider import FreeformProvider
+from src.questions.engine import QuestionEngine
 
 __all__ = [
     # Answer mapping
@@ -62,4 +63,6 @@ __all__ = [
     "QuestionProvider",
     "CatalogProvider",
     "FreeformProvider",
+    # Unified engine (Phase 37)
+    "QuestionEngine",
 ]
