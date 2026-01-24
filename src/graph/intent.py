@@ -660,15 +660,17 @@ async def intent_router_node(state: dict) -> dict:
     """LangGraph node for intent routing.
 
     Gets the latest human message and classifies intent using LLM with full context.
-    Returns partial state update with intent_result.
+    After classification, resolves attachment context based on SuperMode policy.
+    Returns partial state update with intent_result and attachment_context.
 
     Args:
         state: Current AgentState dict
 
     Returns:
-        Partial state update with intent_result
+        Partial state update with intent_result and attachment_context
     """
     from langchain_core.messages import HumanMessage
+    from src.slack.handlers.dispatch import resolve_attachment_context
 
     # Check if intent is already forced (e.g., from scope_gate selection or continuation detection)
     existing_intent = state.get("intent_result")
@@ -727,4 +729,27 @@ async def intent_router_node(state: dict) -> dict:
         f"confidence={result.confidence}, reasons={result.reasons}"
     )
 
-    return {"intent_result": result.model_dump()}
+    # Phase 34: Resolve attachment context based on SuperMode policy
+    # This populates state["attachment_context"] for downstream nodes
+    state_update: dict = {"intent_result": result.model_dump()}
+
+    # Store super_mode in state for downstream nodes (e.g., review node uses it for cite mode)
+    state_update["super_mode"] = result.super_mode
+
+    try:
+        updated_state = await resolve_attachment_context(state, result.super_mode)
+        if updated_state.get("attachment_context"):
+            state_update["attachment_context"] = updated_state["attachment_context"]
+            logger.debug(
+                "Attachment context resolved in intent_router",
+                extra={
+                    "super_mode": result.super_mode.value,
+                    "pinned_count": len(updated_state["attachment_context"].pinned),
+                    "retrieved_count": len(updated_state["attachment_context"].retrieved_chunks),
+                }
+            )
+    except Exception as e:
+        logger.warning(f"Failed to resolve attachment context: {e}")
+        # Non-blocking - continue without attachment context
+
+    return state_update
