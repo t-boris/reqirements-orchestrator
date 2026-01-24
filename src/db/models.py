@@ -425,3 +425,12 @@ class ArtifactLink(BaseModel):
     target_id: str = Field(description="Target entity ID (workitem_id, commit_id, or jira_key)")
     link_type: ArtifactLinkType = Field(description="Relationship type")
     created_at: datetime = Field(description="When link was created")
+
+
+# Re-export Decision models for convenience
+from src.schemas.decision import (
+    Decision,
+    DecisionStatus,
+    DecisionType,
+    DecisionVersion,
+)
