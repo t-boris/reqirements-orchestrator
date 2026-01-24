@@ -55,6 +55,9 @@ class DraftItemStatus(str, Enum):
 class DraftLifecycle(str, Enum):
     """Draft state machine - overall lifecycle of the draft.
 
+    INTERNAL: 6 states for routing logic. Users never see these directly.
+    See UserDraftState for the 3 user-facing states.
+
     State transitions:
     - EMPTY -> SINGLE_ITEM (when first item added)
     - EMPTY -> PLAN (when multiple items added)
@@ -70,6 +73,62 @@ class DraftLifecycle(str, Enum):
     PLAN_REFINED = "plan_refined"  # User refined the plan
     APPROVED = "approved"  # All items approved
     COMMITTED = "committed"  # All items in Jira
+
+
+class UserDraftState(str, Enum):
+    """User-facing draft states.
+
+    INVARIANT I5: Users see 3 states only.
+    Internal DraftLifecycle has 6 states for routing.
+    This enum is what users see in UI.
+
+    | User State | Internal States |
+    |------------|-----------------|
+    | DRAFTING   | EMPTY, SINGLE_ITEM, PLAN, PLAN_REFINED |
+    | READY      | APPROVED |
+    | PUBLISHED  | COMMITTED |
+    """
+
+    DRAFTING = "drafting"  # Work in progress
+    READY = "ready"  # Approved, waiting to publish
+    PUBLISHED = "published"  # In Jira
+
+    @property
+    def label(self) -> str:
+        """User-facing label."""
+        return {
+            UserDraftState.DRAFTING: "Draft in progress",
+            UserDraftState.READY: "Ready to commit",
+            UserDraftState.PUBLISHED: "Published to Jira",
+        }[self]
+
+    @property
+    def color(self) -> str:
+        """UI color for state."""
+        return {
+            UserDraftState.DRAFTING: "warning",  # Yellow
+            UserDraftState.READY: "good",  # Green
+            UserDraftState.PUBLISHED: "primary",  # Blue
+        }[self]
+
+
+def get_user_state(lifecycle: DraftLifecycle) -> UserDraftState:
+    """Map internal lifecycle to user-facing state.
+
+    INVARIANT I5: Internal complexity hidden from UI.
+
+    | User State | Internal States |
+    |------------|-----------------|
+    | DRAFTING   | EMPTY, SINGLE_ITEM, PLAN, PLAN_REFINED |
+    | READY      | APPROVED |
+    | PUBLISHED  | COMMITTED |
+    """
+    if lifecycle == DraftLifecycle.COMMITTED:
+        return UserDraftState.PUBLISHED
+    elif lifecycle == DraftLifecycle.APPROVED:
+        return UserDraftState.READY
+    else:
+        return UserDraftState.DRAFTING
 
 
 # Valid lifecycle transitions
@@ -255,6 +314,15 @@ class StructuredDraft(BaseModel):
             not item.title.strip() and not item.goal.strip() and not item.problem.strip()
             for item in self.items
         )
+
+    @property
+    def user_state(self) -> UserDraftState:
+        """User-facing state (3 states, not 6).
+
+        INVARIANT I5: Users see 3 states only.
+        Maps internal lifecycle to user-facing UserDraftState.
+        """
+        return get_user_state(self.lifecycle)
 
     def get_primary_item(self) -> Optional[DraftItem]:
         """Get the primary item for SINGLE_ITEM kind drafts.
