@@ -331,7 +331,7 @@ Jira = Projection
 
 ### Phase 34: File Attachment Processing
 
-**Status:** PLANNED (8 plans, 4 waves)
+**Status:** IN PROGRESS (1/8 plans complete)
 
 **Objective:** Enable bot to read PDF, DOCX, Markdown attachments from Slack messages. Policy-based hybrid: deterministic rules + LLM for chunk retrieval.
 
@@ -371,7 +371,7 @@ Jira = Projection
 
 **Plans:**
 
-- [ ] 34-01: Attachment Schema + AttachmentStore
+- [x] 34-01: Attachment Schema + AttachmentStore (2026-01-23)
 - [ ] 34-02: File Event Handler (file_shared, message files)
 - [ ] 34-03: Extraction Pipeline (download → extract → summarize)
 - [ ] 34-04: Chunking + Full-Text Search Index
@@ -498,4 +498,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
-| 34. File Attachment Processing | v1.2 | 0/8 | Planned | - |
+| 34. File Attachment Processing | v1.2 | 1/8 | In Progress | - |

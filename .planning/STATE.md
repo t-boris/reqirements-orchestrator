@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 33: Anchor Message Architecture (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 34: File Attachment Processing (IN PROGRESS)
 
 ## Current Position
 
-Phase: 33-anchor-message-architecture
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-24 — Completed 33-05-PLAN.md (Implicit Commands)
+Phase: 34-file-attachment-processing
+Plan: 1 of 8 in current phase
+Status: In progress
+Last activity: 2026-01-23 — Completed 34-01-PLAN.md (Attachment Entity Foundation)
 
-Progress: ██████████ 100% (Phase 27-33 COMPLETE)
+Progress: █░░░░░░░░░ 12.5% (Phase 34: 1/8 plans complete)
 
 ## Milestones Summary
 
@@ -264,12 +264,33 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-24
-Stopped at: Completed 33-05-PLAN.md (Implicit Commands)
+Last session: 2026-01-23
+Stopped at: Completed 34-01-PLAN.md (Attachment Entity Foundation)
 Resume file: None
-Next action: Phase 33 complete - consider next milestone or /gsd:complete-milestone
+Next action: Execute 34-02-PLAN.md (File Event Handler)
 
 ## What's Next
+
+**Phase 34: File Attachment Processing** — IN PROGRESS (1/8 plans)
+
+**Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
+
+**Progress:**
+- 34-01: Attachment Schema + AttachmentStore - COMPLETE
+- 34-02: File Event Handler - PLANNED
+- 34-03: Extraction Pipeline - PLANNED
+- 34-04: Chunking + Search Index - PLANNED
+- 34-05: Pin/Unpin Mechanics - PLANNED
+- 34-06: Intent-Scoped Rules - PLANNED
+- 34-07: Transparency UI - PLANNED
+- 34-08: Retrieval Context Injection - PLANNED
+
+Phase 34-01 decisions:
+- AttachmentStatus enum with 5 lifecycle states (pending, extracting, ready, failed, too_large)
+- file_id UNIQUE constraint for idempotent creates via ON CONFLICT
+- Partial indexes for status queries and pinned attachments
+
+---
 
 **Phase 33: Anchor Message Architecture** — COMPLETE (5/5 plans)
 
