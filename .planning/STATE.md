@@ -483,6 +483,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 37 ADDED — Unified Question Engine (one mechanism, two providers: CatalogProvider for tickets, FreeformProvider for review)
 - 2026-01-24: Phase 36 COMPLETE — Question Engine: Conversation Driver (7/7 plans, 4 waves)
 - 2026-01-24: Phase 36 CONTEXT GATHERED — Question Engine vision documented (questions as tasks, active/passive mode, question budget, hybrid catalog/mapper)
 - 2026-01-24: Phase 36 ADDED — Question Engine: Conversation Driver (questions as first-class tasks)

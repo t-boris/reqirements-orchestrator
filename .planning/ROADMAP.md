@@ -545,6 +545,57 @@ Bot: "To draft stories, pick approach:"
 - [x] 36-06: Mode Integration + Budget Handler (dispatch integration)
 - [x] 36-07: Question UI + Button Handlers (Slack UI)
 
+### Phase 37: Unified Question Engine
+
+**Status:** NOT PLANNED
+
+**Objective:** Abstract Question Engine from providers. Unify the mechanism for asking questions while allowing different sources (catalog vs LLM-generated).
+
+**Mantra:** "One engine, two providers, two target states."
+
+**Architecture:**
+
+1. **Question Engine (unified mechanism):**
+   - When to ask (BLOCKED / ambiguity / conflict)
+   - How to display (buttons, budget, active/passive)
+   - How to accept answers (button→deterministic, text→LLM parse)
+   - How to map to state (patch)
+   - How to not spam (throttle, 2-question budget)
+
+2. **QuestionProvider interface:**
+   - `CatalogProvider` — for tickets/structured work (existing QuestionCatalog)
+   - `FreeformProvider` — for review/architecture (LLM-generated but structured)
+
+3. **ReviewState schema:**
+   ```python
+   ReviewState:
+     topic: str
+     assumptions: list[dict]
+     constraints: list[dict]
+     risks: list[dict]
+     open_questions: list[dict]
+     proposed_decisions: list[dict]
+   ```
+
+4. **FreeformProvider output (structured ReviewQuestion):**
+   ```python
+   ReviewQuestion:
+     goal: str  # "disambiguate transport layer"
+     question: str  # "Do we need real-time guarantees?"
+     expected_answer_type: Literal["choice", "text", "number"]
+     options: list[str]  # For choice type
+     maps_to: str  # "review_state.assumptions.realtime"
+   ```
+
+**Key Insight:** Same UX (buttons, budget, throttle) for both ticket collection and architecture review. Different content sources, unified mechanism.
+
+**Depends on:** Phase 36 (Question Engine foundation)
+
+**Plans:**
+- [ ] TBD (run /gsd:plan-phase 37 to break down)
+
+**Full context:** `.planning/phases/37-unified-question-engine/37-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -656,4 +707,5 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
-| 36. Question Engine | v1.2 | 0/7 | Planned | - |
+| 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
+| 37. Unified Question Engine | v1.2 | 0/? | Not Planned | - |
