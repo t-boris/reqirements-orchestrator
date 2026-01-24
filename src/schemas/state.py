@@ -33,7 +33,7 @@ class Fact(TypedDict):
 
 
 if TYPE_CHECKING:
-    pass
+    from src.schemas.task_plan import TaskPlan
 
 
 class AgentPhase(str, Enum):
@@ -339,6 +339,18 @@ class AgentState(TypedDict):
     # (Decision, WorkItem, etc.) and populates this field.
     # Implements Rule A3 (Context Inheritance) and Rule A4 (Implicit Commands).
     thread_context: Optional[ThreadContext]  # Resolved anchor context
+
+    # Task orchestration (Phase 35 - Multi-Intent)
+    # When multi-intent detected, tasks are decomposed into a TaskPlan
+    # that tracks execution status of each task independently.
+    #
+    # Multi-intent flow:
+    # 1. classify_intent returns TaskPlanProposal with multiple tasks
+    # 2. task_decomposer_node converts to persisted TaskPlan
+    # 3. task_executor_node processes tasks respecting dependencies
+    # 4. Each task can be PENDING|RUNNING|BLOCKED|DONE|CANCELED
+    # 5. TaskPlan is persisted via checkpointer for resumability
+    task_plan: Optional["TaskPlan"]  # Active multi-intent execution plan
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
