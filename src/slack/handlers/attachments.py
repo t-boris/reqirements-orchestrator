@@ -370,6 +370,100 @@ async def handle_attachment_unpin(
         await respond(text="Failed to unpin attachment")
 
 
+async def handle_show_sources(
+    client: AsyncWebClient,
+    body: dict,
+) -> None:
+    """Handle Show Sources button click.
+
+    Opens modal with source content.
+
+    Args:
+        client: Slack async client.
+        body: Button action payload with trigger_id.
+    """
+    import json
+    from src.slack.blocks.attachments import build_sources_modal
+    from src.documents.retriever import AttachmentContext
+    from src.db.attachment_chunk_store import AttachmentChunkStore
+
+    trigger_id = body.get("trigger_id")
+    action = body.get("actions", [{}])[0]
+    value = action.get("value", "{}")
+
+    try:
+        data = json.loads(value)
+        ids = data.get("ids", [])
+    except json.JSONDecodeError:
+        logger.warning("Failed to decode show_sources value")
+        return
+
+    if not ids:
+        return
+
+    # Rebuild context from IDs
+    context = AttachmentContext()
+
+    async with get_connection() as conn:
+        chunk_store = AttachmentChunkStore(conn)
+        store = AttachmentStore(conn)
+
+        for attachment_id in ids:
+            try:
+                chunks = await chunk_store.get_chunks(UUID(attachment_id), limit=5)
+                attachment = await store.get(UUID(attachment_id))
+
+                for chunk in chunks:
+                    context.retrieved_chunks.append({
+                        "attachment_id": str(chunk.attachment_id),
+                        "filename": attachment.filename if attachment else "unknown",
+                        "chunk_index": chunk.chunk_index,
+                        "content": chunk.chunk_text,
+                        "score": 0,
+                    })
+            except Exception as e:
+                logger.warning(f"Failed to fetch chunks for {attachment_id}: {e}")
+
+    modal = build_sources_modal(context)
+
+    try:
+        await client.views_open(
+            trigger_id=trigger_id,
+            view=modal,
+        )
+        logger.info(f"Opened sources modal with {len(context.retrieved_chunks)} chunks")
+    except Exception as e:
+        logger.error(f"Failed to open sources modal: {e}")
+
+
+async def handle_stop_using(
+    client: AsyncWebClient,
+    body: dict,
+    respond: Callable,
+) -> None:
+    """Handle Stop Using button click.
+
+    Unpins the attachment so it won't be included in future requests.
+
+    Args:
+        client: Slack async client.
+        body: Button action payload.
+        respond: Response function for ephemeral message.
+    """
+    action = body.get("actions", [{}])[0]
+    attachment_id = action.get("value")
+
+    if not attachment_id:
+        await respond(text="Error: No attachment ID")
+        return
+
+    # Delegate to unpin
+    await handle_attachment_unpin(client, {
+        "user": body.get("user"),
+        "actions": [{"value": attachment_id}],
+    }, respond)
+
+
 def register_attachment_handlers(app) -> None:
     """Register attachment button handlers with Slack app.
 
@@ -389,3 +483,13 @@ def register_attachment_handlers(app) -> None:
     def on_unpin(ack, body, client, respond):
         ack()
         _run_async(handle_attachment_unpin(client, body, respond))
+
+    @app.action("attachment_show_sources")
+    def on_show_sources(ack, body, client):
+        ack()
+        _run_async(handle_show_sources(client, body))
+
+    @app.action("attachment_stop_using")
+    def on_stop_using(ack, body, client, respond):
+        ack()
+        _run_async(handle_stop_using(client, body, respond))
