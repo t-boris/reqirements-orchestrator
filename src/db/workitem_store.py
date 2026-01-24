@@ -749,3 +749,104 @@ class WorkItemStore:
             rows = await cur.fetchall()
 
         return [self._row_to_workitem(row) for row in rows]
+
+    # -------------------------------------------------------------------------
+    # Anchor message operations (Phase 33)
+    # -------------------------------------------------------------------------
+
+    async def set_canonical_message(
+        self,
+        workitem_id: str,
+        channel_id: str,
+        message_ts: str,
+    ) -> bool:
+        """Set the canonical message for a WorkItem.
+
+        Called after posting the anchor message to Slack.
+        Also creates entry in AnchorStore for reverse lookup.
+
+        Args:
+            workitem_id: UUID of the work item.
+            channel_id: Slack channel where anchor was posted.
+            message_ts: The anchor message timestamp in Slack.
+
+        Returns:
+            True if updated successfully, False if workitem not found.
+        """
+        # Import here to avoid circular imports
+        from src.db.anchor_store import AnchorStore
+        from src.schemas.anchor import AnchorType
+
+        now = datetime.now(timezone.utc)
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                UPDATE work_items
+                SET canonical_message_ts = %s,
+                    canonical_channel_id = %s,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING id
+                """,
+                (message_ts, channel_id, now, workitem_id),
+            )
+            row = await cur.fetchone()
+            await self._conn.commit()
+
+        if not row:
+            return False
+
+        # Also register in AnchorStore for reverse lookup
+        anchor_store = AnchorStore(self._conn)
+        try:
+            await anchor_store.create_anchor(
+                anchor_type=AnchorType.WORKITEM,
+                object_id=workitem_id,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                created_by="system",  # Will be updated with actual user in caller
+            )
+        except Exception:
+            # Anchor may already exist (re-posting anchor) - update is fine
+            pass
+
+        return True
+
+    async def get_by_canonical_message(
+        self,
+        channel_id: str,
+        message_ts: str,
+    ) -> WorkItem | None:
+        """Lookup WorkItem by its canonical message.
+
+        Use case: When user posts in thread under WorkItem anchor,
+        we need to know which WorkItem they're interacting with.
+
+        Args:
+            channel_id: Slack channel ID.
+            message_ts: Message timestamp (parent message ts for thread).
+
+        Returns:
+            WorkItem if found, None otherwise.
+        """
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, channel_id, item_type, status, summary, description,
+                       facts, jira_key, jira_sync_at, jira_fingerprint, parent_id,
+                       source_thread_ts, created_by, created_at, updated_at,
+                       owners, watchers, last_updated_by, readiness_score,
+                       canonical_message_ts, canonical_channel_id
+                FROM work_items
+                WHERE canonical_channel_id = %s
+                  AND canonical_message_ts = %s
+                """,
+                (channel_id, message_ts),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return None
+
+        return self._row_to_workitem(row)
