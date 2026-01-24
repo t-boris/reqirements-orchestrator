@@ -377,7 +377,7 @@ Jira = Projection
 - [x] 34-04: Chunking + Full-Text Search Index (2026-01-24)
 - [x] 34-05: Pin/Unpin Mechanics + UI Buttons (2026-01-24)
 - [x] 34-06: Intent-Scoped Inclusion Rules (2026-01-23)
-- [ ] 34-07: Transparency UI (Used, Show Sources, Stop Using)
+- [x] 34-07: Transparency UI (Used, Show Sources, Stop Using) (2026-01-23)
 - [ ] 34-08: Retrieval Context Injection into Prompts
 
 **Existing Infrastructure:**
@@ -498,4 +498,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
-| 34. File Attachment Processing | v1.2 | 6/8 | In Progress | - |
+| 34. File Attachment Processing | v1.2 | 7/8 | In Progress | - |

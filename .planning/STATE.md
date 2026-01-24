@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 6 of 8 in current phase
+Plan: 7 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-23 — Completed 34-06-PLAN.md (Intent-Scoped Rules)
+Last activity: 2026-01-23 — Completed 34-07-PLAN.md (Transparency UI)
 
-Progress: ███████░░░ 75% (Phase 34: 6/8 plans complete)
+Progress: ████████░░ 87% (Phase 34: 7/8 plans complete)
 
 ## Milestones Summary
 
@@ -265,9 +265,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-23
-Stopped at: Completed 34-06-PLAN.md (Intent-Scoped Rules)
+Stopped at: Completed 34-07-PLAN.md (Transparency UI)
 Resume file: None
-Next action: Execute 34-07-PLAN.md (Transparency UI)
+Next action: Execute 34-08-PLAN.md (Retrieval Context Injection)
 
 ## What's Next
 
@@ -282,7 +282,7 @@ Next action: Execute 34-07-PLAN.md (Transparency UI)
 - 34-04: Chunking + Search Index - COMPLETE
 - 34-05: Pin/Unpin Mechanics - COMPLETE
 - 34-06: Intent-Scoped Rules - COMPLETE
-- 34-07: Transparency UI - PLANNED
+- 34-07: Transparency UI - COMPLETE
 - 34-08: Retrieval Context Injection - PLANNED
 
 Phase 34-01 decisions:
@@ -319,6 +319,12 @@ Phase 34-06 decisions:
 - MODE_POLICIES maps all 5 SuperModes to policies
 - Token budgets: 2000 for pinned, 1500 for retrieval, top-5 chunks
 - Non-blocking: attachment resolution failures logged but don't break requests
+
+Phase 34-07 decisions:
+- Transparency footer uses context block for "Used:" text, actions block for buttons
+- Sources modal displays up to 5 chunks per file, truncated at 1000 chars
+- Stop using button delegates to existing unpin handler (code reuse)
+- Created response.py module with post_response helper (separation of concerns)
 
 ---
 
