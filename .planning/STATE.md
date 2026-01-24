@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 1 of 8 in current phase
+Plan: 2 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-23 — Completed 34-01-PLAN.md (Attachment Entity Foundation)
+Last activity: 2026-01-24 — Completed 34-02-PLAN.md (File Event Handler)
 
-Progress: █░░░░░░░░░ 12.5% (Phase 34: 1/8 plans complete)
+Progress: ██░░░░░░░░ 25% (Phase 34: 2/8 plans complete)
 
 ## Milestones Summary
 
@@ -264,10 +264,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 34-01-PLAN.md (Attachment Entity Foundation)
+Last session: 2026-01-24
+Stopped at: Completed 34-02-PLAN.md (File Event Handler)
 Resume file: None
-Next action: Execute 34-02-PLAN.md (File Event Handler)
+Next action: Execute 34-03-PLAN.md (Extraction Pipeline)
 
 ## What's Next
 
@@ -277,7 +277,7 @@ Next action: Execute 34-02-PLAN.md (File Event Handler)
 
 **Progress:**
 - 34-01: Attachment Schema + AttachmentStore - COMPLETE
-- 34-02: File Event Handler - PLANNED
+- 34-02: File Event Handler - COMPLETE
 - 34-03: Extraction Pipeline - PLANNED
 - 34-04: Chunking + Search Index - PLANNED
 - 34-05: Pin/Unpin Mechanics - PLANNED
@@ -289,6 +289,12 @@ Phase 34-01 decisions:
 - AttachmentStatus enum with 5 lifecycle states (pending, extracting, ready, failed, too_large)
 - file_id UNIQUE constraint for idempotent creates via ON CONFLICT
 - Partial indexes for status queries and pinned attachments
+
+Phase 34-02 decisions:
+- Use _run_async pattern for async handlers called from sync Bolt context
+- Process both file_shared events AND message files array for complete coverage
+- Non-blocking registration - errors logged but don't fail message processing
+- Size limit set to 10MB (matching typical Slack file size limits)
 
 ---
 
