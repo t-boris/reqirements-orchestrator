@@ -6,6 +6,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from src.schemas.anchor import ThreadContext
 from src.schemas.draft import TicketDraft
 from src.schemas.structured_draft import StructuredDraft
 
@@ -331,6 +332,13 @@ class AgentState(TypedDict):
 
     # Request queue (Phase 27.2 - Turn-Taking)
     queued_requests: list[QueuedRequest]  # Requests waiting while another processes
+
+    # Thread context (Phase 33 - Anchor Message Architecture)
+    # Resolved anchor context for the current thread. When a message arrives
+    # in a thread, ContextResolver determines what object the thread is managing
+    # (Decision, WorkItem, etc.) and populates this field.
+    # Implements Rule A3 (Context Inheritance) and Rule A4 (Implicit Commands).
+    thread_context: Optional[ThreadContext]  # Resolved anchor context
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead

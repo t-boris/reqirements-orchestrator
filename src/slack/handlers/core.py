@@ -326,6 +326,58 @@ async def _queue_request(
     await runner._update_state({"queued_requests": queued})
 
 
+async def _resolve_thread_context(
+    channel_id: str,
+    thread_ts: str,
+    collector: Optional[DebugCollector] = None,
+):
+    """Resolve thread context for anchor-based object binding.
+
+    Implements Rule A3 (Context Inheritance) from Phase 33 - Anchor Message Architecture.
+    When a message arrives in a thread, determine what object the thread is managing.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp (parent message ts)
+        collector: Optional debug collector for debug mode
+
+    Returns:
+        ThreadContext if thread is anchored to an object, None otherwise.
+
+    Phase 33 - Anchor Message Architecture
+    """
+    from src.slack.context_resolver import resolve_thread_context
+
+    try:
+        thread_context = await resolve_thread_context(
+            channel_id,
+            thread_ts,
+            hydrate=True,  # Load full entity for downstream use
+        )
+
+        if thread_context and collector:
+            collector.add_entry("decision", "Thread Context Resolved", {
+                "anchor_type": thread_context.anchor_type.value,
+                "object_id": thread_context.object_id,
+                "display_id": thread_context.display_id,
+                "has_entity": thread_context.has_entity,
+            })
+        elif collector:
+            collector.add_entry("decision", "Thread Context Resolved", {
+                "result": "no_anchor",
+            })
+
+        return thread_context
+
+    except Exception as e:
+        logger.debug(f"Could not resolve thread context: {e}")
+        if collector:
+            collector.add_entry("decision", "Thread Context Error", {
+                "error": str(e),
+            })
+        return None
+
+
 async def _process_mention(
     identity: SessionIdentity,
     text: str,
@@ -463,10 +515,19 @@ async def _process_mention(
             message_ts=thread_ts,  # Use thread_ts as the reference point
         )
 
+        # Resolve thread context (Phase 33 - Anchor Message Architecture)
+        # This implements Rule A3: Context Inheritance
+        thread_context = await _resolve_thread_context(channel, thread_ts, collector)
+
         # Check for persona switch before running graph (Phase 9)
         await _check_persona_switch(runner, text, client, channel, thread_ts)
 
-        result = await runner.run_with_message(text, user, conversation_context=conversation_context)
+        result = await runner.run_with_message(
+            text,
+            user,
+            conversation_context=conversation_context,
+            thread_context=thread_context,
+        )
 
         # Log decision from graph result
         if collector:
@@ -596,11 +657,15 @@ async def _handle_continuation(
         message_ts=thread_ts,
     )
 
+    # Resolve thread context (Phase 33 - Anchor Message Architecture)
+    thread_context = await _resolve_thread_context(channel, thread_ts, collector)
+
     # Run graph with the NEW message (not the old one from state!)
     result = await runner.run_with_message(
         text,  # Use the new message from user
         user,  # Use the user ID passed in
         conversation_context=conversation_context,
+        thread_context=thread_context,
     )
 
     # Log decision from graph result

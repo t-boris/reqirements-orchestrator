@@ -14,6 +14,7 @@ from datetime import datetime
 
 from langchain_core.messages import HumanMessage
 
+from src.schemas.anchor import ThreadContext
 from src.schemas.state import AgentState, AgentPhase
 from src.schemas.draft import TicketDraft
 from src.graph.state import ChannelState, ThreadState
@@ -50,6 +51,7 @@ class GraphRunner:
         message_text: str,
         user_id: str,
         conversation_context: dict[str, Any] | None = None,
+        thread_context: ThreadContext | None = None,
     ) -> dict[str, Any]:
         """Run graph with new message.
 
@@ -60,6 +62,8 @@ class GraphRunner:
             user_id: Slack user ID of the sender
             conversation_context: Optional conversation history context dict
                 containing messages, summary, and last_updated_at
+            thread_context: Optional resolved anchor context for the thread
+                (Phase 33 - Anchor Message Architecture)
 
         Returns:
             Result dict with:
@@ -94,6 +98,11 @@ class GraphRunner:
                 # Inject conversation context (Phase 11)
                 if conversation_context is not None:
                     state["conversation_context"] = conversation_context
+
+                # Inject thread context (Phase 33 - Anchor Message Architecture)
+                # This enables Rule A3 (Context Inheritance) and Rule A4 (Implicit Commands)
+                if thread_context is not None:
+                    state["thread_context"] = thread_context
 
                 # Run graph
                 result_state = await self._run_until_interrupt(state)
