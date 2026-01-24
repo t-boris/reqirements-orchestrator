@@ -7,10 +7,12 @@ Flow:
 1. Detect file (file_shared event OR message with files array)
 2. Filter to supported MIME types
 3. Create Attachment record (status=pending)
-4. Extraction pipeline picks up pending attachments
+4. Trigger immediate extraction (fire-and-forget)
 """
+import asyncio
 import logging
 from typing import Optional
+from uuid import UUID
 
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -51,12 +53,16 @@ async def handle_file_shared(
         logger.error(f"Failed to get file info for {file_id}: {e}")
         return
 
-    await _register_attachment(
+    attachment_result = await _register_attachment(
         file_info=file_info,
         channel_id=channel_id,
         thread_ts=None,  # file_shared doesn't include thread
         uploaded_by=user_id,
     )
+
+    # Trigger immediate processing (fire-and-forget)
+    if attachment_result:
+        await _trigger_processing(client, UUID(attachment_result["id"]))
 
 
 async def handle_message_files(
@@ -229,3 +235,31 @@ async def _handle_file_shared_async(event: dict, client) -> None:
         thread_ts=None,  # file_shared doesn't include thread
         uploaded_by=user_id,
     )
+
+
+async def _trigger_processing(
+    client: AsyncWebClient,
+    attachment_id: UUID,
+) -> None:
+    """Trigger processing for a newly registered attachment.
+
+    Fire-and-forget: errors logged but don't block registration.
+
+    Args:
+        client: Slack async client for file download.
+        attachment_id: ID of the attachment to process.
+    """
+    try:
+        from src.services.attachment_processor import AttachmentProcessor
+
+        processor = AttachmentProcessor(client)
+        async with get_connection() as conn:
+            store = AttachmentStore(conn)
+            attachment = await store.get(attachment_id)
+
+        if attachment:
+            # Fire-and-forget: create task but don't await
+            asyncio.create_task(processor._do_process(attachment))
+            logger.debug(f"Triggered processing for attachment {attachment_id}")
+    except Exception as e:
+        logger.warning(f"Failed to trigger processing: {e}")
