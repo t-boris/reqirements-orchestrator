@@ -1244,18 +1244,20 @@ async def _handle_sync_request(
     """Handle sync_request action - run sync analysis and show summary.
 
     Triggered by "@Maro update Jira issues" or similar sync phrases.
+    Uses the new JiraSyncService for comprehensive reconciliation report (Phase 29-03).
     """
-    from src.slack.handlers.sync import handle_maro_sync
+    from src.slack.handlers.sync import handle_sync_command
 
     channel_id = result.get("channel_id") or identity.channel_id
     user_id = identity.user_id if hasattr(identity, "user_id") else "system"
+    thread_ts = result.get("thread_ts") or identity.thread_ts
 
-    # Run sync analysis (same as /maro sync)
-    await handle_maro_sync(
-        channel_id=channel_id,
+    # Run sync analysis with new diagnostic command
+    await handle_sync_command(
         client=client,
+        channel_id=channel_id,
         user_id=user_id,
-        auto_mode=False,  # Show summary for natural language trigger
+        thread_ts=thread_ts,
     )
 
 
