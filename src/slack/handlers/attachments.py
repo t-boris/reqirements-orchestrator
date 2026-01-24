@@ -188,3 +188,44 @@ def is_supported_file(file_info: dict) -> bool:
     """
     mimetype = file_info.get("mimetype", "")
     return mimetype in SUPPORTED_TYPES
+
+
+def on_file_shared(event: dict, client) -> None:
+    """Synchronous wrapper for file_shared event handler.
+
+    Bolt calls event handlers from a sync context. This wraps the
+    async handler and runs it in the background.
+
+    Args:
+        event: file_shared event payload from Slack.
+        client: Slack WebClient.
+    """
+    from src.slack.handlers.core import _run_async
+
+    _run_async(_handle_file_shared_async(event, client))
+
+
+async def _handle_file_shared_async(event: dict, client) -> None:
+    """Async implementation for file_shared event handling."""
+    file_id = event.get("file_id")
+    channel_id = event.get("channel_id")
+    user_id = event.get("user_id")
+
+    if not all([file_id, channel_id, user_id]):
+        logger.warning(f"Incomplete file_shared event: {event}")
+        return
+
+    # Get file info from Slack (sync client)
+    try:
+        result = client.files_info(file=file_id)
+        file_info = result.get("file", {})
+    except Exception as e:
+        logger.error(f"Failed to get file info for {file_id}: {e}")
+        return
+
+    await _register_attachment(
+        file_info=file_info,
+        channel_id=channel_id,
+        thread_ts=None,  # file_shared doesn't include thread
+        uploaded_by=user_id,
+    )

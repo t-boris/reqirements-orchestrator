@@ -98,6 +98,7 @@ from src.slack.handlers.change_request import (
     handle_change_request_edit,
 )
 from src.slack.handlers.preflight import register_preflight_handlers
+from src.slack.handlers.attachments import on_file_shared
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,9 @@ def register_handlers(app: App) -> None:
 
     # Channel join - post pinned quick-reference (Phase 12)
     app.event("member_joined_channel")(handle_member_joined_channel)
+
+    # File uploads - register attachments for extraction (Phase 34)
+    app.event("file_shared")(on_file_shared)
 
     # Slash commands
     app.command("/jira")(handle_jira_command)
@@ -245,4 +249,4 @@ def register_handlers(app: App) -> None:
     # Decision button handlers (Phase 30)
     register_decision_handlers(app)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons")
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, file_shared, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons")
