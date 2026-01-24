@@ -391,7 +391,7 @@ Jira = Projection
 
 ### Phase 35: Multi-Intent Task Orchestration
 
-**Status:** PLANNED (8 plans in 4 waves)
+**Status:** COMPLETE (8/8 plans)
 
 **Objective:** Replace single-intent classification with TaskPlan orchestration. Messages become task lists where each intent is a task with priority and side-effect type.
 
@@ -449,14 +449,14 @@ Jira = Projection
 
 **Plans:**
 
-- [ ] 35-01: TaskPlan Schema + Store
-- [ ] 35-02: Multi-Intent Classification
-- [ ] 35-03: Task Safety Classification
-- [ ] 35-04: TaskPlan State Integration
-- [ ] 35-05: Task Executor Orchestration
-- [ ] 35-06: UI Status Card
-- [ ] 35-07: Button Handlers + Version Binding
-- [ ] 35-08: Integration + Dispatch Updates
+- [x] 35-01: TaskPlan Schema + Store (2026-01-24)
+- [x] 35-02: Multi-Intent Classification (2026-01-24)
+- [x] 35-03: Task Safety Classification (2026-01-24)
+- [x] 35-04: TaskPlan State Integration (2026-01-24)
+- [x] 35-05: Task Executor Orchestration (2026-01-24)
+- [x] 35-06: UI Status Card (2026-01-24)
+- [x] 35-07: Button Handlers + Version Binding (2026-01-24)
+- [x] 35-08: Integration + Dispatch Updates (2026-01-24)
 
 **Full context:** `.planning/phases/35-multi-intent-task-orchestration/35-CONTEXT.md`
 **Research:** `.planning/phases/35-multi-intent-task-orchestration/35-RESEARCH.md`
@@ -571,4 +571,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
 | 33. Anchor Message Architecture | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 34. File Attachment Processing | v1.2 | 8/8 | Complete | 2026-01-24 |
-| 35. Multi-Intent Task Orchestration | v1.2 | 0/? | Not Started | - |
+| 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |

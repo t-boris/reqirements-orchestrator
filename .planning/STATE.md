@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 35: Multi-Intent Task Orchestration (IN PROGRESS)
+**Current focus:** v1.2 Developer Experience — Phase 35: Multi-Intent Task Orchestration (COMPLETE)
 
 ## Current Position
 
 Phase: 35-multi-intent-task-orchestration
-Plan: 2 of 8 in current phase
-Status: In progress — executing plans
-Last activity: 2026-01-24 — Completed 35-02-PLAN.md (TaskPlanProposal + multi-intent classification)
+Plan: 8 of 8 in current phase
+Status: Complete
+Last activity: 2026-01-24 — Completed all 8 plans in Phase 35
 
-Progress: ██░░░░░░░░ 17% (Phase 35: 2/8 plans complete)
+Progress: ██████████ 100% (Phase 35: 8/8 plans complete)
 
 ## Milestones Summary
 
@@ -274,12 +274,48 @@ Phase 35-02 decisions:
 - TaskPlanProposal wraps multiple TaskProposals with dependency tracking
 - Backwards compatible via return_proposal=False default and to_single_intent()
 
+Phase 35-03 decisions:
+- MODE_SAFETY_MAP: THINK/CHAT → AUTO_EXECUTE, BUILD/OPERATE/DECIDE → REQUIRES_CONFIRMATION
+- INTENT_SAFETY_OVERRIDES for specific intents (DRAFT_REFINE/DRAFT_TRANSFORM are AUTO_EXECUTE)
+- JIRA side effect always forces REQUIRES_CONFIRMATION regardless of mode
+- create_task_with_inferred_safety() factory for properly classified tasks
+
+Phase 35-04 decisions:
+- task_plan field added to AgentState TypedDict (Optional[TaskPlan])
+- task_decomposer_node converts TaskPlanProposal to persisted TaskPlan
+- Graph routes to task_decomposer when is_multi_intent=True detected in proposal
+- Dependency indices resolved to task_ids after all tasks created
+
+Phase 35-05 decisions:
+- task_executor_node processes tasks recursively until blocked or done
+- Auto-executable tasks run immediately, dangerous tasks block for confirmation
+- handle_task_approval with version check for idempotency (rejects stale approvals)
+- _cascade_cancel propagates rejections to dependent tasks
+
+Phase 35-06 decisions:
+- TaskStatusUpdater with 1.5s throttling to avoid Slack rate limits
+- SIGNIFICANT_EVENTS (task_started/completed/blocked/failed, plan_completed/canceled) bypass throttle
+- Status card shows plan header, task list with emoji status, control buttons
+- build_multi_intent_announcement for canonical "I see N actions" UX
+
+Phase 35-07 decisions:
+- Button value format includes version: "{plan_id}:{task_id}:{version}" for task actions
+- Stale actions rejected with ephemeral message + card refresh
+- register_task_plan_handlers(app) pattern for clean handler registration
+- validate_task_action/validate_plan_action helpers for consistent validation
+
+Phase 35-08 decisions:
+- 5 new dispatch actions: task_plan_created, task_confirmation_required, task_plan_complete, task_plan_blocked, task_failed
+- intent_router_node calls classify_intent with return_proposal=True for multi-intent
+- task_decomposer returns decision_result with action="task_plan_created"
+- End-to-end flow: multi-intent → decompose → post card → execute/block → complete
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 35-02-PLAN.md
+Stopped at: Completed all Phase 35 plans
 Resume file: None
-Next action: Execute 35-03-PLAN.md (Task Decomposer Node)
+Next action: Select next phase or milestone
 
 ## What's Next
 
@@ -447,6 +483,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 35 COMPLETE — Multi-Intent Task Orchestration (8/8 plans, 4 waves)
 - 2026-01-24: Phase 35-01 COMPLETE — TaskPlan/Task schemas, TaskPlanStore persistence
 - 2026-01-24: Phase 35 RESEARCHED — Multi-Intent Task Orchestration (architecture gaps identified, integration points documented)
 - 2026-01-24: Phase 35 ADDED — Multi-Intent Task Orchestration (TaskPlan replaces single-intent classification)
