@@ -249,21 +249,135 @@ class ThreadBindingStore:
         ]
 
 
-# Convenience function to get a store with connection
-async def get_binding_store_with_conn() -> tuple[ThreadBindingStore, AsyncConnection]:
-    """Get ThreadBindingStore with a database connection.
+# -------------------------------------------------------------------------
+# Convenience functions - manage connection internally for simple operations
+# -------------------------------------------------------------------------
 
-    Returns tuple of (store, conn) - caller must manage connection lifecycle.
+async def bind_thread(
+    channel_id: str,
+    thread_ts: str,
+    issue_key: str,
+    bound_by: str,
+) -> ThreadBinding:
+    """Bind a thread to a Jira ticket (convenience wrapper).
 
-    Usage:
-        store, conn = await get_binding_store_with_conn()
-        try:
-            binding = await store.get_binding(channel_id, thread_ts)
-        finally:
-            # Connection returns to pool when context exits
-            pass
+    Manages database connection internally.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+        issue_key: Jira issue key to link to
+        bound_by: Slack user ID who created the binding
+
+    Returns:
+        Created or updated ThreadBinding
     """
     from src.db import get_connection
 
-    conn = await get_connection().__aenter__()
-    return ThreadBindingStore(conn), conn
+    async with get_connection() as conn:
+        store = ThreadBindingStore(conn)
+        return await store.bind(channel_id, thread_ts, issue_key, bound_by)
+
+
+async def get_thread_binding(
+    channel_id: str,
+    thread_ts: str,
+) -> Optional[ThreadBinding]:
+    """Get binding for a thread (convenience wrapper).
+
+    Manages database connection internally.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+
+    Returns:
+        ThreadBinding if exists, None otherwise
+    """
+    from src.db import get_connection
+
+    async with get_connection() as conn:
+        store = ThreadBindingStore(conn)
+        return await store.get_binding(channel_id, thread_ts)
+
+
+async def unbind_thread(
+    channel_id: str,
+    thread_ts: str,
+) -> bool:
+    """Remove binding for a thread (convenience wrapper).
+
+    Manages database connection internally.
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+
+    Returns:
+        True if binding existed and was removed, False otherwise
+    """
+    from src.db import get_connection
+
+    async with get_connection() as conn:
+        store = ThreadBindingStore(conn)
+        return await store.unbind(channel_id, thread_ts)
+
+
+# -------------------------------------------------------------------------
+# Legacy singleton interface (DEPRECATED)
+# -------------------------------------------------------------------------
+
+class _LegacyBindingStoreAdapter:
+    """Adapter to provide backward-compatible interface for get_binding_store().
+
+    DEPRECATED: Use ThreadBindingStore with get_connection() directly,
+    or use the convenience functions (bind_thread, get_thread_binding, unbind_thread).
+
+    This adapter creates a new database connection for each operation.
+    """
+
+    async def bind(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        issue_key: str,
+        bound_by: str,
+    ) -> ThreadBinding:
+        """Bind a thread to a Jira ticket."""
+        return await bind_thread(channel_id, thread_ts, issue_key, bound_by)
+
+    async def get_binding(
+        self,
+        channel_id: str,
+        thread_ts: str,
+    ) -> Optional[ThreadBinding]:
+        """Get binding for a thread if exists."""
+        return await get_thread_binding(channel_id, thread_ts)
+
+    async def unbind(
+        self,
+        channel_id: str,
+        thread_ts: str,
+    ) -> bool:
+        """Remove binding for a thread."""
+        return await unbind_thread(channel_id, thread_ts)
+
+
+# Global legacy singleton instance
+_legacy_binding_store: Optional[_LegacyBindingStoreAdapter] = None
+
+
+def get_binding_store() -> _LegacyBindingStoreAdapter:
+    """Get the legacy ThreadBindingStore adapter.
+
+    DEPRECATED: This returns an adapter that creates a new database
+    connection for each operation. For better performance with multiple
+    operations, use ThreadBindingStore with get_connection() directly.
+
+    Returns:
+        _LegacyBindingStoreAdapter instance
+    """
+    global _legacy_binding_store
+    if _legacy_binding_store is None:
+        _legacy_binding_store = _LegacyBindingStoreAdapter()
+    return _legacy_binding_store
