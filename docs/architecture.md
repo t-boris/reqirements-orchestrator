@@ -7,7 +7,10 @@
 > - **MCP** replaced with direct atlassian-python-api
 > - **11-phase workflow** replaced with intent-based routing
 >
-> See `HOW_THE_BOT_THINKS.md` for the current behavior and `Phase 28: StructuredDraft Evolution` section below for the latest architecture.
+> See `HOW_THE_BOT_THINKS.md` for the current behavior and sections below for latest architecture:
+> - **Phase 28: StructuredDraft Evolution** - Draft as typed design object
+> - **Phase 29: Preflight** - Universal guardrail for Jira writes
+> - **Phase 30: Decision as Entity** - Decisions are versioned, Jira is projection
 
 A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
 
@@ -83,6 +86,102 @@ Button payloads include `{draft_id, version}`. When clicked:
 - `button.version != draft.version` → "Outdated, please review new structure"
 
 ---
+
+## Phase 29: Preflight - Universal Guardrail (Latest)
+
+**Core principle:** Every write operation goes through preflight — no exceptions.
+
+### Conflict Classification
+
+| Type | Meaning | Action |
+|------|---------|--------|
+| **IDEMPOTENT** | Already done in Jira | Auto-succeed, sync local |
+| **SAFE_DRIFT** | Changes don't overlap | Ask but default to proceed |
+| **REAL_CONFLICT** | Same fields changed | Block until user chooses |
+| **STRUCTURAL** | Invalid operation | Block with explanation |
+
+### Sync Tracking
+
+```python
+class JiraRegistryEntry:
+    jira_key: str
+    jira_updated: datetime  # When Jira was last modified
+    last_synced: datetime   # When we last fetched
+    status: str
+    assignee: str
+```
+
+### Key Rules
+
+- **IDEMPOTENT auto-succeeds** — all others require human choice
+- **Never auto-fix conflicts** — user must explicitly choose resolution
+- **Sync on read** — every preflight updates local registry
+
+---
+
+## Phase 30: Decision as First-Class Entity (Latest)
+
+**Mantra:** "Decisions are versioned, Jira is a projection."
+
+### Decision Entity
+
+```python
+class Decision:
+    id: str
+    channel_id: str
+    decision_type: DecisionType  # ARCH, SCOPE, CONSTRAINT, PRIORITY, STRUCTURE, PROCESS
+    title: str
+    description: str
+    status: DecisionStatus       # PROPOSED → APPROVED → DEPRECATED/REPLACED
+    version: int
+    canonical_message_ts: str    # Slack message that represents this
+```
+
+### Decision Types → Jira Projection
+
+| Type | Jira Field |
+|------|------------|
+| ARCH | Description → Architecture section |
+| SCOPE | Description → Scope section |
+| CONSTRAINT | Description → Constraints section |
+| PRIORITY | Priority field / Labels |
+| STRUCTURE | Parent/Link relations |
+| PROCESS | Labels / Custom field |
+
+### Canonical Message Pattern
+
+Each Decision has **one message** in channel:
+- Always reflects current version (like HEAD in git)
+- Never deleted, only updated or marked deprecated
+- Thread = working area for discussion
+
+### Managed Sections
+
+MARO writes only to clearly marked sections:
+
+```markdown
+## Decisions (managed by MARO)
+• DEC-41 v4 – Use ISO 8601 dates
+---
+```
+
+User content outside this block is never touched.
+
+### DecisionLink
+
+```python
+class DecisionLink:
+    decision_id: str
+    jira_key: str
+    field_path: JiraFieldPath
+    synced_version: int
+    synced_at: datetime
+```
+
+Enables:
+- Deterministic mapping (no LLM guessing)
+- Incremental sync (only if version changed)
+- Audit trail (which version is in Jira)
 
 ---
 
