@@ -12,9 +12,9 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 Phase: 30-decision-as-entity
 Plan: 4 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 30-04-PLAN.md (DecisionManager canonical message pattern)
+Last activity: 2026-01-24 — Completed 30-05-PLAN.md (Decision UI blocks with four visual states)
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 3/8 plans
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 4/8 plans
 
 ## Milestones Summary
 
@@ -175,6 +175,11 @@ Phase 30.4 decisions:
 - update_canonical_message() uses chat_update (not new message) for update-in-place
 - Thread binding queries by channel_id + canonical_message_ts
 
+Phase 30.5 decisions:
+- Four visual states match psychological weight: draft (compact) -> approval (heavy) -> approved (authoritative) -> commit log (ultra compact)
+- Version-bound button payloads contain decision_id + version to prevent stale clicks
+- Type emojis visually distinguish decision types (ARCH=brain, SCOPE=ruler, CONSTRAINT=lock, PRIORITY=lightning, STRUCTURE=construction, PROCESS=gear)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -190,9 +195,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 30-04-PLAN.md (DecisionManager canonical message pattern)
+Stopped at: Completed 30-05-PLAN.md (Decision UI blocks with four visual states)
 Resume file: None
-Next action: Execute remaining wave 2 plans (30-03, 30-05)
+Next action: Execute 30-03-PLAN.md (DecisionStore integration) or 30-06-PLAN.md
 
 ## What's Next
 
@@ -220,7 +225,7 @@ Next action: Execute remaining wave 2 plans (30-03, 30-05)
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 - 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Phase 30: Decision as First-Class Entity** — IN PROGRESS (3/8 plans)
+**Phase 30: Decision as First-Class Entity** — IN PROGRESS (4/8 plans)
 
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
@@ -228,8 +233,9 @@ Next action: Execute remaining wave 2 plans (30-03, 30-05)
 - 30.1: Decision entity and DecisionStore with versioning
 - 30.2: DecisionLink table for decision-to-Jira mappings
 - 30.4: DecisionManager with canonical message pattern
+- 30.5: Decision UI blocks with four visual states
 
-**Next:** Execute remaining wave 2 plans (30-03, 30-05)
+**Next:** Execute 30-03-PLAN.md (DecisionStore integration) or 30-06-PLAN.md
 
 ---
 

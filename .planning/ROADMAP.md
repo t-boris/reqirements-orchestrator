@@ -339,4 +339,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
-| 30. Decision as First-Class Entity | v1.2 | 2/8 | In Progress | - |
+| 30. Decision as First-Class Entity | v1.2 | 4/8 | In Progress | - |
