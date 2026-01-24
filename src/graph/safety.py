@@ -6,13 +6,10 @@ Safety levels determine whether tasks auto-execute or require user confirmation.
 Based on SuperMode (user-facing) and side effects.
 """
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from src.schemas.intent import Intent, SuperMode
-from src.schemas.task_plan import SafetyLevel, SideEffect
-
-if TYPE_CHECKING:
-    from src.schemas.task_plan import Task
+from src.schemas.task_plan import SafetyLevel, SideEffect, Task
 
 # SuperMode to default safety level
 MODE_SAFETY_MAP: dict[SuperMode, SafetyLevel] = {
@@ -36,7 +33,7 @@ INTENT_SAFETY_OVERRIDES: dict[Intent, SafetyLevel] = {
 DANGEROUS_SIDE_EFFECTS = {SideEffect.JIRA}
 
 
-def classify_task_safety(task: "Task") -> SafetyLevel:
+def classify_task_safety(task: Task) -> SafetyLevel:
     """Determine safety level for a task.
 
     Priority:
@@ -62,7 +59,7 @@ def classify_task_safety(task: "Task") -> SafetyLevel:
     return MODE_SAFETY_MAP.get(task.mode, SafetyLevel.REQUIRES_CONFIRMATION)
 
 
-def is_task_auto_executable(task: "Task") -> bool:
+def is_task_auto_executable(task: Task) -> bool:
     """Check if task can execute without user confirmation.
 
     Args:
@@ -74,7 +71,7 @@ def is_task_auto_executable(task: "Task") -> bool:
     return task.safety_level == SafetyLevel.AUTO_EXECUTE
 
 
-def get_tasks_needing_confirmation(tasks: list["Task"]) -> list["Task"]:
+def get_tasks_needing_confirmation(tasks: list[Task]) -> list[Task]:
     """Filter tasks that need user approval before execution.
 
     Args:
@@ -86,7 +83,7 @@ def get_tasks_needing_confirmation(tasks: list["Task"]) -> list["Task"]:
     return [t for t in tasks if t.safety_level == SafetyLevel.REQUIRES_CONFIRMATION]
 
 
-def get_auto_executable_tasks(tasks: list["Task"]) -> list["Task"]:
+def get_auto_executable_tasks(tasks: list[Task]) -> list[Task]:
     """Filter tasks that can run immediately.
 
     Args:
@@ -96,3 +93,82 @@ def get_auto_executable_tasks(tasks: list["Task"]) -> list["Task"]:
         List of tasks that can auto-execute.
     """
     return [t for t in tasks if t.safety_level == SafetyLevel.AUTO_EXECUTE]
+
+
+# =============================================================================
+# Side effect inference
+# =============================================================================
+
+# Intent to side effects mapping
+INTENT_SIDE_EFFECTS: dict[Intent, list[SideEffect]] = {
+    # JIRA-affecting intents
+    Intent.WORKITEM_CREATE: [SideEffect.JIRA],
+    Intent.JIRA_COMMAND: [SideEffect.JIRA],
+    Intent.CHANGE_REQUEST: [SideEffect.JIRA],
+    Intent.SYNC_REQUEST: [SideEffect.JIRA],
+    Intent.TICKET_ACTION: [SideEffect.JIRA],
+
+    # Slack-affecting intents
+    Intent.REVIEW: [SideEffect.SLACK],
+    Intent.DISCUSSION: [SideEffect.SLACK],
+    Intent.DECISION: [SideEffect.SLACK, SideEffect.REGISTRY],
+
+    # Draft intents (registry only, no external effects)
+    Intent.DRAFT_REFINE: [SideEffect.REGISTRY],
+    Intent.DRAFT_TRANSFORM: [SideEffect.REGISTRY],
+
+    # Pure read operations
+    Intent.JIRA_SEARCH: [SideEffect.NONE],
+    Intent.META: [SideEffect.NONE],
+    Intent.OPS: [SideEffect.NONE],
+    Intent.AMBIGUOUS: [SideEffect.NONE],
+}
+
+
+def infer_side_effects(intent: Intent) -> list[SideEffect]:
+    """Infer side effects from intent type.
+
+    Args:
+        intent: The intent to get side effects for.
+
+    Returns:
+        List of side effects for this intent.
+    """
+    return INTENT_SIDE_EFFECTS.get(intent, [SideEffect.NONE])
+
+
+def create_task_with_inferred_safety(
+    task_id: str,
+    intent: Intent,
+    mode: SuperMode,
+    title: str,
+    params: dict[str, Any] | None = None,
+) -> Task:
+    """Factory function to create Task with inferred safety and side effects.
+
+    Creates a Task with side_effects automatically inferred from intent.
+    The safety_level is then auto-computed by the Task validator based on
+    mode, intent, and inferred side effects.
+
+    Args:
+        task_id: Unique task identifier.
+        intent: The intent for this task.
+        mode: The super mode for this task.
+        title: Human-readable task title.
+        params: Intent-specific parameters.
+
+    Returns:
+        Task with safety_level and side_effects properly set.
+    """
+    side_effects = infer_side_effects(intent)
+
+    # Create task - safety_level auto-computed by Task validator
+    return Task(
+        task_id=task_id,
+        intent=intent,
+        mode=mode,
+        title=title,
+        side_effects=side_effects,
+        params=params or {},
+        # safety_level auto-computed by validator based on mode, intent, and side_effects
+    )
