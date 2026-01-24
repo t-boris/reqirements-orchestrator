@@ -15,12 +15,19 @@ Classifies user messages into pure user intents:
 
 Pattern matching used for DECISION intent detection.
 LLM classification as fallback for all intents.
+
+Phase 33-05: Context-aware classification for anchored threads.
+When in an anchored thread, implicit commands are recognized without
+explicit target (Rule A4: Implicit Commands).
 """
 import logging
 import re
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from src.schemas.intent import Intent, IntentResult, OpsSubtype, SuperMode, get_super_mode
+
+if TYPE_CHECKING:
+    from src.schemas.anchor import ThreadContext
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +89,83 @@ DECISION_TYPE_KEYWORDS: dict[str, list[str]] = {
         "review process", "approval", "deploy", "release",
     ],
 }
+
+
+# =============================================================================
+# Implicit command patterns (Phase 33-05: Rule A4)
+# These patterns imply action on thread's anchored object without explicit ID.
+# =============================================================================
+
+def _get_implicit_command_patterns() -> list[tuple[str, str]]:
+    """Patterns that imply action on thread's anchored object.
+
+    These commands don't need explicit "SCRUM-123" when in anchor thread.
+    Returns list of (pattern, intent) tuples.
+    """
+    return [
+        # Update commands
+        (r"update (?:the )?description", "TICKET_ACTION"),
+        (r"change (?:the )?(?:title|summary)", "TICKET_ACTION"),
+        (r"add (?:a )?comment", "TICKET_ACTION"),
+        (r"update (?:the )?(?:title|summary|description)", "TICKET_ACTION"),
+
+        # Status commands
+        (r"mark (?:as )?(?:done|complete|finished)", "JIRA_COMMAND"),
+        (r"move (?:it )?to (?:in progress|done|review|to do)", "JIRA_COMMAND"),
+        (r"assign (?:to|this)", "JIRA_COMMAND"),
+        (r"set (?:the )?(?:status|priority|assignee)", "JIRA_COMMAND"),
+        (r"change (?:the )?(?:status|priority|assignee)", "JIRA_COMMAND"),
+
+        # WorkItem commands
+        (r"add (?:a )?story", "WORKITEM_CREATE"),
+        (r"add (?:a )?subtask", "TICKET_ACTION"),
+        (r"create (?:a )?(?:story|subtask)", "TICKET_ACTION"),
+        (r"split into stories", "DRAFT_TRANSFORM"),
+        (r"decompose(?:s)?(?: (?:this|it))?", "DRAFT_TRANSFORM"),
+        (r"break (?:this )?down", "DRAFT_TRANSFORM"),
+
+        # Decision commands
+        (r"deprecate(?: this)?", "DECISION"),
+        (r"update (?:the )?decision", "DECISION"),
+    ]
+
+
+async def classify_intent_with_context(
+    message: str,
+    thread_context: Optional["ThreadContext"],
+    conversation_context: dict | None = None,
+    active_draft: dict | None = None,
+) -> IntentResult:
+    """Classify intent with thread context awareness.
+
+    If in anchored thread, implicit commands are recognized.
+    This implements Rule A4 (Implicit Commands) from Phase 33.
+
+    Args:
+        message: User's message text.
+        thread_context: Resolved thread context (from ContextResolver).
+        conversation_context: Full conversation history.
+        active_draft: Active draft summary for classification.
+
+    Returns:
+        IntentResult with intent type, confidence, and reasons.
+    """
+    # First, check implicit command patterns if we have context
+    if thread_context:
+        for pattern, intent_str in _get_implicit_command_patterns():
+            if re.search(pattern, message, re.IGNORECASE):
+                logger.debug(f"Implicit command '{pattern}' in anchored thread -> {intent_str}")
+                intent = Intent(intent_str.lower())
+                super_mode = get_super_mode(intent)
+                return IntentResult(
+                    intent=intent,
+                    confidence=0.85,  # High confidence for pattern match in context
+                    super_mode=super_mode,
+                    reasons=[f"implicit_command: {pattern} in anchored thread"],
+                )
+
+    # Fall through to regular classification
+    return await classify_intent(message, conversation_context, active_draft)
 
 
 def _match_decision_patterns(message: str) -> tuple[bool, Optional[str], Optional[str]]:
