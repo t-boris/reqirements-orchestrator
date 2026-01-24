@@ -63,6 +63,7 @@ from src.graph.nodes.change_request import change_request_node
 from src.graph.nodes.draft_transform import draft_transform_node
 from src.graph.nodes.ops import ops_node
 from src.graph.nodes.task_decomposer import task_decomposer_node
+from src.graph.nodes.task_executor import task_executor_node
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,18 @@ def route_after_decision(state: AgentState) -> Literal["ask", "preview", "ready"
     - draft_refine: User asking about draft structure (Phase 26)
     """
     return get_decision_action(state)
+
+
+def route_after_decomposer(state: AgentState) -> Literal["task_executor", "end"]:
+    """Route after task decomposition.
+
+    If a TaskPlan was created with tasks, route to task_executor.
+    Otherwise, route to end (single intent or error case).
+    """
+    task_plan = state.get("task_plan")
+    if task_plan and task_plan.get("tasks"):
+        return "task_executor"
+    return "end"
 
 
 def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow"]:
@@ -257,6 +270,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("ops", ops_node)
     workflow.add_node("draft_transform", draft_transform_node)
     workflow.add_node("task_decomposer", task_decomposer_node)
+    workflow.add_node("task_executor", task_executor_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -319,9 +333,19 @@ def create_graph() -> StateGraph:
     # Draft transform goes to END (handler sends structure feedback)
     workflow.add_edge("draft_transform", END)
 
-    # Task decomposer goes to END (temporary until Plan 35-05 adds task_executor)
-    # Phase 35: Multi-intent decomposition creates TaskPlan, handler will process
-    workflow.add_edge("task_decomposer", END)
+    # Task decomposer routes to task_executor if tasks exist, else to END
+    # Phase 35: Multi-intent decomposition creates TaskPlan, executor processes tasks
+    workflow.add_conditional_edges(
+        "task_decomposer",
+        route_after_decomposer,
+        {
+            "task_executor": "task_executor",
+            "end": END,
+        }
+    )
+
+    # Task executor processes tasks and returns decision_result to handler
+    workflow.add_edge("task_executor", END)
 
     # Ticket flow: extraction -> should_continue -> validation -> decision -> END
     # Add conditional edges from extraction
