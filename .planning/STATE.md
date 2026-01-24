@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 30: Decision as First-Class Entity (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 31: Architecture Hardening (PLANNED)
 
 ## Current Position
 
-Phase: 30-decision-as-entity
-Plan: 8 of 8 in current phase (COMPLETE)
-Status: Phase complete
-Last activity: 2026-01-23 — Completed 30-08-PLAN.md (Decision Jira Projection)
+Phase: 31-architecture-hardening
+Plan: 0 of 4 in current phase (NOT STARTED)
+Status: Phase planned, ready for execution
+Last activity: 2026-01-23 — Created 4 plans for Phase 31
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 8/8 plans COMPLETE
+Progress: ██████████ 100% (Phase 27-30 COMPLETE) | Phase 31: 0/4 plans | Wave 1: 3 parallel, Wave 2: 1
 
 ## Milestones Summary
 
@@ -264,7 +264,8 @@ Next action: Phase 30 COMPLETE - plan next phase or finalize v1.2
 
 ### Roadmap Evolution
 
-- 2026-01-24: Phase 30 STARTED — Decision as First-Class Entity
+- 2026-01-23: Phase 31 ADDED — Architecture Hardening (super-modes, invariants, simplification)
+- 2026-01-23: Phase 30 COMPLETE — Decision as First-Class Entity (8/8 plans)
 - 2026-01-23: Phase 30 ADDED — Decision as First-Class Entity (versioned decisions, Jira as projection)
 - 2026-01-23: Phase 28 ADDED — Structured Draft Evolution (typed, versioned design object)
 - 2026-01-23: Phase 27 COMPLETE — Multi-User Support (auditable multi-user operation in channels)
