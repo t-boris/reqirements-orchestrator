@@ -437,4 +437,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 30. Decision as First-Class Entity | v1.2 | 8/8 | Complete | 2026-01-23 |
 | 31. Architecture Hardening | v1.2 | 4/4 | Complete | 2026-01-24 |
 | 32. Product Invariants | v1.2 | 6/6 | Complete | 2026-01-24 |
-| 33. Anchor Message Architecture | v1.2 | 1/5 | In Progress | - |
+| 33. Anchor Message Architecture | v1.2 | 2/5 | In Progress | - |

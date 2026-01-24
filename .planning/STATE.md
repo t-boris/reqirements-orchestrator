@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 33-anchor-message-architecture
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 33-02-PLAN.md (Thread Bindings Persistence)
+Last activity: 2026-01-24 — Completed 33-01-PLAN.md (Anchor Schema and Store)
 
-Progress: ██████████ 100% (Phase 27-32 COMPLETE) | Phase 33: 1/5 plans
+Progress: ██████████ 100% (Phase 27-32 COMPLETE) | Phase 33: 2/5 plans
 
 ## Milestones Summary
 
@@ -265,9 +265,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 33-02-PLAN.md (Thread Bindings Persistence)
+Stopped at: Completed 33-01-PLAN.md (Anchor Schema and Store)
 Resume file: None
-Next action: Execute 33-03-PLAN.md (or next unexecuted plan in phase 33)
+Next action: Execute 33-03-PLAN.md
 
 ## What's Next
 
@@ -284,9 +284,14 @@ Next action: Execute 33-03-PLAN.md (or next unexecuted plan in phase 33)
 - A4: Commands in thread default to the anchor's object
 
 **Progress:**
-- 33-01: AnchorMessage Schema - NOT EXECUTED
+- 33-01: AnchorMessage Schema - COMPLETE
 - 33-02: Thread Bindings Persistence - COMPLETE
 - 33-03: Next to execute
+
+Phase 33-01 decisions:
+- object_id as string to support both UUIDs (workitem) and formatted IDs (DEC-41)
+- Use project's create_tables() pattern instead of alembic migrations
+- UNIQUE constraint on (anchor_type, object_id, channel_id) for one anchor per object per channel
 
 **Next action:** Execute 33-03-PLAN.md
 
