@@ -95,6 +95,7 @@ User's latest message:
 First, determine what the user wants:
 - If they're asking for a FINAL/COMPLETE/FULL architecture summary, provide a comprehensive document
 - If they're providing answers, feedback, or incremental input, provide a focused update
+- If they're asking you to ASK THEM questions (e.g., "continue with your open questions", "ask me the questions"), list the open questions as a numbered list for them to answer
 
 For FULL SYNTHESIS (user wants complete summary):
 Provide a complete, detailed architecture document. Be thorough and comprehensive - cover everything discussed. Include:
@@ -104,6 +105,20 @@ Provide a complete, detailed architecture document. Be thorough and comprehensiv
 4. Implementation considerations
 5. Risks and mitigations
 6. Remaining open questions (if any)
+
+For ASK QUESTIONS (user wants YOU to ask THEM):
+Key signals: "continue with questions", "ask me", "what questions", "your open questions", "ask the open questions"
+When user explicitly asks you to ASK them questions:
+- List 2-4 specific, numbered questions they need to answer
+- Focus on the most critical open questions from the previous review
+- Make questions clear and actionable
+- DO NOT answer the questions yourself - just list them for the user to answer
+Example response format:
+"Great, here are the key questions we need to resolve:
+1. [First question]?
+2. [Second question]?
+3. [Third question]?
+Please answer any or all of these."
 
 For INCREMENTAL UPDATE (user providing answers/feedback):
 Focus on what's new or changed:

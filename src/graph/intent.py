@@ -39,29 +39,8 @@ IntentType = Intent  # Alias for legacy code
 
 
 # =============================================================================
-# Decision statement patterns (Phase 30)
-# Pattern-first detection for DECISION intent.
-# LLM fallback can still classify as DECISION if patterns miss.
+# Decision type hints based on keywords (used after LLM classification)
 # =============================================================================
-
-DECISION_PATTERNS = [
-    # "We decided to use PostgreSQL"
-    (r"(?:we|I)\s+decided\s+(?:to\s+)?(.+)", "decided"),
-    # "The decision is to..."
-    (r"(?:the|our)\s+decision\s+is\s+(.+)", "decision_is"),
-    # "Approved: use Redis"
-    (r"approved[:.]?\s+(.+)", "approved"),
-    # "Let's go with option A"
-    (r"(?:let'?s|we(?:'ll)?)\s+go\s+with\s+(.+)", "go_with"),
-    # "The architecture will use..."
-    (r"(?:the|our)\s+architecture\s+will\s+(?:be|use)\s+(.+)", "arch_will"),
-    # "Agreed: ..."
-    (r"agreed[:.]?\s+(.+)", "agreed"),
-    # "Confirmed: ..."
-    (r"confirmed[:.]?\s+(.+)", "confirmed"),
-    # "Final call: ..."
-    (r"final\s+call[:.]?\s+(.+)", "final_call"),
-]
 
 # Decision type hints based on keywords
 # Maps from hint type to keywords that indicate it
@@ -95,42 +74,9 @@ DECISION_TYPE_KEYWORDS: dict[str, list[str]] = {
 
 
 # =============================================================================
-# Implicit command patterns (Phase 33-05: Rule A4)
-# These patterns imply action on thread's anchored object without explicit ID.
+# Thread Context for LLM Classification
+# Thread context is now passed to LLM for context-aware intent classification.
 # =============================================================================
-
-def _get_implicit_command_patterns() -> list[tuple[str, str]]:
-    """Patterns that imply action on thread's anchored object.
-
-    These commands don't need explicit "SCRUM-123" when in anchor thread.
-    Returns list of (pattern, intent) tuples.
-    """
-    return [
-        # Update commands
-        (r"update (?:the )?description", "TICKET_ACTION"),
-        (r"change (?:the )?(?:title|summary)", "TICKET_ACTION"),
-        (r"add (?:a )?comment", "TICKET_ACTION"),
-        (r"update (?:the )?(?:title|summary|description)", "TICKET_ACTION"),
-
-        # Status commands
-        (r"mark (?:as )?(?:done|complete|finished)", "JIRA_COMMAND"),
-        (r"move (?:it )?to (?:in progress|done|review|to do)", "JIRA_COMMAND"),
-        (r"assign (?:to|this)", "JIRA_COMMAND"),
-        (r"set (?:the )?(?:status|priority|assignee)", "JIRA_COMMAND"),
-        (r"change (?:the )?(?:status|priority|assignee)", "JIRA_COMMAND"),
-
-        # WorkItem commands
-        (r"add (?:a )?story", "WORKITEM_CREATE"),
-        (r"add (?:a )?subtask", "TICKET_ACTION"),
-        (r"create (?:a )?(?:story|subtask)", "TICKET_ACTION"),
-        (r"split into stories", "DRAFT_TRANSFORM"),
-        (r"decompose(?:s)?(?: (?:this|it))?", "DRAFT_TRANSFORM"),
-        (r"break (?:this )?down", "DRAFT_TRANSFORM"),
-
-        # Decision commands
-        (r"deprecate(?: this)?", "DECISION"),
-        (r"update (?:the )?decision", "DECISION"),
-    ]
 
 
 async def classify_intent_with_context(
@@ -139,10 +85,10 @@ async def classify_intent_with_context(
     conversation_context: dict | None = None,
     active_draft: dict | None = None,
 ) -> IntentResult:
-    """Classify intent with thread context awareness.
+    """Classify intent with thread context awareness using LLM.
 
-    If in anchored thread, implicit commands are recognized.
-    This implements Rule A4 (Implicit Commands) from Phase 33.
+    Thread context (decision thread, workitem thread, etc.) is passed to the LLM
+    for context-aware classification. No pattern matching is used.
 
     Args:
         message: User's message text.
@@ -153,46 +99,8 @@ async def classify_intent_with_context(
     Returns:
         IntentResult with intent type, confidence, and reasons.
     """
-    # First, check implicit command patterns if we have context
-    if thread_context:
-        for pattern, intent_str in _get_implicit_command_patterns():
-            if re.search(pattern, message, re.IGNORECASE):
-                logger.debug(f"Implicit command '{pattern}' in anchored thread -> {intent_str}")
-                intent = Intent(intent_str.lower())
-                super_mode = get_super_mode(intent)
-                return IntentResult(
-                    intent=intent,
-                    confidence=0.85,  # High confidence for pattern match in context
-                    super_mode=super_mode,
-                    reasons=[f"implicit_command: {pattern} in anchored thread"],
-                )
-
-    # Fall through to regular classification
-    return await classify_intent(message, conversation_context, active_draft)
-
-
-def _match_decision_patterns(message: str) -> tuple[bool, Optional[str], Optional[str]]:
-    """Match message against decision patterns.
-
-    Returns:
-        Tuple of (is_decision, title_hint, pattern_name)
-        - is_decision: True if message matches a decision pattern
-        - title_hint: Extracted title from pattern group
-        - pattern_name: Name of the matched pattern (for logging)
-    """
-    message_lower = message.lower().strip()
-
-    for pattern, pattern_name in DECISION_PATTERNS:
-        match = re.search(pattern, message_lower, re.IGNORECASE)
-        if match:
-            # Extract the captured group as title hint
-            title_hint = match.group(1).strip() if match.lastindex else None
-            # Capitalize first letter for nicer display
-            if title_hint:
-                title_hint = title_hint[0].upper() + title_hint[1:] if len(title_hint) > 1 else title_hint.upper()
-            return True, title_hint, pattern_name
-
-    return False, None, None
+    # Pass thread context to LLM for context-aware classification
+    return await _llm_classify(message, conversation_context, active_draft, thread_context)
 
 
 def _detect_decision_type_hint(message: str) -> Optional[str]:
@@ -215,6 +123,7 @@ async def _llm_classify(
     message: str,
     conversation_context: dict | None = None,
     active_draft: dict | None = None,  # Active draft summary (Phase 26)
+    thread_context: Optional["ThreadContext"] = None,  # Thread context (Phase 33)
 ) -> IntentResult:
     """Use LLM to classify user intent with full conversation context.
 
@@ -222,6 +131,7 @@ async def _llm_classify(
         message: User's current message text
         conversation_context: Full conversation history (messages + summary)
         active_draft: Active draft summary for context-aware classification (Phase 26)
+        thread_context: Thread context for anchored threads (Phase 33)
     """
     from src.llm import get_llm
 
@@ -260,9 +170,35 @@ ACTIVE DRAFT CONTEXT:
 NOTE: If user asks questions about this draft (structure, scope, decomposition), classify as DRAFT_REFINE, NOT REVIEW.
 """
 
+    # Build thread context (Phase 33 - Anchor threads)
+    thread_context_str = ""
+    if thread_context:
+        anchor_type = getattr(thread_context, 'anchor_type', None)
+        object_id = getattr(thread_context, 'object_id', None)
+        if anchor_type and object_id:
+            # Get decision details if available
+            decision = getattr(thread_context, 'decision', None)
+            decision_info = ""
+            if decision:
+                decision_info = f"""
+  - Decision Title: {getattr(decision, 'title', 'Unknown')}
+  - Decision Type: {getattr(decision, 'decision_type', 'Unknown')}
+  - Status: {getattr(decision, 'status', 'Unknown')}"""
+
+            thread_context_str = f"""
+THREAD CONTEXT (user is in an anchored thread):
+- Anchor Type: {anchor_type.value if hasattr(anchor_type, 'value') else anchor_type}
+- Object ID: {object_id}{decision_info}
+NOTE: When user refers to "the decision", "this decision", "it", or asks to "expand", "explain", "show details" -
+they are referring to THIS specific object. Classify accordingly:
+- For decision threads: "expand the decision", "explain this", "show details" -> DECISION (to show/expand the decision)
+- For workitem threads: "update this", "change status" -> JIRA_COMMAND or TICKET_ACTION
+- "ask me the questions", "continue with questions" -> means user wants to be ASKED questions, not get answers
+"""
+
     prompt = f"""You are classifying user intent for a Slack bot that helps with Jira tickets and architecture discussions.
 
-{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}{f"ACTIVE DRAFT:{chr(10)}{draft_context_str}" if draft_context_str else ""}
+{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}{f"ACTIVE DRAFT:{chr(10)}{draft_context_str}" if draft_context_str else ""}{thread_context_str}
 CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
@@ -854,10 +790,9 @@ async def classify_intent(
     active_draft: dict | None = None,  # Phase 26
     return_proposal: bool = False,  # Phase 35: Return TaskPlanProposal for multi-intent
 ) -> IntentResult | TaskPlanProposal:
-    """Classify user message intent using pattern matching + LLM.
+    """Classify user message intent using LLM only.
 
-    Pattern matching is used first for DECISION intent detection.
-    LLM classification is used as fallback for all intents.
+    All intent classification is done via LLM - no pattern matching.
 
     Phase 35: When return_proposal=True, returns TaskPlanProposal with multiple
     tasks for compound requests. Uses should_use_multi_intent_classification()
@@ -872,46 +807,7 @@ async def classify_intent(
     Returns:
         IntentResult for single intent, or TaskPlanProposal if return_proposal=True
     """
-    # Phase 30: Pattern-first detection for DECISION intent
-    is_decision, title_hint, pattern_name = _match_decision_patterns(message)
-
-    if is_decision:
-        # Detect decision type from keywords
-        type_hint = _detect_decision_type_hint(message)
-
-        logger.info(
-            f"Decision detected by pattern matching: pattern={pattern_name}, "
-            f"type_hint={type_hint}, title_hint={title_hint[:50] if title_hint else None}"
-        )
-
-        result = IntentResult(
-            intent=Intent.DECISION,
-            confidence=0.9,  # High confidence for pattern match
-            decision_type_hint=type_hint,
-            decision_title_hint=title_hint,
-            super_mode=SuperMode.DECIDE,  # DECISION maps to DECIDE
-            reasons=[f"pattern match: {pattern_name}"],
-        )
-
-        if return_proposal:
-            # Wrap in TaskPlanProposal for consistent return type
-            return TaskPlanProposal(
-                tasks=[TaskProposal(
-                    intent=result.intent,
-                    super_mode=result.super_mode or SuperMode.DECIDE,
-                    confidence=result.confidence,
-                    title=title_hint or "Record decision",
-                    params={"decision_type_hint": type_hint, "decision_title_hint": title_hint},
-                    depends_on_indices=[],
-                )],
-                is_multi_intent=False,
-                low_confidence_signal=False,
-                trigger_message=message,
-                reasons=result.reasons,
-            )
-        return result
-
-    # First pass: Single-intent LLM classification
+    # LLM-only classification (no pattern matching)
     single_result = await _llm_classify(message, conversation_context, active_draft)
     logger.info(
         f"Intent classified by LLM: {single_result.intent.value}, "
