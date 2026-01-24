@@ -7,12 +7,16 @@ and prepares a confirmation prompt for the user.
 Supports:
 - update: Change field values (priority, status, assignee, labels, etc.)
 - delete: Delete a ticket (requires confirmation)
+
+Phase 33-05: Implements Rule A4 (Implicit Commands) - commands in anchored
+threads default to the anchor's object without explicit mention.
 """
 import logging
 from typing import Any, Optional, TYPE_CHECKING
 
 from langchain_core.messages import HumanMessage
 
+from src.schemas.anchor import AnchorType
 from src.schemas.state import AgentState
 
 if TYPE_CHECKING:
@@ -190,17 +194,31 @@ async def normalize_field_value(
     return value
 
 
+def _is_workitem_reference(target: str) -> bool:
+    """Check if target is a WorkItem reference (WI:uuid)."""
+    return target.startswith("WI:")
+
+
+def _extract_workitem_id(target: str) -> str:
+    """Extract WorkItem ID from WI:uuid reference."""
+    return target[3:]  # Remove "WI:" prefix
+
+
 async def _resolve_contextual_target(
     state: AgentState,
     channel_id: str,
     thread_ts: Optional[str],
 ) -> Optional[str]:
-    """Resolve contextual target like 'that ticket' to an actual issue key.
+    """Resolve the target Jira issue for a command.
 
-    Resolution priority:
-    1. Thread binding (if in thread with linked ticket)
-    2. Single tracked issue in channel
-    3. Most recently mentioned issue in conversation
+    Resolution order (Rule A4: Implicit Commands):
+    1. Explicit mention in message (SCRUM-123)
+    2. thread_context from AgentState (anchor resolution)
+    3. Legacy thread binding
+    4. Channel tracker (most recent issue)
+
+    The key change is step 2: if we're in an anchored thread,
+    the anchor's object is the default target.
 
     Args:
         state: Current agent state
@@ -210,7 +228,53 @@ async def _resolve_contextual_target(
     Returns:
         Resolved issue key or None if ambiguous/not found
     """
-    # 1. Check thread binding first
+    import re
+
+    # 1. Check for explicit mention in message
+    message = state.get("user_message", "")
+    if not message:
+        # Try to get from messages list
+        messages = state.get("messages", [])
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                message = msg.content
+                break
+
+    if message:
+        explicit_pattern = r'\b([A-Z][A-Z0-9]+-\d+)\b'
+        matches = re.findall(explicit_pattern, message)
+        if matches:
+            explicit_key = matches[-1]
+            logger.debug(f"Using explicit Jira key: {explicit_key}")
+            return explicit_key
+
+    # 2. NEW: Check thread_context from anchor resolution (Rule A4)
+    thread_context = state.get("thread_context")
+    if thread_context:
+        # ThreadContext may be a dataclass or dict depending on serialization
+        if hasattr(thread_context, 'jira_key'):
+            # Dataclass access
+            if thread_context.jira_key:
+                logger.debug(f"Using anchor context Jira key: {thread_context.jira_key}")
+                return thread_context.jira_key
+            # If anchor is for WorkItem without Jira key yet, return workitem_id
+            if thread_context.anchor_type == AnchorType.WORKITEM:
+                logger.debug(f"Using anchor context WorkItem: {thread_context.object_id}")
+                # Caller handles WorkItem lookup
+                return f"WI:{thread_context.object_id}"
+        elif isinstance(thread_context, dict):
+            # Dict access (serialized form)
+            jira_key = thread_context.get("jira_key")
+            if jira_key:
+                logger.debug(f"Using anchor context Jira key: {jira_key}")
+                return jira_key
+            anchor_type = thread_context.get("anchor_type")
+            if anchor_type == "workitem" or anchor_type == AnchorType.WORKITEM:
+                object_id = thread_context.get("object_id")
+                logger.debug(f"Using anchor context WorkItem: {object_id}")
+                return f"WI:{object_id}"
+
+    # 3. Legacy thread binding (fallback)
     if thread_ts:
         from src.slack.thread_bindings import get_binding_store
 
@@ -218,13 +282,10 @@ async def _resolve_contextual_target(
         binding = await binding_store.get_binding(channel_id, thread_ts)
 
         if binding:
-            logger.info(
-                "Resolved contextual target from thread binding",
-                extra={"issue_key": binding.issue_key},
-            )
+            logger.debug(f"Using legacy binding: {binding.issue_key}")
             return binding.issue_key
 
-    # 2. Check channel tracker for tracked issues
+    # 4. Channel tracker fallback
     try:
         from src.db import get_connection
         from src.slack.channel_tracker import ChannelIssueTracker
@@ -233,41 +294,13 @@ async def _resolve_contextual_target(
             tracker = ChannelIssueTracker(conn)
             tracked = await tracker.get_tracked_issues(channel_id)
 
-            if len(tracked) == 1:
-                # Single tracked issue - unambiguous
-                logger.info(
-                    "Resolved contextual target from single tracked issue",
-                    extra={"issue_key": tracked[0].issue_key},
-                )
-                return tracked[0].issue_key
-            elif tracked:
-                # Multiple tracked - use most recently tracked
-                logger.info(
-                    "Resolved contextual target from most recent tracked issue",
-                    extra={"issue_key": tracked[0].issue_key, "total_tracked": len(tracked)},
-                )
-                return tracked[0].issue_key
+            if tracked:
+                recent = tracked[0].issue_key
+                logger.debug(f"Using channel tracker: {recent}")
+                return recent
 
     except Exception as e:
         logger.warning(f"Failed to check channel tracker: {e}")
-
-    # 3. Try to find issue key in recent conversation
-    conversation_context = state.get("conversation_context")
-    if conversation_context:
-        import re
-        messages = conversation_context.get("messages", [])
-
-        # Look for issue keys in recent messages (most recent first)
-        issue_pattern = r'\b([A-Z][A-Z0-9]+-\d+)\b'
-        for msg in reversed(messages[-10:]):
-            text = msg.get("text", "")
-            matches = re.findall(issue_pattern, text)
-            if matches:
-                logger.info(
-                    "Resolved contextual target from conversation",
-                    extra={"issue_key": matches[-1]},
-                )
-                return matches[-1]
 
     return None
 
