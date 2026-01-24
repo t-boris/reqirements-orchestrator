@@ -77,6 +77,7 @@ from src.db.conflict_store import ConflictStore
 from src.db.approval_policy_store import ApprovalPolicyStore
 from src.db.audit_store import AuditStore, AuditEntry, AuditActionType
 from src.db.open_question_store import OpenQuestionStore, OpenQuestion
+from src.db.review_state_store import ReviewStateStore
 
 __all__ = [
     # Connection (02-01)
@@ -155,4 +156,6 @@ __all__ = [
     # Open Question Store (27.6)
     "OpenQuestionStore",
     "OpenQuestion",
+    # Review State Store (37-04)
+    "ReviewStateStore",
 ]
