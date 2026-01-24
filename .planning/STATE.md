@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 37-unified-question-engine
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 37-03-PLAN.md
+Last activity: 2026-01-24 — Completed 37-04-PLAN.md
 
-Progress: ████████████████████ 3/5 plans
+Progress: ████████████████████ 4/5 plans
 
 ## Milestones Summary
 
@@ -325,12 +325,17 @@ Phase 37-03 decisions:
 - Fallback questions provided when LLM parsing fails for reliability
 - Output maps to ReviewState fields: assumptions, constraints, risks
 
+Phase 37-04 decisions:
+- AnswerMapper uses target_type parameter (not separate methods)
+- ReviewState fields route to structured LLM extraction prompts
+- ReviewStateStore follows TaskPlanStore pattern (conn-based, not pool)
+
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 37-03-PLAN.md
+Stopped at: Completed 37-04-PLAN.md
 Resume file: None
-Next action: Execute 37-04-PLAN.md
+Next action: Execute 37-05-PLAN.md
 
 ## What's Next
 
