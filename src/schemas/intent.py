@@ -15,6 +15,19 @@ class OpsSubtype(str, Enum):
     EXPLAIN = "explain"  # Policy trace, show reasoning
 
 
+class SuperMode(str, Enum):
+    """User-facing super-modes (5 modes for simplicity).
+
+    Users should think in 5 modes, not 13 intents.
+    This is presentation layer only — internal routing still uses fine-grained intents.
+    """
+    BUILD = "build"        # "I'm building something"
+    OPERATE = "operate"    # "I'm managing Jira"
+    DECIDE = "decide"      # "I'm recording a decision"
+    THINK = "think"        # "Help me think"
+    CHAT = "chat"          # "Just talking"
+
+
 class Intent(str, Enum):
     """Intent classification types.
 
@@ -91,3 +104,46 @@ class IntentResult(BaseModel):
         "process",     # Process/workflow decisions
     ]] = None
     decision_title_hint: Optional[str] = None  # Extracted title from decision statement
+    # Super-mode for user-facing presentation (Phase 31)
+    super_mode: Optional["SuperMode"] = None
+
+
+# =============================================================================
+# Intent to SuperMode mapping (Phase 31)
+# Maps 13 fine-grained intents to 5 user-facing modes.
+# =============================================================================
+
+INTENT_TO_SUPER_MODE: dict[Intent, SuperMode] = {
+    # BUILD: "I'm building something"
+    Intent.WORKITEM_CREATE: SuperMode.BUILD,
+    Intent.DRAFT_REFINE: SuperMode.BUILD,
+    Intent.DRAFT_TRANSFORM: SuperMode.BUILD,
+    Intent.TICKET: SuperMode.BUILD,  # Deprecated alias
+    # OPERATE: "I'm managing Jira"
+    Intent.JIRA_COMMAND: SuperMode.OPERATE,
+    Intent.CHANGE_REQUEST: SuperMode.OPERATE,
+    Intent.SYNC_REQUEST: SuperMode.OPERATE,
+    Intent.TICKET_ACTION: SuperMode.OPERATE,
+    # DECIDE: "I'm recording a decision"
+    Intent.DECISION: SuperMode.DECIDE,
+    # THINK: "Help me think"
+    Intent.REVIEW: SuperMode.THINK,
+    Intent.JIRA_SEARCH: SuperMode.THINK,
+    # CHAT: "Just talking"
+    Intent.DISCUSSION: SuperMode.CHAT,
+    Intent.META: SuperMode.CHAT,
+    Intent.AMBIGUOUS: SuperMode.CHAT,
+    Intent.OPS: SuperMode.CHAT,  # Ops is meta-level, treat as chat
+}
+
+
+def get_super_mode(intent: Intent) -> SuperMode:
+    """Get the user-facing super-mode for a given intent.
+
+    Args:
+        intent: The fine-grained intent
+
+    Returns:
+        The corresponding SuperMode for user presentation
+    """
+    return INTENT_TO_SUPER_MODE.get(intent, SuperMode.CHAT)
