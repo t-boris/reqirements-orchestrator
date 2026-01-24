@@ -4,6 +4,80 @@
 
 A Slack bot that acts as a collective thinking system where communication is the source of truth. Drives conversations in threads to gather complete requirements, creates Jira tickets when information is sufficient, and maintains bidirectional sync between Slack discussions and Jira issues.
 
+## How the Bot Thinks
+
+### The Git Mental Model
+
+MARO treats communication like source control:
+
+| Concept | Git | MARO |
+|---------|-----|------|
+| Repository | Codebase | Channel |
+| Branch | Feature branch | Thread |
+| Commit | Code commit | Approval (draft → WorkItem) |
+| HEAD | Current state | Canonical message |
+| Push | Deploy to remote | Sync to Jira |
+
+**Key insight:** Jira is not the source of truth — it's a *projection* of what became truth in communication. Like a build artifact from source code.
+
+### Three Layers of Truth
+
+```
+Channel (Workspace)     ← Source of Truth
+    ↓
+Thread (Working Branch) ← Where decisions form
+    ↓
+Jira (Projection)       ← Execution artifact
+```
+
+**Threads propose. Channels decide. Jira executes.**
+
+### Decision Lifecycle
+
+Decisions flow through four psychological states:
+
+1. **Idea** → Compact card in discussion (lightweight, tentative)
+2. **Proposal** → Full block for approval ("are you sure?" moment)
+3. **Law** → Authoritative reference (infrastructure, not conversation)
+4. **Record** → Commit log entry (pure signal, audit trail)
+
+Same object, four visual identities. The channel becomes a live state board.
+
+### Canonical Message Pattern
+
+Each Decision has ONE message in the channel — like HEAD in git:
+- Always reflects current version
+- Never deleted, only updated or marked deprecated
+- Thread underneath = working area for discussion
+- Channel shows "what is true now", not "what happened"
+
+### Draft as Design Object
+
+Drafts are not text containers. They are typed data structures:
+
+```
+StructuredDraft
+  ├── kind: SINGLE_ITEM | PLAN
+  ├── scope: SINGLE | EPICS_ONLY | FULL_PLAN
+  ├── lifecycle: EMPTY → SINGLE_ITEM → PLAN → APPROVED → COMMITTED
+  └── items: [DraftItem with status, type, fields]
+```
+
+User choices mutate the structure (split, merge, elevate, decompose), not just append text.
+
+### Preflight as Universal Guardrail
+
+Every write operation goes through preflight — no exceptions:
+
+| Conflict Type | Meaning | Action |
+|---------------|---------|--------|
+| IDEMPOTENT | Already done in Jira | Auto-succeed, sync local |
+| SAFE_DRIFT | Changes don't overlap | Proceed with warning |
+| REAL_CONFLICT | Same fields changed | Block, require choice |
+| STRUCTURAL | Invalid operation | Block, explain why |
+
+Decisions don't get "privileges". Same rules as regular sync.
+
 ## Core Value
 
 **Chat is the source of truth.** The bot synchronizes conversations with Jira, proactively asking questions until requirements are complete, never creating half-baked tickets. Jira is a projection of what became truth in communication.
@@ -41,6 +115,22 @@ A Slack bot that acts as a collective thinking system where communication is the
   - Lifecycle-aware questions (PLAN stage asks decomposition, not AC)
   - Version-bound approvals (stale button detection)
   - Structure visualization after every mutation
+- Phase 29: Sync on Demand
+  - **Preflight sync:** Automatic safety layer before Jira operations
+  - **`/maro sync`:** Diagnostic command for reconciliation
+  - 4-type conflict classification (IDEMPOTENT, SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL)
+  - JiraRegistryStore with sync tracking (status, assignee, timestamps)
+  - "Distributed version control for meaning" — never auto-fix, always human choice
+- Phase 30: Decision as First-Class Entity
+  - **Core shift:** Decisions are versioned, Jira is a projection
+  - Decision entity with 6 types (ARCH, SCOPE, CONSTRAINT, PRIORITY, STRUCTURE, PROCESS)
+  - DecisionLink for decision-to-Jira field mapping with sync tracking
+  - Canonical message pattern (one message per decision, updated in place)
+  - Four visual states matching psychological weight (idea → proposal → law → record)
+  - Managed sections for safe Jira writes (MARO never overwrites user content)
+  - Decision preflight with same 4-type conflict classification
+  - `/maro decisions`, `/maro decision show/change/deprecate` commands
+  - DECISION intent with pattern-based detection
 
 ## Requirements
 
@@ -88,20 +178,27 @@ A Slack bot that acts as a collective thinking system where communication is the
 
 ## Context
 
-**v1.1 shipped.** Major transformation from ticket-creation bot to collective thinking system.
+**v1.2 in progress.** Evolution from collective thinking system to decision management platform.
 
 **Key architectural patterns:**
 - WorkItem as first-class citizen (drafts exist before Jira sync)
+- Decision as first-class entity (versioned, linked, projected to Jira)
 - Channel = Source of Truth (workspace), Thread = Working Branch (session)
 - Jira = Execution Replica (projection of communication truth)
+- Canonical message pattern (one message per entity, updated in place)
 - Field ownership: Jira-owned, Slack-owned, Shared (conflict-detect)
-- Section-level fingerprinting for conflict detection
+- Managed sections for safe Jira writes (never overwrite user content)
+- Preflight as universal guardrail (every write goes through conflict check)
 
 **Technical foundation:**
-- WorkItemStore replaces SessionStore
+- WorkItemStore for work item lifecycle
+- DecisionStore for versioned decisions with approval workflow
+- DecisionLinkStore for decision-to-Jira mappings with sync tracking
 - ChannelModeStore for mode configuration
 - CommitStore for git-log style commit history
 - JiraSyncService for bidirectional sync
+- PreflightService for conflict detection before operations
+- DecisionSyncService for decision → Jira projection
 
 ## Constraints
 
@@ -138,6 +235,14 @@ A Slack bot that acts as a collective thinking system where communication is the
 | DRAFT_TRANSFORM intent | Structural mutations via semantic triggers (Phase 28) | ✓ Good |
 | User input classification | CHOICE/OPINION/QUESTION/ANSWER routing (Phase 28) | ✓ Good |
 | Version-bound approvals | Button payloads include version, reject stale clicks (Phase 28) | ✓ Good |
+| Preflight as universal guardrail | Every Jira write goes through conflict check, no exceptions (Phase 29) | ✓ Good |
+| 4-type conflict classification | IDEMPOTENT/SAFE_DRIFT/REAL_CONFLICT/STRUCTURAL for clear handling (Phase 29) | ✓ Good |
+| Never auto-fix conflicts | Human choice required for any conflict resolution (Phase 29) | ✓ Good |
+| Decision as first-class entity | Versioned decisions with lifecycle, Jira as projection (Phase 30) | ✓ Good |
+| Canonical message pattern | One message per decision, updated in place (Phase 30) | ✓ Good |
+| Managed sections in Jira | MARO writes only to its block, preserves user content (Phase 30) | ✓ Good |
+| Deterministic decision mapping | Decision type → known Jira field, no LLM guessing (Phase 30) | ✓ Good |
+| Decision approval = commit + sync | Approval triggers immediate Jira projection (Phase 30) | ✓ Good |
 
 ---
-*Last updated: 2026-01-23 after Phase 28 (v1.2)*
+*Last updated: 2026-01-23 after Phase 30 (v1.2)*
