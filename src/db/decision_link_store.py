@@ -207,6 +207,41 @@ class DecisionLinkStore:
 
         return False
 
+    async def get_link(
+        self,
+        decision_id: str,
+        jira_key: str,
+    ) -> DecisionLink | None:
+        """Get specific link between decision and Jira ticket.
+
+        Used by preflight to check sync status.
+
+        Args:
+            decision_id: Decision UUID
+            jira_key: Jira ticket key
+
+        Returns:
+            DecisionLink if exists, None otherwise
+        """
+        jira_key = jira_key.upper()
+
+        async with self._conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, decision_id, jira_key, field_path, linked_at, linked_by,
+                       synced_version, synced_at
+                FROM decision_links
+                WHERE decision_id = %s AND jira_key = %s
+                """,
+                (decision_id, jira_key),
+            )
+            row = await cur.fetchone()
+
+        if not row:
+            return None
+
+        return self._row_to_link(row)
+
     async def get_links_for_decision(
         self,
         decision_id: str,
