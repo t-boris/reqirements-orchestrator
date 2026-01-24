@@ -11,12 +11,17 @@ Core principles from CONTEXT.md:
 - A3: Context Inheritance (messages in thread inherit object_id)
 - A4: Implicit Commands (commands default to anchor's object)
 """
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from src.schemas.decision import Decision
+    from src.db.models import WorkItem
 
 
 class AnchorType(str, Enum):
@@ -74,3 +79,53 @@ class AnchorMessage(BaseModel):
         default=1,
         description="Version tracking for optimistic locking on updates",
     )
+
+
+@dataclass
+class ThreadContext:
+    """Resolved context for a thread.
+
+    Represents what object a thread is managing.
+    This is the result of context resolution (Rule A3: Context Inheritance).
+
+    When a message arrives in a thread, we need to determine what object
+    (Decision, WorkItem, etc.) the thread is for. ContextResolver populates
+    this dataclass with the resolved anchor information.
+
+    Attributes:
+        anchor_type: Type of entity this thread is managing.
+        object_id: Entity ID (decision_id, workitem_id, jira_key, etc.).
+        anchor_message_ts: The anchor message that created this context.
+        decision: Hydrated Decision entity (optional, populated if hydrate=True).
+        workitem: Hydrated WorkItem entity (optional, populated if hydrate=True).
+        jira_key: Jira key for legacy bindings or workitem jira linkage.
+    """
+
+    anchor_type: AnchorType
+    object_id: str
+    anchor_message_ts: str  # The anchor message that created this context
+
+    # Hydrated entities (optional, for convenience)
+    decision: Optional["Decision"] = field(default=None)
+    workitem: Optional["WorkItem"] = field(default=None)
+    jira_key: Optional[str] = field(default=None)  # Legacy binding or workitem jira key
+
+    @property
+    def has_entity(self) -> bool:
+        """Check if any entity is hydrated."""
+        return self.decision is not None or self.workitem is not None
+
+    @property
+    def display_id(self) -> str:
+        """Human-readable identifier for the context.
+
+        Returns a short ID suitable for display:
+        - Decisions: DEC-{first 8 chars of UUID}
+        - WorkItems: Jira key if available, else WI-{first 8 chars of UUID}
+        - Others: The raw object_id
+        """
+        if self.anchor_type == AnchorType.DECISION:
+            return f"DEC-{self.object_id[:8]}"
+        elif self.anchor_type == AnchorType.WORKITEM:
+            return self.jira_key or f"WI-{self.object_id[:8]}"
+        return self.object_id
