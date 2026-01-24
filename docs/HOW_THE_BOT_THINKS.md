@@ -15,6 +15,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.6 Preflight: Universal Guardrail (Phase 29)
    - 1.7 Decision: First-Class Entity (Phase 30)
 2. [Intent Classification](#2-intent-classification)
+   - 2.0 User Modes (Phase 31)
 3. [Governance Rules](#3-governance-rules)
    - 3.1 Core Model
    - 3.2 Duplicate Handling Rules
@@ -400,6 +401,29 @@ This prevents acting on stale state after transforms.
 ---
 
 ## 2. Intent Classification
+
+### 2.0 User Modes (Phase 31)
+
+Users should think in **5 modes**, not 13 intents. This simplifies user-facing communication while preserving fine-grained routing internally.
+
+| Mode | User Perception | Internal Intents |
+|------|-----------------|------------------|
+| **BUILD** | "I'm building something" | WORKITEM_CREATE, DRAFT_REFINE, DRAFT_TRANSFORM |
+| **OPERATE** | "I'm managing Jira" | JIRA_COMMAND, CHANGE_REQUEST, SYNC_REQUEST, TICKET_ACTION |
+| **DECIDE** | "I'm recording a decision" | DECISION |
+| **THINK** | "Help me think" | REVIEW, JIRA_SEARCH |
+| **CHAT** | "Just talking" | DISCUSSION, META, AMBIGUOUS |
+
+**Key insight:** 13 intents exist for fine-grained routing. 5 modes exist for user communication.
+
+The `super_mode` field on `IntentResult` is populated on every classification, derived from the fine-grained intent via the `get_super_mode()` helper function.
+
+**Example mappings:**
+- User says "create a ticket" → Intent: `WORKITEM_CREATE` → SuperMode: `BUILD`
+- User says "we decided to use PostgreSQL" → Intent: `DECISION` → SuperMode: `DECIDE`
+- User says "help me design the API" → Intent: `REVIEW` → SuperMode: `THINK`
+- User says "sync Jira" → Intent: `SYNC_REQUEST` → SuperMode: `OPERATE`
+- User says "hi" → Intent: `DISCUSSION` → SuperMode: `CHAT`
 
 ### 2.1 Intent Types
 
@@ -1423,15 +1447,18 @@ MARO's intelligence is built on:
 19. **Deterministic mapping** — Decision type → known Jira field, no LLM guessing
 20. **Decision approval = commit + sync** — Approval triggers immediate Jira projection
 
+### Architecture Hardening (Phase 31)
+21. **Super-modes for simplicity** — Users see 5 modes (BUILD, OPERATE, DECIDE, THINK, CHAT), not 13 intents
+
 ### Supporting Systems
-21. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
-22. **Version-bound approvals** — Stale buttons detected and rejected
-23. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
-24. **Rule-based governance** ensuring consistent behavior
-25. **Graph-based workflows** with conditional routing
-26. **Smart duplicate detection** — channel-first, then Jira
-27. **Human-in-the-loop** interrupts for critical decisions
-28. **Persona-based analysis** for different perspectives
+22. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+23. **Version-bound approvals** — Stale buttons detected and rejected
+24. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
+25. **Rule-based governance** ensuring consistent behavior
+26. **Graph-based workflows** with conditional routing
+27. **Smart duplicate detection** — channel-first, then Jira
+28. **Human-in-the-loop** interrupts for critical decisions
+29. **Persona-based analysis** for different perspectives
 
 **Mantras:**
 - "Threads propose. Channels decide. Jira executes."
@@ -1444,4 +1471,4 @@ The system is designed to be **conversational**, **non-blocking**, and **transpa
 
 ---
 
-*Last updated: 2026-01-23 (Phase 30 Decision as First-Class Entity)*
+*Last updated: 2026-01-24 (Phase 31 Architecture Hardening - Super-modes)*
