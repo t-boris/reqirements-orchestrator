@@ -1,5 +1,13 @@
 """Review-to-ticket, scope gate, and architecture approval handlers.
 
+INVARIANT I2: Slack = UI
+Handlers are READ-ONLY for truth stores.
+Mutations follow truth-first ordering:
+  1. Database state update (TRUTH) - must succeed first
+  2. Jira sync (PROJECTION) - proceeds regardless of Slack
+  3. Slack message (PRESENTATION) - best effort, failures logged not raised
+Message failures NEVER block state updates.
+
 Handles turning review responses into Jira tickets and posting architecture decisions.
 """
 
@@ -598,7 +606,12 @@ def handle_review_approve(ack, body, client: WebClient):
 
 
 async def _handle_review_approve_async(body, client: WebClient):
-    """Async handler for artifact approval."""
+    """Async handler for artifact approval.
+
+    Follows INVARIANT I2 truth-first ordering:
+    1. Approve artifact in database (TRUTH)
+    2. Send Slack confirmation (PRESENTATION - best effort)
+    """
     from src.db import get_connection
     from src.db.artifact_store import ArtifactStore
 
@@ -623,37 +636,69 @@ async def _handle_review_approve_async(body, client: WebClient):
         }
     )
 
+    artifact = None
     try:
+        # =====================================================================
+        # STEP 1: Database state update (TRUTH) - must succeed first
+        # =====================================================================
         async with get_connection() as conn:
             store = ArtifactStore(conn)
             artifact = await store.approve(artifact_id, user_id)
 
-        if artifact:
-            client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=f":white_check_mark: Review approved and saved as artifact `{artifact_id[:8]}...`",
-            )
-            logger.info(
-                "Artifact approved",
-                extra={
-                    "artifact_id": artifact_id,
-                    "approved_by": user_id,
-                }
-            )
-        else:
-            client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=":warning: Could not find artifact to approve.",
-            )
+        if not artifact:
+            try:
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=":warning: Could not find artifact to approve.",
+                )
+            except Exception as slack_err:
+                logger.warning(
+                    "Slack message failed",
+                    extra={"error": str(slack_err)}
+                )
+            return
+
+        logger.info(
+            "Artifact approved",
+            extra={
+                "artifact_id": artifact_id,
+                "approved_by": user_id,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Failed to approve artifact: {e}", exc_info=True)
+        try:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="Sorry, I couldn't save the approval. Please try again.",
+            )
+        except Exception as slack_err:
+            logger.warning(
+                "Slack error message failed",
+                extra={"error": str(slack_err)}
+            )
+        return
+
+    # =========================================================================
+    # STEP 2: Slack message (PRESENTATION) - best effort, doesn't block state
+    # =========================================================================
+    try:
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="Sorry, I couldn't save the approval. Please try again.",
+            text=f":white_check_mark: Review approved and saved as artifact `{artifact_id[:8]}...`",
+        )
+    except Exception as slack_err:
+        # Slack message failed, but artifact is already approved
+        logger.warning(
+            "Slack confirmation failed, but artifact is approved",
+            extra={
+                "artifact_id": artifact_id,
+                "error": str(slack_err),
+            }
         )
 
 
@@ -668,7 +713,12 @@ def handle_turn_into_workitem(ack, body, client: WebClient):
 
 
 async def _handle_turn_into_workitem_async(body, client: WebClient):
-    """Async handler for turning artifact into workitem."""
+    """Async handler for turning artifact into workitem.
+
+    Follows INVARIANT I2 truth-first ordering:
+    1. Create workitem and link in database (TRUTH)
+    2. Send Slack confirmation (PRESENTATION - best effort)
+    """
     import uuid
     from src.db import get_connection
     from src.db.artifact_store import ArtifactStore
@@ -703,17 +753,27 @@ async def _handle_turn_into_workitem_async(body, client: WebClient):
         }
     )
 
+    workitem = None
     try:
+        # =====================================================================
+        # STEP 1: Database operations (TRUTH) - must succeed first
+        # =====================================================================
         async with get_connection() as conn:
             artifact_store = ArtifactStore(conn)
             artifact = await artifact_store.get(artifact_id)
 
             if not artifact:
-                client.chat_postMessage(
-                    channel=channel_id,
-                    thread_ts=thread_ts,
-                    text=":warning: Could not find artifact.",
-                )
+                try:
+                    client.chat_postMessage(
+                        channel=channel_id,
+                        thread_ts=thread_ts,
+                        text=":warning: Could not find artifact.",
+                    )
+                except Exception as slack_err:
+                    logger.warning(
+                        "Slack message failed",
+                        extra={"error": str(slack_err)}
+                    )
                 return
 
             # Create WorkItem from artifact
@@ -749,12 +809,6 @@ async def _handle_turn_into_workitem_async(body, client: WebClient):
                 link_type=ArtifactLinkType.RESULTED_IN,
             )
 
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=f":white_check_mark: Created work item from artifact. Draft ID: `{workitem.id[:8]}...`\n\nUse `/maro status` to see your drafts.",
-        )
-
         logger.info(
             "Created workitem from artifact",
             extra={
@@ -766,8 +820,34 @@ async def _handle_turn_into_workitem_async(body, client: WebClient):
 
     except Exception as e:
         logger.error(f"Failed to create workitem from artifact: {e}", exc_info=True)
+        try:
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="Sorry, I couldn't create the work item. Please try again.",
+            )
+        except Exception as slack_err:
+            logger.warning(
+                "Slack error message failed",
+                extra={"error": str(slack_err)}
+            )
+        return
+
+    # =========================================================================
+    # STEP 2: Slack message (PRESENTATION) - best effort, doesn't block state
+    # =========================================================================
+    try:
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="Sorry, I couldn't create the work item. Please try again.",
+            text=f":white_check_mark: Created work item from artifact. Draft ID: `{workitem.id[:8]}...`\n\nUse `/maro status` to see your drafts.",
+        )
+    except Exception as slack_err:
+        # Slack message failed, but workitem is already created
+        logger.warning(
+            "Slack confirmation failed, but workitem is created",
+            extra={
+                "workitem_id": workitem.id if workitem else None,
+                "error": str(slack_err),
+            }
         )
