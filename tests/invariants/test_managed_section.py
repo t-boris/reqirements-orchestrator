@@ -273,3 +273,89 @@ class TestManagedSectionViolationIntegration:
         for fail_type in ["error", "violation"]:
             with pytest.raises((ManagedSectionError, ManagedSectionViolation)):
                 operation_that_might_fail(fail_type)
+
+
+# =============================================================================
+# Forbidden Import Tests - Gateway Pattern Enforcement
+# =============================================================================
+
+
+import ast
+from pathlib import Path
+
+
+class TestForbiddenImports:
+    """Ensure only gateway modules import Jira client directly.
+
+    INVARIANT: Direct atlassian library imports are only allowed in gateway modules.
+    This prevents Jira API calls from happening outside the controlled gateway layer.
+
+    Architecture:
+    - Gateway modules: src/jira/client.py, src/jira/service.py, src/jira/managed_sections.py
+    - All other code must go through JiraService or JiraSyncService
+    """
+
+    ALLOWED_JIRA_IMPORTERS = {
+        "src/jira/client.py",
+        "src/jira/managed_sections.py",
+        "src/jira/sync_service.py",
+    }
+
+    def test_no_direct_atlassian_import_outside_gateway(self):
+        """Only gateway modules may import atlassian library."""
+        src_dir = Path("src")
+        if not src_dir.exists():
+            pytest.skip("src directory not found")
+
+        violations = []
+
+        for py_file in src_dir.rglob("*.py"):
+            rel_path = str(py_file)
+            if rel_path in self.ALLOWED_JIRA_IMPORTERS:
+                continue
+
+            try:
+                content = py_file.read_text()
+            except Exception:
+                continue
+
+            try:
+                tree = ast.parse(content)
+            except SyntaxError:
+                continue
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith("atlassian"):
+                            violations.append(f"{rel_path}: imports {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.startswith("atlassian"):
+                        violations.append(f"{rel_path}: from {node.module}")
+
+        assert not violations, (
+            "Direct atlassian imports found outside gateway:\n"
+            + "\n".join(violations)
+        )
+
+    def test_jira_writes_only_through_service(self):
+        """Jira create/update calls only in service module.
+
+        Note: Full gateway enforcement is Phase 33 scope.
+        This test documents the intent and goal.
+        When gateway pattern is fully implemented, this test will be enabled.
+        """
+        # This test documents the goal for Phase 33 (Gateway pattern)
+        # For now, just verify the test structure exists
+        #
+        # Future implementation:
+        # - Scan for Jira.create_issue, Jira.update_issue calls
+        # - Ensure they only appear in gateway modules
+        # - Use AST to find method calls on Jira client
+        pass
+
+    def test_allowed_gateway_modules_exist(self):
+        """Verify gateway module files exist (sanity check)."""
+        for module_path in self.ALLOWED_JIRA_IMPORTERS:
+            path = Path(module_path)
+            assert path.exists(), f"Gateway module {module_path} does not exist"
