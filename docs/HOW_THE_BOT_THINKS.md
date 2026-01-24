@@ -1612,4 +1612,4 @@ The system is designed to be **conversational**, **non-blocking**, and **transpa
 
 ---
 
-*Last updated: 2026-01-24 (Phase 31 Architecture Hardening - Super-modes)*
+*Last updated: 2026-01-23 (Phase 32 Product Invariants)*
