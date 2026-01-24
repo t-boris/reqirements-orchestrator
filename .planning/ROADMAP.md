@@ -199,6 +199,41 @@ User: "Do you think only one epic is enough?"
 
 **Full context:** `.planning/milestones/v1.2/phase-29-CONTEXT.md`
 
+### Phase 30: Decision as First-Class Entity
+
+**Status:** NOT STARTED
+
+**Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
+
+**Mantra:** "Decisions are versioned, Jira is a projection."
+
+**Key Concepts:**
+
+1. **Decision Entity** — id, channel_id, type, title, description, status, version
+2. **Decision Types** — ARCH | SCOPE | CONSTRAINT | PRIORITY | STRUCTURE | PROCESS
+3. **Decision Status** — PROPOSED → APPROVED → DEPRECATED/REPLACED
+4. **DecisionLink** — Mapping between Decision and Jira fields
+5. **Jira as Projection** — Read-only view of decisions, not source of truth
+
+**Requirements Summary:**
+
+| Rule | Description |
+|------|-------------|
+| R1 | Decision entity with full lifecycle |
+| R2 | DecisionLink for Jira field mappings |
+| R3 | Jira as projection (changes flow decision → Jira) |
+| R4 | Full CRUD: create, read, update, deprecate |
+| R5 | Mapping rules: decision type → Jira field |
+| R6 | Decision preflight before Jira sync |
+| R7 | Version history with linked ticket notifications |
+| R8 | Per-channel decision registry |
+| R9 | UX commands: /maro decisions, decision show/change/deprecate |
+| R10 | Decision detection from conversation |
+| R11 | Decision cards with status-dependent buttons |
+| R12 | Active decisions in context (draft, review, duplicate) |
+
+**Full requirements:** `.planning/phases/30-decision-as-entity/REQUIREMENTS.md`
+
 ## Completed Milestones
 
 <details>
@@ -304,3 +339,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 27.6 Notifications & Slack UX | v1.2 | 1/1 | Complete | 2026-01-23 |
 | 28. Structured Draft Evolution | v1.2 | 5/? | In Progress | - |
 | 29. Sync on Demand | v1.2 | 4/4 | Complete | 2026-01-23 |
+| 30. Decision as First-Class Entity | v1.2 | 0/? | Not Started | - |

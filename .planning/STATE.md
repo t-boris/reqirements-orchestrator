@@ -211,5 +211,6 @@ Next action: Finalize Phase 29 or begin Phase 30
 
 ### Roadmap Evolution
 
+- 2026-01-23: Phase 30 ADDED — Decision as First-Class Entity (versioned decisions, Jira as projection)
 - 2026-01-23: Phase 28 ADDED — Structured Draft Evolution (typed, versioned design object)
 - 2026-01-23: Phase 27 COMPLETE — Multi-User Support (auditable multi-user operation in channels)
