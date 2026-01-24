@@ -329,6 +329,34 @@ Jira = Projection
 
 **Full requirements:** `.planning/phases/33-anchor-message-architecture/REQUIREMENTS.md`
 
+### Phase 34: File Attachment Processing
+
+**Status:** Not started
+
+**Objective:** Enable bot to read PDF, DOCX, Markdown attachments from Slack messages. Infrastructure exists in `src/documents/` but is not connected to message handling.
+
+**Key Use Case:** User attaches requirements doc → bot reads it → creates WorkItems.
+
+**What Exists:**
+- `src/documents/extractor.py` — Extract text from PDF (pypdf), DOCX (python-docx), TXT, Markdown
+- `src/documents/slack.py` — `download_and_extract()` for Slack file downloads
+
+**What's Missing:**
+
+| Gap | Location |
+|-----|----------|
+| Detect files in message events | `handlers/misc.py` doesn't check `event["files"]` |
+| Include file content in context | `history.py` ignores file attachments |
+| FILE_ANALYSIS intent | `intent.py` has no document-related intent |
+
+**Implementation:**
+1. Detect `files` array in Slack message events
+2. Download and extract text using existing `extractor.py`
+3. Include file content in conversation context for LLM
+4. Add FILE_ANALYSIS intent for "here's the spec, create tickets" scenarios
+
+**Depends on:** Phase 33 (anchor messages for file-based WorkItems)
+
 ## Completed Milestones
 
 <details>
