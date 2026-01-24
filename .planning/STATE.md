@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 30-decision-as-entity
-Plan: 2 of 8 in current phase
+Plan: 4 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 30-02-PLAN.md (DecisionLink table for decision-to-Jira mapping)
+Last activity: 2026-01-24 — Completed 30-04-PLAN.md (DecisionManager canonical message pattern)
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 2/8 plans
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 3/8 plans
 
 ## Milestones Summary
 
@@ -170,6 +170,11 @@ Phase 30.2 decisions:
 - Sync tracking is per-link (each decision-ticket pair tracks its own sync version)
 - Deterministic mapping via DECISION_MAPPING_RULES (no LLM involved in field selection)
 
+Phase 30.4 decisions:
+- post_canonical_message() stores ts in database for future updates
+- update_canonical_message() uses chat_update (not new message) for update-in-place
+- Thread binding queries by channel_id + canonical_message_ts
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -185,9 +190,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 30-02-PLAN.md (DecisionLink table for decision-to-Jira mapping)
+Stopped at: Completed 30-04-PLAN.md (DecisionManager canonical message pattern)
 Resume file: None
-Next action: Execute 30-03-PLAN.md (DecisionStore integration)
+Next action: Execute remaining wave 2 plans (30-03, 30-05)
 
 ## What's Next
 
@@ -215,15 +220,16 @@ Next action: Execute 30-03-PLAN.md (DecisionStore integration)
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 - 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Phase 30: Decision as First-Class Entity** — IN PROGRESS (2/8 plans)
+**Phase 30: Decision as First-Class Entity** — IN PROGRESS (3/8 plans)
 
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
 **Plans completed:**
 - 30.1: Decision entity and DecisionStore with versioning
 - 30.2: DecisionLink table for decision-to-Jira mappings
+- 30.4: DecisionManager with canonical message pattern
 
-**Next:** Execute 30-03-PLAN.md (DecisionStore integration)
+**Next:** Execute remaining wave 2 plans (30-03, 30-05)
 
 ---
 
