@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 30-decision-as-entity
-Plan: 5 of 8 in current phase
+Plan: 6 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-24 — Completed 30-03-PLAN.md (DECISION intent and detection patterns)
+Last activity: 2026-01-24 — Completed 30-06-PLAN.md (Decision Preflight and managed sections)
 
-Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 5/8 plans
+Progress: ██████████ 100% (Phase 27-29 COMPLETE) | Phase 28: 6 plans | Phase 30: 6/8 plans
 
 ## Milestones Summary
 
@@ -186,6 +186,11 @@ Phase 30.3 decisions:
 - 6 decision type keyword categories map to DecisionType enum
 - Title extraction removes "We decided to..." prefixes for cleaner display
 
+Phase 30.6 decisions:
+- Managed section markers: "## Decisions (managed by MARO)" start, "---" end
+- Decisions use same 4-type conflict classification as regular preflight (no privileges)
+- New links treated as SAFE_DRIFT with can_proceed=True (no prior state to conflict with)
+
 ### Deferred Issues
 
 None — all planned v1.2 Phase 26-27 features shipped.
@@ -201,9 +206,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed 30-03-PLAN.md (DECISION intent and detection patterns)
+Stopped at: Completed 30-06-PLAN.md (Decision Preflight and managed sections)
 Resume file: None
-Next action: Execute 30-06-PLAN.md (Graph routing for DECISION intent)
+Next action: Execute 30-07-PLAN.md (Graph routing for DECISION intent)
 
 ## What's Next
 
@@ -231,7 +236,7 @@ Next action: Execute 30-06-PLAN.md (Graph routing for DECISION intent)
 - 29.3: /maro sync diagnostic command with JiraSyncService and UI blocks
 - 29.4: Preflight sync integration into handlers (draft commit, ticket updates, button handlers)
 
-**Phase 30: Decision as First-Class Entity** — IN PROGRESS (4/8 plans)
+**Phase 30: Decision as First-Class Entity** — IN PROGRESS (6/8 plans)
 
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
@@ -241,8 +246,9 @@ Next action: Execute 30-06-PLAN.md (Graph routing for DECISION intent)
 - 30.3: DECISION intent and detection patterns
 - 30.4: DecisionManager with canonical message pattern
 - 30.5: Decision UI blocks with four visual states
+- 30.6: Decision Preflight and managed sections for safe Jira writes
 
-**Next:** Execute 30-06-PLAN.md (Graph routing for DECISION intent)
+**Next:** Execute 30-07-PLAN.md (Graph routing for DECISION intent)
 
 ---
 
