@@ -149,3 +149,40 @@ class DecisionLink(BaseModel):
         default=None,
         description="When the decision was last synced to this ticket",
     )
+
+
+# =============================================================================
+# Mapping Rules: Decision type -> default Jira field
+# =============================================================================
+
+DECISION_MAPPING_RULES: dict[DecisionType, JiraFieldPath] = {
+    DecisionType.ARCH: JiraFieldPath.DESC_ARCHITECTURE,
+    DecisionType.SCOPE: JiraFieldPath.DESC_SCOPE,
+    DecisionType.CONSTRAINT: JiraFieldPath.DESC_CONSTRAINTS,
+    DecisionType.PRIORITY: JiraFieldPath.PRIORITY,
+    DecisionType.STRUCTURE: JiraFieldPath.PARENT_LINK,
+    DecisionType.PROCESS: JiraFieldPath.LABELS,
+}
+
+
+def get_default_field_path(decision_type: DecisionType) -> JiraFieldPath:
+    """Get the default Jira field path for a decision type.
+
+    Each decision type has a deterministic target in Jira.
+    No LLM guessing - the mapping is explicit.
+
+    This enforces the deterministic mapping from CONTEXT.md:
+    - ARCH -> Description.Architecture section
+    - SCOPE -> Description.Scope section
+    - CONSTRAINT -> Description.Constraints section
+    - PRIORITY -> Priority field
+    - STRUCTURE -> Epic/parent link
+    - PROCESS -> Labels
+
+    Args:
+        decision_type: The type of decision.
+
+    Returns:
+        The default JiraFieldPath for that decision type.
+    """
+    return DECISION_MAPPING_RULES[decision_type]
