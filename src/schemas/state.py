@@ -9,6 +9,7 @@ from typing_extensions import TypedDict
 from src.schemas.anchor import ThreadContext
 from src.schemas.draft import TicketDraft
 from src.schemas.structured_draft import StructuredDraft
+from src.schemas.task_plan import TaskPlan
 
 # Eviction limits per scope for salient facts
 FACT_LIMITS = {
@@ -33,7 +34,7 @@ class Fact(TypedDict):
 
 
 if TYPE_CHECKING:
-    from src.schemas.task_plan import TaskPlan
+    pass  # Reserved for future type-only imports
 
 
 class AgentPhase(str, Enum):
@@ -350,7 +351,7 @@ class AgentState(TypedDict):
     # 3. task_executor_node processes tasks respecting dependencies
     # 4. Each task can be PENDING|RUNNING|BLOCKED|DONE|CANCELED
     # 5. TaskPlan is persisted via checkpointer for resumability
-    task_plan: Optional["TaskPlan"]  # Active multi-intent execution plan
+    task_plan: Optional[TaskPlan]  # Active multi-intent execution plan
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
