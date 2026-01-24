@@ -222,6 +222,12 @@ Phase 32.2 decisions:
 - CommitLogEntry uses __setattr__ override to enforce immutability at runtime
 - CommitLogStore table named event_commit_log to avoid collision with existing commit_log
 
+Phase 32.1 decisions:
+- SuperMode.label returns action-oriented strings (Building, Operating, etc.)
+- get_mode_status_line() formats as [Mode] action_description
+- Debug mode can show intents (developer tool)
+- INVARIANT I1 documented in intent.py, dispatch.py, scope_gate.py
+
 Phase 32.3 decisions:
 - UserDraftState enum with 3 values: DRAFTING, READY, PUBLISHED
 - get_user_state() maps 4 internal states to DRAFTING, APPROVED to READY, COMMITTED to PUBLISHED
