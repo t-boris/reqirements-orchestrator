@@ -122,12 +122,17 @@ Return JSON:
 JSON:'''
 
     FIELD_SCHEMAS: dict[str, str] = {
+        # WorkItemDraft fields
         "scope": "Options: SINGLE, EPICS_ONLY, FULL_PLAN",
         "generation_mode": "Options: SUGGEST_WORKSTREAMS, USER_TITLES, FROM_DECISIONS",
         "acceptance_criteria": "List of testable conditions (strings)",
         "title": "Short, action-oriented title (string)",
         "problem": "Problem statement (string)",
         "proposed_solution": "Solution description (string)",
+        # ReviewState fields
+        "assumptions": "Extract assumption statement from user's response",
+        "constraints": "Extract constraint description from user's response",
+        "risks": "Extract risk description and severity (low/medium/high)",
     }
 
     @staticmethod
@@ -198,7 +203,12 @@ class AnswerMapper:
     Routes to appropriate mapper based on input type:
     - Button clicks -> ButtonAnswerMapper (deterministic)
     - Text replies -> TextAnswerMapper (LLM-parsed)
+
+    Supports both WorkItemDraft (ticket context) and ReviewState (review context).
     """
+
+    # ReviewState fields that require structured parsing
+    REVIEW_STATE_FIELDS = {"assumptions", "constraints", "risks"}
 
     @staticmethod
     def map_button_click(
@@ -222,23 +232,92 @@ class AnswerMapper:
     async def map_text_reply(
         text: str,
         question_task: QuestionTask,
+        target_type: str = "workitem",
         llm=None,
     ) -> StatePatch:
-        """Map text reply to patch (LLM-parsed).
+        """Map text reply to patch.
+
+        Routes to appropriate mapper based on target type.
 
         Args:
             text: User's text reply
             question_task: The question being answered
+            target_type: "workitem" or "review"
             llm: Optional LLM instance
 
         Returns:
-            StatePatch with LLM-derived confidence
+            StatePatch for the appropriate state type
         """
+        if (
+            target_type == "review"
+            and question_task.target_field in AnswerMapper.REVIEW_STATE_FIELDS
+        ):
+            return await AnswerMapper.map_to_review_state(
+                text, question_task.target_field, question_task, llm
+            )
         return await TextAnswerMapper.map_text(
             text,
             question_task.target_field or "response",
             question_task,
             llm,
+        )
+
+    @staticmethod
+    async def map_to_review_state(
+        text: str,
+        target_field: str,
+        question_task: QuestionTask,
+        llm=None,
+    ) -> StatePatch:
+        """Map text reply to ReviewState field patch.
+
+        For ReviewState, the value is structured (Assumption, Constraint, Risk),
+        not just a string.
+
+        Args:
+            text: User's text reply
+            target_field: ReviewState field (assumptions, constraints, risks)
+            question_task: The question being answered
+            llm: Optional LLM instance
+
+        Returns:
+            StatePatch with structured value
+        """
+        if llm is None:
+            from src.llm import get_llm
+
+            llm = get_llm()
+
+        # Parse based on target field type
+        if target_field == "assumptions":
+            prompt = f'''Extract an assumption from this response:
+"{text}"
+Return JSON: {{"statement": "the assumption", "confidence": 0.0-1.0}}
+JSON:'''
+        elif target_field == "constraints":
+            prompt = f'''Extract a constraint from this response:
+"{text}"
+Return JSON: {{"description": "the constraint", "constraint_type": "technical|business|timeline|resource"}}
+JSON:'''
+        elif target_field == "risks":
+            prompt = f'''Extract a risk from this response:
+"{text}"
+Return JSON: {{"description": "the risk", "severity": "low|medium|high", "mitigation": "suggested mitigation or null"}}
+JSON:'''
+        else:
+            # Fallback to standard text mapping
+            return await TextAnswerMapper.map_text(text, target_field, question_task, llm)
+
+        response = await llm.chat(prompt)
+        parsed = TextAnswerMapper._parse_llm_response(response)
+
+        return StatePatch(
+            field=target_field,
+            value=parsed,  # Structured dict
+            source=AnswerSource.TEXT,
+            confidence=0.8,
+            question_id=question_task.question_id,
+            raw_input=text,
         )
 
 
