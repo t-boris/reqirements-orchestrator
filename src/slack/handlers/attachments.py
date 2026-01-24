@@ -11,7 +11,7 @@ Flow:
 """
 import asyncio
 import logging
-from typing import Optional
+from typing import Callable, Optional
 from uuid import UUID
 
 from slack_sdk.web.async_client import AsyncWebClient
@@ -263,3 +263,129 @@ async def _trigger_processing(
             logger.debug(f"Triggered processing for attachment {attachment_id}")
     except Exception as e:
         logger.warning(f"Failed to trigger processing: {e}")
+
+
+async def handle_attachment_pin(
+    client: AsyncWebClient,
+    body: dict,
+    respond: Callable,
+) -> None:
+    """Handle pin button click.
+
+    Pins attachment to context for BUILD/THINK modes.
+
+    Args:
+        client: Slack client.
+        body: Button action payload.
+        respond: Response function for ephemeral message.
+    """
+    user_id = body.get("user", {}).get("id")
+    action = body.get("actions", [{}])[0]
+    attachment_id = action.get("value")
+
+    if not attachment_id:
+        await respond(text="Error: No attachment ID")
+        return
+
+    async with get_connection() as conn:
+        store = AttachmentStore(conn)
+        attachment = await store.get(UUID(attachment_id))
+
+        if not attachment:
+            await respond(text="Attachment not found")
+            return
+
+        success = await store.pin(UUID(attachment_id), user_id)
+
+    if success:
+        # Fetch updated attachment for notification
+        async with get_connection() as conn:
+            store = AttachmentStore(conn)
+            attachment = await store.get(UUID(attachment_id))
+
+        # Post notification
+        from src.slack.blocks.attachments import build_attachment_notification
+        blocks = build_attachment_notification(attachment, "pinned")
+
+        await respond(
+            text=f":pushpin: Pinned: {attachment.filename}",
+            blocks=blocks,
+        )
+
+        logger.info(
+            f"Attachment pinned: {attachment.filename} "
+            f"by {user_id}"
+        )
+    else:
+        await respond(text="Failed to pin attachment")
+
+
+async def handle_attachment_unpin(
+    client: AsyncWebClient,
+    body: dict,
+    respond: Callable,
+) -> None:
+    """Handle unpin button click.
+
+    Removes attachment from context.
+
+    Args:
+        client: Slack client.
+        body: Button action payload.
+        respond: Response function for ephemeral message.
+    """
+    action = body.get("actions", [{}])[0]
+    attachment_id = action.get("value")
+
+    if not attachment_id:
+        await respond(text="Error: No attachment ID")
+        return
+
+    async with get_connection() as conn:
+        store = AttachmentStore(conn)
+        attachment = await store.get(UUID(attachment_id))
+
+        if not attachment:
+            await respond(text="Attachment not found")
+            return
+
+        success = await store.unpin(UUID(attachment_id))
+
+    if success:
+        # Fetch updated attachment
+        async with get_connection() as conn:
+            store = AttachmentStore(conn)
+            attachment = await store.get(UUID(attachment_id))
+
+        from src.slack.blocks.attachments import build_attachment_notification
+        blocks = build_attachment_notification(attachment, "unpinned")
+
+        await respond(
+            text=f":paperclip: Unpinned: {attachment.filename}",
+            blocks=blocks,
+        )
+
+        logger.info(f"Attachment unpinned: {attachment.filename}")
+    else:
+        await respond(text="Failed to unpin attachment")
+
+
+def register_attachment_handlers(app) -> None:
+    """Register attachment button handlers with Slack app.
+
+    Call from router.py during app setup.
+
+    Args:
+        app: Slack Bolt app instance.
+    """
+    from src.slack.handlers.core import _run_async
+
+    @app.action("attachment_pin")
+    def on_pin(ack, body, client, respond):
+        ack()
+        _run_async(handle_attachment_pin(client, body, respond))
+
+    @app.action("attachment_unpin")
+    def on_unpin(ack, body, client, respond):
+        ack()
+        _run_async(handle_attachment_unpin(client, body, respond))
