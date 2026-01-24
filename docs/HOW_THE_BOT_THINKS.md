@@ -400,6 +400,78 @@ When clicked:
 
 This prevents acting on stale state after transforms.
 
+### 1.8 Product Invariants (Phase 32)
+
+**Core principle:** Invariants are physics, not rules. The system makes wrong paths hard, not just discouraged.
+
+#### The 5 Invariants
+
+| ID | Invariant | Enforcement |
+|----|-----------|-------------|
+| **I1** | SuperMode = Sole UI Contract | Type + display helpers |
+| **I2** | Slack = UI | Handlers dispatch, don't write |
+| **I3** | Commit Log = Append-Only | CommitLogStore has no update/delete |
+| **I4** | MANAGED_SECTION = Law | CI property tests |
+| **I5** | Draft Lifecycle = 3 States | UserDraftState enum |
+
+#### 4-Layer Protection
+
+1. **Layer 0: Types** — InvariantViolation hierarchy makes wrong path hard
+2. **Layer 1: Boundaries** — Gateway pattern (one door, one key)
+3. **Layer 2: Tokens** — PreflightToken proves check passed
+4. **Layer 3: CI Gates** — Property tests, forbidden imports
+5. **Layer 4: Runtime** — Structured logs, metrics
+
+#### Slack Handler Invariant (I2)
+
+Handlers are READ-ONLY for truth stores:
+
+```python
+# WRONG (violates I2)
+async def handle_decision_approve(ack, body, client):
+    async with get_connection() as conn:
+        store = DecisionStore(conn)
+        await store.transition_to_approved(decision_id)  # Direct write!
+
+# CORRECT (respects I2)
+async def handle_decision_approve(ack, body, client):
+    await dispatch_action(
+        action_type="decision_approve",
+        payload={"decision_id": decision_id},
+        channel_id=channel_id,
+    )
+```
+
+**Key insight:** Message failures don't block state updates. State is truth, message is presentation.
+
+#### Commit Log Invariant (I3)
+
+CommitLogStore is append-only:
+
+```python
+class CommitLogStore:
+    async def append(self, entry: CommitLogEntry) -> None
+    async def get_by_entity(self, entity_type, entity_id) -> list
+    async def get_latest_snapshot(self, entity_type, entity_id) -> dict
+
+    # NO update() method
+    # NO delete() method
+```
+
+Canonical messages can be rebuilt from log at any time.
+
+#### Escape Hatch
+
+When invariants must be bypassed (production emergency):
+
+1. Request override (admin/owner only)
+2. Provide reason (mandatory text)
+3. TTL = 10 minutes or single action
+4. Posted to channel + audit log
+5. Suggested: `/maro sync` to reconcile
+
+**Must feel like pulling a fire alarm.** If override becomes habit, invariants are dead.
+
 ---
 
 ## 2. Intent Classification
@@ -1512,15 +1584,21 @@ MARO's intelligence is built on:
 ### Architecture Hardening (Phase 31)
 21. **Super-modes for simplicity** — Users see 5 modes (BUILD, OPERATE, DECIDE, THINK, CHAT), not 13 intents
 
+### Product Invariants (Phase 32)
+22. **5 invariants as physics** — SuperMode, Slack=UI, Commit Log, Managed Section, Draft States
+23. **4-layer protection** — Types, Boundaries, CI Gates, Runtime
+24. **Escape hatch protocol** — Override with role + reason + TTL + audit
+25. **Handler read-only invariant** — Mutations dispatch through graph
+
 ### Supporting Systems
-22. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
-23. **Version-bound approvals** — Stale buttons detected and rejected
-24. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
-25. **Rule-based governance** ensuring consistent behavior
-26. **Graph-based workflows** with conditional routing
-27. **Smart duplicate detection** — channel-first, then Jira
-28. **Human-in-the-loop** interrupts for critical decisions
-29. **Persona-based analysis** for different perspectives
+26. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+27. **Version-bound approvals** — Stale buttons detected and rejected
+28. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
+29. **Rule-based governance** ensuring consistent behavior
+30. **Graph-based workflows** with conditional routing
+31. **Smart duplicate detection** — channel-first, then Jira
+32. **Human-in-the-loop** interrupts for critical decisions
+33. **Persona-based analysis** for different perspectives
 
 **Mantras:**
 - "Threads propose. Channels decide. Jira executes."
@@ -1528,6 +1606,7 @@ MARO's intelligence is built on:
 - "Draft is a data structure representing the shape of work, not a paragraph of text." (Phase 28)
 - "If user input represents a decision, bot must act, not discuss." (Phase 28)
 - "Every write goes through preflight — no exceptions." (Phase 29)
+- "Invariants are physics, not rules." (Phase 32)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
