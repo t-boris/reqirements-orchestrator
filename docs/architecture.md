@@ -13,6 +13,7 @@
 > - **Phase 30: Decision as Entity** - Decisions are versioned, Jira is projection
 > - **Phase 31: Architecture Hardening** - Super-modes, MANAGED_SECTION_ONLY invariant
 > - **Phase 32: Product Invariants** - 5 invariants enforced as architecture
+> - **Phase 35: Multi-Intent Task Orchestration** - Parse full universe of user intent
 
 A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
 
@@ -402,6 +403,139 @@ Slack Presentation (best effort, non-blocking)
 ```
 
 **Key insight:** Slack handlers are read-only for truth stores. All mutations dispatch through graph.
+
+---
+
+## Phase 35: Multi-Intent Task Orchestration (Latest)
+
+**Mantra:** "Safe tasks execute. Dangerous tasks wait."
+
+Phase 35 replaces single-intent classification with TaskPlan orchestration. Users can express compound requests, and the bot decomposes them into tasks with dependencies and safety classifications.
+
+### The Problem
+
+Users write compound requests:
+```
+"Create stories from the decisions, check for duplicates, and review the architecture"
+```
+
+Single-winner classification loses context — only one intent wins, others are dropped.
+
+### The Solution: TaskPlan
+
+```python
+class TaskPlan(BaseModel):
+    plan_id: str
+    channel_id: str
+    thread_ts: str
+    tasks: list[Task]
+    status: TaskPlanStatus  # PENDING → RUNNING → BLOCKED → DONE
+    version: int            # For idempotent button handling
+
+class Task(BaseModel):
+    task_id: str
+    mode: SuperMode         # BUILD, OPERATE, DECIDE, THINK, CHAT
+    intent: Intent          # Fine-grained routing
+    title: str
+    status: TaskStatus      # PENDING → RUNNING → BLOCKED → DONE → CANCELED
+    safety_level: SafetyLevel
+    side_effects: list[SideEffect]
+    depends_on: list[str]   # Task IDs this depends on
+```
+
+### Safety Classification
+
+| Mode | Safety Level | Auto-Execute? |
+|------|--------------|---------------|
+| THINK | AUTO_EXECUTE | Yes |
+| CHAT | AUTO_EXECUTE | Yes |
+| BUILD | REQUIRES_CONFIRMATION | No |
+| OPERATE | REQUIRES_CONFIRMATION | No |
+| DECIDE | REQUIRES_CONFIRMATION | No |
+
+**Override:** Any task with `SideEffect.JIRA` always requires confirmation.
+
+### Two-Stage Classification
+
+1. **Stage 1:** Quick single-intent classification
+2. **Stage 2:** Re-classify with multi-intent if signals detected
+
+**Multi-intent signals:**
+- Conjunctions: "and", "also", "plus", "then"
+- Low confidence: <0.7 on single-intent
+- Multiple action verbs: ≥2 verbs detected
+
+### Execution Flow
+
+```
+Multi-intent detected
+    ↓
+task_decomposer_node
+    ├─ Convert TaskPlanProposal → TaskPlan
+    ├─ Set dependencies between tasks
+    ├─ Classify safety levels
+    └─ Persist to database
+    ↓
+task_executor_node (recursive)
+    ├─ Find next PENDING task (deps satisfied)
+    ├─ If AUTO_EXECUTE → run immediately
+    └─ If REQUIRES_CONFIRMATION → block, show buttons
+    ↓
+dispatch handlers
+    ├─ task_plan_created → post status card
+    ├─ task_confirmation_required → show approval buttons
+    ├─ task_plan_complete → post summary
+    └─ task_failed → show error
+```
+
+### Canonical UX
+
+```
+I see 3 actions:
+1. Check Jira duplicates
+2. Create stories from decisions
+3. Review the architecture
+
+Executing 1 now. For 2 and 3 — OK?
+```
+
+### Status Card
+
+Single editable message with throttled updates (1.5s minimum):
+
+```
+🛠 MARO Plan — BUILD (2/3 tasks)
+
+1) ✅ THINK: Check Jira duplicates
+2) ⏳ BUILD: Create stories (waiting approval)
+3) ⏸ THINK: Review architecture (blocked)
+
+[Cancel plan]
+(2) [Approve] [Reject]
+```
+
+### Version-Bound Buttons
+
+```python
+# Button value format
+value = f"{plan_id}:{task_id}:{plan.version}"
+
+# On click
+if plan.version != button_version:
+    respond("⚠️ This action is outdated. The plan has been updated.")
+```
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `TaskPlan`, `Task` | Data models (src/schemas/task_plan.py) |
+| `TaskPlanStore` | CRUD with optimistic locking (src/db/task_plan_store.py) |
+| `classify_task_safety()` | Safety level inference (src/graph/safety.py) |
+| `task_decomposer_node` | Proposal → TaskPlan (src/graph/nodes/task_decomposer.py) |
+| `task_executor_node` | Dependency-aware execution (src/graph/nodes/task_executor.py) |
+| `TaskStatusUpdater` | Throttled Slack updates (src/slack/task_status_updater.py) |
+| `build_task_plan_blocks()` | Status card UI (src/slack/blocks/task_plan.py) |
 
 ---
 

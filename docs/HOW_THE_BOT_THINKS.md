@@ -14,8 +14,11 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.5 StructuredDraft: The Design Model (Phase 28)
    - 1.6 Preflight: Universal Guardrail (Phase 29)
    - 1.7 Decision: First-Class Entity (Phase 30)
+   - 1.8 Product Invariants (Phase 32)
+   - 1.9 Multi-Intent Task Orchestration (Phase 35)
 2. [Intent Classification](#2-intent-classification)
    - 2.0 User Modes (Phase 31)
+   - 2.6 Multi-Intent Detection (Phase 35)
 3. [Governance Rules](#3-governance-rules)
    - 3.1 Core Model
    - 3.2 Duplicate Handling Rules
@@ -472,6 +475,178 @@ When invariants must be bypassed (production emergency):
 
 **Must feel like pulling a fire alarm.** If override becomes habit, invariants are dead.
 
+### 1.9 Multi-Intent Task Orchestration (Phase 35)
+
+**Core shift:** Parse the full universe of user intent, not just top-1 classification.
+
+**Mantra:** "Safe tasks execute. Dangerous tasks wait."
+
+#### The Problem
+
+Users write compound requests:
+```
+"Create stories from the decisions, check for duplicates, and review the architecture"
+```
+
+Single-winner classification loses context:
+- Only one intent wins (e.g., WORKITEM_CREATE)
+- Other intents (JIRA_SEARCH, REVIEW) are lost
+- User must repeat themselves or feels "not understood"
+
+#### The Solution: TaskPlan
+
+Instead of single IntentResult, classification returns a **TaskPlan**:
+
+```python
+class TaskPlan:
+    plan_id: str
+    channel_id: str
+    thread_ts: str
+    tasks: list[Task]
+    status: TaskPlanStatus  # PENDING → RUNNING → BLOCKED → DONE
+    version: int            # For idempotent button handling
+
+class Task:
+    task_id: str
+    mode: SuperMode         # BUILD, OPERATE, DECIDE, THINK, CHAT
+    intent: Intent          # Fine-grained routing
+    title: str              # Human-readable description
+    status: TaskStatus      # PENDING → RUNNING → BLOCKED → DONE → CANCELED
+    safety_level: SafetyLevel
+    side_effects: list[SideEffect]
+    depends_on: list[str]   # Task IDs this depends on
+```
+
+#### Safety Classification
+
+Tasks are classified by safety level based on mode and side effects:
+
+| Mode | Safety Level | Auto-Execute? |
+|------|--------------|---------------|
+| THINK | AUTO_EXECUTE | Yes |
+| CHAT | AUTO_EXECUTE | Yes |
+| BUILD | REQUIRES_CONFIRMATION | No |
+| OPERATE | REQUIRES_CONFIRMATION | No |
+| DECIDE | REQUIRES_CONFIRMATION | No |
+
+**Override rule:** Any task with `SideEffect.JIRA` always requires confirmation.
+
+```python
+# Safe: runs immediately
+Task(mode=THINK, intent=REVIEW) → AUTO_EXECUTE
+
+# Dangerous: blocks for approval
+Task(mode=BUILD, intent=WORKITEM_CREATE) → REQUIRES_CONFIRMATION
+```
+
+#### Canonical UX Response
+
+When multi-intent detected, bot shows:
+
+```
+I see 3 actions:
+1. Check Jira duplicates
+2. Create stories from decisions
+3. Review the architecture
+
+Executing 1 now. For 2 and 3 — OK?
+```
+
+- Safe tasks execute immediately
+- Dangerous tasks listed with approval prompt
+- User can approve/reject each task
+
+#### Status Card
+
+A single editable message tracks all tasks:
+
+```
+🛠 MARO Plan — BUILD (2/3 tasks)
+
+1) ✅ THINK: Check Jira duplicates
+2) ⏳ BUILD: Create stories (waiting approval)
+3) ⏸ THINK: Review architecture (blocked)
+
+[Cancel plan]
+(2) [Approve] [Reject]
+```
+
+**Throttling:** Updates limited to 1 every 1.5 seconds to avoid Slack rate limits. Significant events (task_completed, plan_completed) bypass throttle.
+
+#### Two-Stage Classification
+
+To avoid LLM overhead on simple messages:
+
+1. **Stage 1:** Quick single-intent classification
+2. **Stage 2:** Re-classify with multi-intent if signals detected
+
+**Multi-intent signals:**
+- Conjunctions: "and", "also", "plus", "then", "after that"
+- Low confidence: <0.7 on single-intent
+- Multiple action verbs: ≥2 verbs detected
+
+```python
+def should_use_multi_intent_classification(message, single_result):
+    if has_multi_intent_markers(message):  # "and", "also"
+        return True
+    if single_result.confidence < 0.7:
+        return True
+    if count_action_verbs(message) >= 2:
+        return True
+    return False
+```
+
+#### Task Execution Flow
+
+```
+Multi-intent detected
+    ↓
+task_decomposer_node
+    ├─ Convert TaskPlanProposal → TaskPlan
+    ├─ Set dependencies between tasks
+    ├─ Classify safety levels
+    └─ Persist to database
+    ↓
+task_executor_node (recursive)
+    ├─ Find next PENDING task (deps satisfied)
+    ├─ If AUTO_EXECUTE → run immediately
+    ├─ If REQUIRES_CONFIRMATION → set BLOCKED, show buttons
+    └─ Continue until all DONE or BLOCKED
+    ↓
+dispatch handlers
+    ├─ task_plan_created → post status card
+    ├─ task_confirmation_required → show approval buttons
+    ├─ task_plan_complete → post summary
+    └─ task_failed → show error
+```
+
+#### Version-Bound Buttons
+
+All buttons include plan version to prevent stale actions:
+
+```python
+# Button value format
+value = f"{plan_id}:{task_id}:{plan.version}"
+
+# On click
+if plan.version != button_version:
+    respond("⚠️ This action is outdated. The plan has been updated.")
+    return
+```
+
+#### Cascade Cancel
+
+When a task is rejected, all dependent tasks are canceled:
+
+```python
+def _cascade_cancel(task_plan, canceled_task_id):
+    for task in task_plan.tasks:
+        if canceled_task_id in task.depends_on:
+            task.status = TaskStatus.CANCELED
+            task.last_error = f"Dependency {canceled_task_id} was canceled"
+            _cascade_cancel(task_plan, task.task_id)  # Recursive
+```
+
 ---
 
 ## 2. Intent Classification
@@ -631,6 +806,44 @@ Each intent classification now includes a `context_relation` field:
 | `refine` | Message refines/clarifies current draft |
 | `change` | Message requests changes to existing truth |
 | `new_topic` | Message is unrelated to current context |
+
+### 2.6 Multi-Intent Detection (Phase 35)
+
+When a message may contain multiple intents, the classifier returns a `TaskPlanProposal`:
+
+```python
+class TaskPlanProposal:
+    tasks: list[TaskProposal]
+    is_multi_intent: bool
+    low_confidence_signal: bool
+    trigger_message: str
+
+class TaskProposal:
+    intent: Intent
+    super_mode: SuperMode
+    confidence: float
+    title: str
+    params: dict
+    depends_on_indices: list[int]  # References other tasks in list
+```
+
+**Detection triggers:**
+1. **Explicit conjunctions:** "and", "also", "plus", "then", "as well as"
+2. **Low single-intent confidence:** <0.7 suggests multiple possible intents
+3. **Multiple action verbs:** "create... and check... and review..."
+
+**Backwards compatibility:**
+- `return_proposal=False` (default) returns single `IntentResult`
+- `TaskPlanProposal.to_single_intent()` converts for legacy code
+
+**Routing:**
+```python
+def route_after_intent(state):
+    proposal = state["intent_result"].get("task_plan_proposal")
+    if proposal and proposal.get("is_multi_intent"):
+        return "task_decomposer"  # Multi-intent flow
+    return existing_routing(state)  # Single-intent flow
+```
 
 ---
 
@@ -1119,11 +1332,18 @@ START
     │    → sync_trigger (bulk sync)
     │    → END
     │
-    └─ decision_flow (Phase 30)
-         → decision_extraction (extract from message)
-         → create Decision entity (PROPOSED status)
-         → show_decision_proposal card
-         → END (user approves/edits via buttons)
+    ├─ decision_flow (Phase 30)
+    │    → decision_extraction (extract from message)
+    │    → create Decision entity (PROPOSED status)
+    │    → show_decision_proposal card
+    │    → END (user approves/edits via buttons)
+    │
+    └─ multi_intent_flow (Phase 35)
+         → task_decomposer (convert proposal → TaskPlan)
+         → task_executor (recursive)
+         │   ├─ AUTO_EXECUTE → run immediately
+         │   └─ REQUIRES_CONFIRMATION → block, show buttons
+         → END (plan complete or blocked)
 ```
 
 ### 5.2 Decision Flow Detail (Phase 30)
@@ -1590,6 +1810,15 @@ MARO's intelligence is built on:
 24. **Escape hatch protocol** — Override with role + reason + TTL + audit
 25. **Handler read-only invariant** — Mutations dispatch through graph
 
+### Multi-Intent Task Orchestration (Phase 35)
+26. **TaskPlan replaces single intent** — Parse full universe of user intent
+27. **Two-stage classification** — Single-intent first, multi-intent if signals detected
+28. **Safety-based auto-execution** — THINK/CHAT auto-execute, BUILD/OPERATE/DECIDE require approval
+29. **Dependency-aware execution** — Tasks run only when dependencies satisfied
+30. **Version-bound buttons** — Stale actions rejected with version mismatch
+31. **Cascade cancel** — Rejecting a task cancels all dependents
+32. **Status card with throttling** — Single editable message, 1.5s minimum between updates
+
 ### Supporting Systems
 26. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
 27. **Version-bound approvals** — Stale buttons detected and rejected
@@ -1607,9 +1836,10 @@ MARO's intelligence is built on:
 - "If user input represents a decision, bot must act, not discuss." (Phase 28)
 - "Every write goes through preflight — no exceptions." (Phase 29)
 - "Invariants are physics, not rules." (Phase 32)
+- "Safe tasks execute. Dangerous tasks wait." (Phase 35)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
 ---
 
-*Last updated: 2026-01-23 (Phase 32 Product Invariants)*
+*Last updated: 2026-01-24 (Phase 35 Multi-Intent Task Orchestration)*
