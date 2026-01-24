@@ -996,6 +996,9 @@ async def intent_router_node(state: dict) -> dict:
     After classification, resolves attachment context based on SuperMode policy.
     Returns partial state update with intent_result and attachment_context.
 
+    Phase 35: When multi-intent is detected, stores TaskPlanProposal in intent_result
+    for task_decomposer to use.
+
     Args:
         state: Current AgentState dict
 
@@ -1031,6 +1034,7 @@ async def intent_router_node(state: dict) -> dict:
             super_mode=SuperMode.THINK,  # REVIEW maps to THINK
             reasons=["no message found, default to REVIEW"],
         )
+        proposal = None
     else:
         # Get conversation context for LLM
         conversation_context = state.get("conversation_context")
@@ -1054,17 +1058,41 @@ async def intent_router_node(state: dict) -> dict:
                 conversation_context,
                 active_draft,
             )
+            proposal = None  # Context-aware doesn't support return_proposal yet
         else:
-            result = await classify_intent(latest_human_message, conversation_context, active_draft)
+            # Phase 35: Use return_proposal=True to get TaskPlanProposal for multi-intent
+            classification_result = await classify_intent(
+                latest_human_message,
+                conversation_context,
+                active_draft,
+                return_proposal=True,
+            )
+
+            # Handle both return types
+            if isinstance(classification_result, TaskPlanProposal):
+                proposal = classification_result
+                result = proposal.to_single_intent()
+            else:
+                result = classification_result
+                proposal = None
 
     logger.info(
         f"IntentRouter: intent={result.intent.value}, "
         f"confidence={result.confidence}, reasons={result.reasons}"
+        f"{', multi_intent=True' if proposal and proposal.is_multi_intent else ''}"
     )
 
     # Phase 34: Resolve attachment context based on SuperMode policy
     # This populates state["attachment_context"] for downstream nodes
-    state_update: dict = {"intent_result": result.model_dump()}
+    intent_result_dict = result.model_dump()
+
+    # Phase 35: Store TaskPlanProposal in intent_result for task_decomposer
+    if proposal:
+        intent_result_dict["task_plan_proposal"] = proposal.model_dump()
+        # Set super_mode from proposal's primary mode
+        intent_result_dict["super_mode"] = proposal.primary_mode.value
+
+    state_update: dict = {"intent_result": intent_result_dict}
 
     # Store super_mode in state for downstream nodes (e.g., review node uses it for cite mode)
     state_update["super_mode"] = result.super_mode

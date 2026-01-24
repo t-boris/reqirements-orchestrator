@@ -29,6 +29,14 @@ if TYPE_CHECKING:
     from src.graph.state import AgentState
     from src.schemas.intent import SuperMode
 
+# Phase 35: TaskPlan imports
+from src.schemas.task_plan import TaskPlan, TaskPlanStatus, TaskStatus
+from src.slack.blocks.task_plan import (
+    build_multi_intent_announcement,
+    build_plan_complete_message,
+)
+from src.slack.task_status_updater import TaskStatusUpdater
+
 logger = logging.getLogger(__name__)
 
 # Decision extraction prompt for architecture decisions (Phase 14)
@@ -614,6 +622,22 @@ async def _dispatch_result(
     elif action == "conflict":
         # Draft conflict detected - post conflict UI (Phase 27.3)
         await _handle_draft_conflict(result, identity, client)
+
+    # Phase 35: TaskPlan action handlers
+    elif action == "task_plan_created":
+        await _handle_task_plan_created(client, result, identity)
+
+    elif action == "task_confirmation_required":
+        await _handle_task_confirmation(client, result, identity)
+
+    elif action == "task_plan_complete":
+        await _handle_task_plan_complete(client, result, identity)
+
+    elif action == "task_plan_blocked":
+        await _handle_task_plan_blocked(client, result, identity)
+
+    elif action == "task_failed":
+        await _handle_task_failed(client, result, identity)
 
     elif action == "error":
         client.chat_postMessage(
@@ -1811,5 +1835,247 @@ async def _handle_transform_applied(
             "item_count": len(structured_draft.items),
             "channel_id": identity.channel_id,
             "thread_ts": identity.thread_ts,
+        },
+    )
+
+
+# --- Phase 35: TaskPlan Handlers ---
+
+async def _handle_task_plan_created(
+    client: WebClient,
+    result: dict,
+    identity: SessionIdentity,
+) -> None:
+    """Handle newly created TaskPlan - post status card and announcement.
+
+    Called when task_decomposer creates a new TaskPlan from multi-intent.
+    Posts the canonical announcement and status card.
+
+    Args:
+        client: Slack WebClient
+        result: Decision result with task_plan data
+        identity: Session identity
+    """
+    task_plan_data = result.get("task_plan")
+    if not task_plan_data:
+        logger.warning("task_plan_created action without task_plan data")
+        return
+
+    task_plan = TaskPlan.model_validate(task_plan_data)
+
+    # Post announcement message
+    announcement = build_multi_intent_announcement(task_plan)
+    await client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        text=announcement,
+    )
+
+    # Post status card
+    updater = TaskStatusUpdater(client)
+    await updater.post_initial_card(
+        task_plan,
+        identity.channel_id,
+        identity.thread_ts,
+    )
+
+    logger.info(
+        f"Posted TaskPlan {task_plan.plan_id} with {len(task_plan.tasks)} tasks",
+        extra={
+            "plan_id": task_plan.plan_id,
+            "task_count": len(task_plan.tasks),
+            "auto_count": result.get("auto_count", 0),
+            "channel_id": identity.channel_id,
+            "thread_ts": identity.thread_ts,
+        },
+    )
+
+
+async def _handle_task_confirmation(
+    client: WebClient,
+    result: dict,
+    identity: SessionIdentity,
+) -> None:
+    """Handle task needing confirmation - update status card.
+
+    Called when a task with REQUIRES_CONFIRMATION safety level is reached.
+
+    Args:
+        client: Slack WebClient
+        result: Decision result with task_plan and task info
+        identity: Session identity
+    """
+    task_plan_data = result.get("task_plan")
+    if not task_plan_data:
+        return
+
+    task_plan = TaskPlan.model_validate(task_plan_data)
+
+    # Update status card to show blocked task
+    updater = TaskStatusUpdater(client)
+    await updater.update_card(
+        task_plan,
+        identity.channel_id,
+        event="task_blocked",
+    )
+
+    # Post reminder about which task needs approval
+    task_title = result.get("task_title", "Unknown task")
+    await client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        text=f":double_vertical_bar: Waiting for approval: *{task_title}*\nUse the buttons above to approve or reject.",
+    )
+
+    logger.info(
+        f"Task confirmation required for {task_title}",
+        extra={
+            "plan_id": task_plan.plan_id,
+            "task_title": task_title,
+            "channel_id": identity.channel_id,
+        },
+    )
+
+
+async def _handle_task_plan_complete(
+    client: WebClient,
+    result: dict,
+    identity: SessionIdentity,
+) -> None:
+    """Handle completed TaskPlan - post summary to channel.
+
+    Called when all tasks in the plan are DONE.
+
+    Args:
+        client: Slack WebClient
+        result: Decision result with task_plan data
+        identity: Session identity
+    """
+    task_plan_data = result.get("task_plan")
+    if not task_plan_data:
+        return
+
+    task_plan = TaskPlan.model_validate(task_plan_data)
+
+    # Final status card update
+    updater = TaskStatusUpdater(client)
+    await updater.flush_pending(task_plan.plan_id, identity.channel_id)
+    await updater.update_card(
+        task_plan,
+        identity.channel_id,
+        event="plan_completed",
+    )
+
+    # Post completion summary to channel (not just thread)
+    summary = build_plan_complete_message(task_plan)
+    await client.chat_postMessage(
+        channel=identity.channel_id,
+        text=summary,
+    )
+
+    logger.info(
+        f"TaskPlan {task_plan.plan_id} completed",
+        extra={
+            "plan_id": task_plan.plan_id,
+            "completed_tasks": len([t for t in task_plan.tasks if t.status == TaskStatus.DONE]),
+            "channel_id": identity.channel_id,
+        },
+    )
+
+
+async def _handle_task_plan_blocked(
+    client: WebClient,
+    result: dict,
+    identity: SessionIdentity,
+) -> None:
+    """Handle TaskPlan that's blocked waiting for user input.
+
+    Called when plan cannot progress because tasks are blocked.
+
+    Args:
+        client: Slack WebClient
+        result: Decision result with task_plan data
+        identity: Session identity
+    """
+    task_plan_data = result.get("task_plan")
+    if not task_plan_data:
+        return
+
+    task_plan = TaskPlan.model_validate(task_plan_data)
+
+    # Update status card
+    updater = TaskStatusUpdater(client)
+    await updater.update_card(
+        task_plan,
+        identity.channel_id,
+        event="task_blocked",
+    )
+
+    # Find blocked tasks
+    blocked = [t for t in task_plan.tasks if t.status == TaskStatus.BLOCKED]
+    if blocked:
+        task_names = ", ".join(t.title for t in blocked[:3])
+        if len(blocked) > 3:
+            task_names += f", and {len(blocked) - 3} more"
+        await client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f":double_vertical_bar: Waiting for: {task_names}",
+        )
+
+    logger.info(
+        f"TaskPlan {task_plan.plan_id} blocked",
+        extra={
+            "plan_id": task_plan.plan_id,
+            "blocked_count": len(blocked),
+            "channel_id": identity.channel_id,
+        },
+    )
+
+
+async def _handle_task_failed(
+    client: WebClient,
+    result: dict,
+    identity: SessionIdentity,
+) -> None:
+    """Handle failed task - show error.
+
+    Called when a task execution fails.
+
+    Args:
+        client: Slack WebClient
+        result: Decision result with task_plan, task_id, and error
+        identity: Session identity
+    """
+    task_plan_data = result.get("task_plan")
+    if not task_plan_data:
+        return
+
+    task_plan = TaskPlan.model_validate(task_plan_data)
+
+    # Update status card
+    updater = TaskStatusUpdater(client)
+    await updater.update_card(
+        task_plan,
+        identity.channel_id,
+        event="task_failed",
+    )
+
+    # Post error message
+    task_id = result.get("task_id", "unknown")
+    error = result.get("error", "Unknown error")
+    await client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        text=f":x: Task failed: {error}\nYou can retry or cancel the plan.",
+    )
+
+    logger.error(
+        f"Task {task_id} failed in plan {task_plan.plan_id}",
+        extra={
+            "plan_id": task_plan.plan_id,
+            "task_id": task_id,
+            "error": error,
+            "channel_id": identity.channel_id,
         },
     )

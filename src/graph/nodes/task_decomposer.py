@@ -108,6 +108,13 @@ async def task_decomposer_node(state: AgentState) -> dict[str, Any]:
         f"({auto_executable_count} auto-executable)"
     )
 
+    # Return with action for dispatch to post status card
     return {
         "task_plan": task_plan.model_dump(),
+        "decision_result": {
+            "action": "task_plan_created",
+            "plan_id": plan_id,
+            "task_count": len(tasks),
+            "auto_count": auto_executable_count,
+        },
     }
