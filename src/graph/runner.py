@@ -357,6 +357,13 @@ class GraphRunner:
                 "action": "draft_refine",
                 "decision_result": decision_result,
             }
+        elif action == "transform_applied":
+            return {
+                "action": "transform_applied",
+                "transform_result": decision_result.get("transform_result", {}),
+                "operation": decision_result.get("operation"),
+                "structured_draft": state.get("structured_draft"),
+            }
         else:
             return {"action": "continue"}
 

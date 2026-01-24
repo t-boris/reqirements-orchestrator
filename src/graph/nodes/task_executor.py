@@ -110,7 +110,30 @@ async def _execute_task(
 
     try:
         # Execute based on intent type
-        result = await _dispatch_task(state, task)
+        result = await _dispatch_task(state, task, task_plan)
+
+        # Check for question-specific results that block execution
+        decision_action = result.get("decision_result", {}).get("action")
+
+        if decision_action == "question_posted":
+            # Don't continue - wait for answer
+            task_plan.status = TaskPlanStatus.BLOCKED
+            task_plan.increment_version()
+            await _persist_plan(task_plan)
+            return {
+                "task_plan": task_plan.model_dump(),
+                **result,
+            }
+
+        if decision_action == "budget_exhausted":
+            # Budget hit - show partial preview
+            task_plan.status = TaskPlanStatus.BLOCKED
+            task_plan.increment_version()
+            await _persist_plan(task_plan)
+            return {
+                "task_plan": task_plan.model_dump(),
+                **result,
+            }
 
         # Mark complete
         task.status = TaskStatus.DONE
@@ -145,12 +168,23 @@ async def _execute_task(
         }
 
 
-async def _dispatch_task(state: AgentState, task: Task) -> dict[str, Any]:
+async def _dispatch_task(
+    state: AgentState,
+    task: Task,
+    task_plan: TaskPlan,
+) -> dict[str, Any]:
     """Dispatch task to appropriate handler based on intent.
 
     Maps task.intent to existing graph node logic or handlers.
+    For question tasks, routes to question_executor_node.
     """
     from src.schemas.intent import Intent
+
+    # Check if this is a question task first
+    if task.is_question:
+        from src.graph.nodes.question_executor import question_executor_node
+
+        return await question_executor_node(state, task, task_plan)
 
     intent = task.intent
 

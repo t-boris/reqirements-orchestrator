@@ -623,6 +623,11 @@ def register_preflight_handlers(app) -> None:
         """No-op handler for URL button - just acknowledge."""
         await ack()
 
+    @app.action("view_jira_link")
+    async def handle_view_jira_link(ack):
+        """No-op handler for View in Jira URL button - just acknowledge."""
+        await ack()
+
     # preflight_show_diff, preflight_remove_tracking, preflight_reopen can be added later
 
     logger.info("Preflight handlers registered")

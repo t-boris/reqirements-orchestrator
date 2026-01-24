@@ -13,6 +13,12 @@ from src.schemas.conflict import (
     ConflictType,
     DraftConflict,
 )
+from src.schemas.question import (
+    QuestionOption,
+    QuestionStatus,
+    QuestionTask,
+    QuestionType,
+)
 from src.schemas.draft import (
     ConstraintStatus,
     DraftConstraint,
@@ -78,4 +84,9 @@ __all__ = [
     "DraftItem",
     "DraftItemStatus",
     "DraftChange",
+    # Question schemas (Phase 36)
+    "QuestionType",
+    "QuestionStatus",
+    "QuestionTask",
+    "QuestionOption",
 ]

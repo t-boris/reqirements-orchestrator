@@ -351,6 +351,13 @@ async def _handle_approve_architecture_async(body, client: WebClient):
     topic = value.get("topic", "Architecture Decision")
     persona = value.get("persona", "")
 
+    # Show progress indicator immediately
+    progress_msg = client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        text=":hourglass_flowing_sand: Posting decisions to channel...",
+    )
+
     logger.info(
         "Approve architecture button clicked",
         extra={
@@ -586,8 +593,25 @@ Rules:
             }
         )
 
+        # Delete progress message after completion
+        try:
+            client.chat_delete(
+                channel=channel_id,
+                ts=progress_msg["ts"],
+            )
+        except Exception as del_err:
+            logger.debug(f"Could not delete progress message: {del_err}")
+
     except Exception as e:
         logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
+        # Delete progress message on error
+        try:
+            client.chat_delete(
+                channel=channel_id,
+                ts=progress_msg["ts"],
+            )
+        except Exception:
+            pass
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,

@@ -229,12 +229,20 @@ async def _handle_file_shared_async(event: dict, client) -> None:
         logger.error(f"Failed to get file info for {file_id}: {e}")
         return
 
-    await _register_attachment(
+    attachment_result = await _register_attachment(
         file_info=file_info,
         channel_id=channel_id,
         thread_ts=None,  # file_shared doesn't include thread
         uploaded_by=user_id,
     )
+
+    # Trigger immediate processing (fire-and-forget)
+    # Create async client for processing (sync client can't be used with async processor)
+    if attachment_result:
+        from src.config.settings import get_settings
+        settings = get_settings()
+        async_client = AsyncWebClient(token=settings.slack_bot_token)
+        await _trigger_processing(async_client, UUID(attachment_result["id"]))
 
 
 async def _trigger_processing(

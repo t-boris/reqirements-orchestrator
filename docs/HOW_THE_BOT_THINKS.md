@@ -16,6 +16,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.7 Decision: First-Class Entity (Phase 30)
    - 1.8 Product Invariants (Phase 32)
    - 1.9 Multi-Intent Task Orchestration (Phase 35)
+   - 1.10 Question Engine — Conversation Driver (Phase 36)
 2. [Intent Classification](#2-intent-classification)
    - 2.0 User Modes (Phase 31)
    - 2.6 Multi-Intent Detection (Phase 35)
@@ -645,6 +646,139 @@ def _cascade_cancel(task_plan, canceled_task_id):
             task.status = TaskStatus.CANCELED
             task.last_error = f"Dependency {canceled_task_id} was canceled"
             _cascade_cancel(task_plan, task.task_id)  # Recursive
+```
+
+### 1.10 Question Engine — Conversation Driver (Phase 36)
+
+**Core shift:** From event recorder to conversation leader. Questions become first-class tasks.
+
+**Mantra:** "Questions are tasks. Mode drives behavior. Budget prevents spam."
+
+#### The Three Core Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **Questions as Tasks** | QuestionTask extends Task — questions are planned, prioritized, tracked |
+| **Active/Passive Mode** | ACTIVE = bot leads, PASSIVE = bot listens |
+| **Question Budget** | Max 2 unanswered questions before partial preview |
+
+#### QuestionTask in TaskPlan
+
+Questions are now tasks within the TaskPlan:
+
+```python
+class Task(BaseModel):
+    # ... existing fields ...
+    question_task: Optional[QuestionTask] = None  # For question-type tasks
+
+    @property
+    def is_question(self) -> bool:
+        return self.question_task is not None
+
+class QuestionTask(BaseModel):
+    question_id: str
+    question_type: QuestionType  # CONFIRM_SCOPE, COLLECT_FIELD, RESOLVE_CONFLICT, ASK_USER
+    question_text: str
+    target_field: Optional[str]  # Draft field this fills
+    options: Optional[list[QuestionOption]]  # For button-based questions
+    status: QuestionStatus  # PENDING, ANSWERED, SKIPPED
+    answer: Optional[str]
+```
+
+#### Question Types
+
+| Type | Purpose | Answer |
+|------|---------|--------|
+| **CONFIRM_SCOPE** | "Stories under this epic?" | Button click |
+| **COLLECT_FIELD** | "What are the AC?" | Text reply |
+| **RESOLVE_CONFLICT** | "Slack or Jira version?" | Button click |
+| **ASK_USER** | Freeform fallback | Text reply |
+
+#### Active/Passive Mode
+
+```
+PASSIVE ──@mention──→ ACTIVE
+PASSIVE ──/command──→ ACTIVE
+PASSIVE ──BLOCKED───→ ACTIVE
+
+ACTIVE ──COMPLETE──→ PASSIVE
+ACTIVE ──TIMEOUT───→ PASSIVE
+ACTIVE ──CANCEL────→ PASSIVE
+```
+
+| Mode | Bot Behavior |
+|------|--------------|
+| ACTIVE | Leads conversation, posts questions, follows up |
+| PASSIVE | Listens, acknowledges, doesn't ask unprompted |
+
+#### Question Budget
+
+Prevents bot spam by limiting consecutive questions:
+
+```
+Budget = 2 max unanswered questions
+
+ask_question() → budget++
+receive_answer() → budget = 0
+budget >= 2 → show partial preview
+```
+
+Partial preview UI:
+```
+⏸️ I've hit my question limit
+
+Still missing:
+• acceptance_criteria
+• scope
+
+[Proceed with gaps] [Wait for input] [Cancel]
+```
+
+#### QuestionCatalog: Hybrid Generation
+
+Templates for known patterns, LLM for flexibility:
+
+| Type | Generation |
+|------|------------|
+| CONFIRM_SCOPE | Template ("Stories under {epic}?") |
+| COLLECT_FIELD | LLM-generated (flexible prompts) |
+| RESOLVE_CONFLICT | Template ("A or B?") |
+| ASK_USER | LLM fallback |
+
+#### AnswerMapper: Hybrid Processing
+
+| Input | Processing | Confidence |
+|-------|------------|------------|
+| Button click | Deterministic → StatePatch | 1.0 |
+| Text reply | LLM parsing → StatePatch | Varies |
+
+Low confidence (<0.7) triggers clarification:
+```
+🤔 I'm not quite sure I understood.
+Please reply again or use buttons if available.
+```
+
+#### Question Execution Flow
+
+```
+question_task detected in TaskPlan
+    ↓
+question_executor_node
+    ├─ Check budget (is_exhausted?)
+    │   └─ Yes → return budget_exhausted action
+    ├─ Record question asked
+    ├─ Set task → BLOCKED
+    └─ Return question_posted action
+    ↓
+dispatch → post question UI
+    ↓
+User clicks button or replies
+    ↓
+handle_question_answer
+    ├─ Apply StatePatch to state
+    ├─ Mark task → DONE
+    ├─ Reset budget
+    └─ Continue execution
 ```
 
 ---
@@ -1819,8 +1953,16 @@ MARO's intelligence is built on:
 31. **Cascade cancel** — Rejecting a task cancels all dependents
 32. **Status card with throttling** — Single editable message, 1.5s minimum between updates
 
+### Question Engine (Phase 36)
+33. **Questions as first-class tasks** — QuestionTask extends Task with status tracking
+34. **Active/Passive mode** — State machine determines when bot leads vs listens
+35. **Question budget** — Max 2 unanswered before partial preview
+36. **Hybrid question generation** — Templates for scope, LLM for field collection
+37. **Hybrid answer processing** — Buttons deterministic, text LLM-parsed
+38. **Mode transitions** — @mention/command → ACTIVE, complete/timeout → PASSIVE
+
 ### Supporting Systems
-26. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
+39. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
 27. **Version-bound approvals** — Stale buttons detected and rejected
 28. **Draft continuity** — DRAFT_REFINE catches meta-questions before switching to review
 29. **Rule-based governance** ensuring consistent behavior
@@ -1837,9 +1979,10 @@ MARO's intelligence is built on:
 - "Every write goes through preflight — no exceptions." (Phase 29)
 - "Invariants are physics, not rules." (Phase 32)
 - "Safe tasks execute. Dangerous tasks wait." (Phase 35)
+- "Questions are tasks. Mode drives behavior. Budget prevents spam." (Phase 36)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
 ---
 
-*Last updated: 2026-01-24 (Phase 35 Multi-Intent Task Orchestration)*
+*Last updated: 2026-01-24 (Phase 36 Question Engine — Conversation Driver)*

@@ -174,6 +174,11 @@ from src.slack.handlers.decision_buttons import (
     register_decision_handlers,
 )
 
+# Question handlers (Phase 36)
+from src.slack.handlers.question import (
+    register_question_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -280,4 +285,6 @@ __all__ = [
     "register_preflight_handlers",
     # Decision button handlers (Phase 30)
     "register_decision_handlers",
+    # Question handlers (Phase 36)
+    "register_question_handlers",
 ]

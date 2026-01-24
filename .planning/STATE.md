@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 35: Multi-Intent Task Orchestration (COMPLETE)
+**Current focus:** v1.2 Developer Experience — Phase 36 COMPLETE
 
 ## Current Position
 
-Phase: 35-multi-intent-task-orchestration
-Plan: 8 of 8 in current phase
-Status: Complete
-Last activity: 2026-01-24 — Completed all 8 plans in Phase 35
+Phase: 36-question-engine-conversation-driver
+Plan: All 7 plans executed
+Status: COMPLETE
+Last activity: 2026-01-24 — Phase 36 complete (7/7 plans, 4 waves)
 
-Progress: ██████████ 100% (Phase 35: 8/8 plans complete)
+Progress: Phase complete (7/7 plans)
 
 ## Milestones Summary
 
@@ -313,9 +313,9 @@ Phase 35-08 decisions:
 ## Session Continuity
 
 Last session: 2026-01-24
-Stopped at: Completed all Phase 35 plans
+Stopped at: Phase 36 complete
 Resume file: None
-Next action: Select next phase or milestone
+Next action: Determine next phase or milestone
 
 ## What's Next
 
@@ -483,6 +483,9 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-24: Phase 36 COMPLETE — Question Engine: Conversation Driver (7/7 plans, 4 waves)
+- 2026-01-24: Phase 36 CONTEXT GATHERED — Question Engine vision documented (questions as tasks, active/passive mode, question budget, hybrid catalog/mapper)
+- 2026-01-24: Phase 36 ADDED — Question Engine: Conversation Driver (questions as first-class tasks)
 - 2026-01-24: Phase 35 COMPLETE — Multi-Intent Task Orchestration (8/8 plans, 4 waves)
 - 2026-01-24: Phase 35-01 COMPLETE — TaskPlan/Task schemas, TaskPlanStore persistence
 - 2026-01-24: Phase 35 RESEARCHED — Multi-Intent Task Orchestration (architecture gaps identified, integration points documented)

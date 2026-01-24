@@ -14,6 +14,7 @@
 > - **Phase 31: Architecture Hardening** - Super-modes, MANAGED_SECTION_ONLY invariant
 > - **Phase 32: Product Invariants** - 5 invariants enforced as architecture
 > - **Phase 35: Multi-Intent Task Orchestration** - Parse full universe of user intent
+> - **Phase 36: Question Engine — Conversation Driver** - Questions as first-class tasks with active/passive mode
 
 A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
 
@@ -536,6 +537,112 @@ if plan.version != button_version:
 | `task_executor_node` | Dependency-aware execution (src/graph/nodes/task_executor.py) |
 | `TaskStatusUpdater` | Throttled Slack updates (src/slack/task_status_updater.py) |
 | `build_task_plan_blocks()` | Status card UI (src/slack/blocks/task_plan.py) |
+
+---
+
+## Phase 36: Question Engine — Conversation Driver (Latest)
+
+**Mantra:** "Questions are tasks. Mode drives behavior. Budget prevents spam."
+
+Phase 36 transforms MARO from an event recorder into a conversation leader. Questions become first-class tasks in the TaskPlan with explicit status tracking, and the bot manages Active/Passive modes to know when to lead vs. listen.
+
+### The Three Core Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **Questions as Tasks** | QuestionTask extends Task model — questions are planned, prioritized, and tracked |
+| **Active/Passive Mode** | State machine: ACTIVE (bot leads, posts questions) vs PASSIVE (bot listens, acknowledges) |
+| **Question Budget** | Max 2 unanswered questions before partial preview — prevents bot spam |
+
+### QuestionTask Schema
+
+```python
+class QuestionTask(BaseModel):
+    question_id: str  # UUID
+    question_type: QuestionType  # CONFIRM_SCOPE, COLLECT_FIELD, RESOLVE_CONFLICT, ASK_USER
+    question_text: str
+    target_field: Optional[str]  # For COLLECT_FIELD, which draft field we're filling
+    options: Optional[list[QuestionOption]]  # For choice-based questions
+    priority: int = 100  # Lower = ask first
+    status: QuestionStatus  # PENDING, ANSWERED, SKIPPED
+    answer: Optional[str]
+    answered_at: Optional[datetime]
+```
+
+### Question Types
+
+| Type | Use Case | Answer Format |
+|------|----------|---------------|
+| **CONFIRM_SCOPE** | "Stories under this epic?" | Button click (deterministic) |
+| **COLLECT_FIELD** | "What are the acceptance criteria?" | Free-form text (LLM-parsed) |
+| **RESOLVE_CONFLICT** | "Keep Slack or Jira version?" | Button click |
+| **ASK_USER** | Freeform fallback | Text reply |
+
+### Active/Passive Mode
+
+```
+PASSIVE (default)
+    │
+    ├─ @mention → ACTIVE
+    ├─ /command → ACTIVE
+    └─ Task BLOCKED → ACTIVE
+
+ACTIVE
+    │
+    ├─ Plan COMPLETE → PASSIVE
+    ├─ 10min timeout → PASSIVE
+    └─ User CANCEL → PASSIVE
+```
+
+**Behavior Differences:**
+
+| Mode | Bot Behavior |
+|------|--------------|
+| **ACTIVE** | Leads conversation, posts questions, follows up |
+| **PASSIVE** | Listens, acknowledges, doesn't ask unprompted |
+
+### Question Budget
+
+- **Budget:** Max 2 unanswered questions in a row
+- **Reset:** New user message resets budget to 0
+- **Exhausted:** Show partial preview with [Proceed][Wait][Cancel] buttons
+
+```
+Question asked → budget++
+Answer received → budget = 0
+Budget == 2 → show partial preview
+```
+
+### QuestionCatalog: Hybrid Generation
+
+| Question Type | Generation Method |
+|---------------|-------------------|
+| CONFIRM_SCOPE | Templates (deterministic) |
+| COLLECT_FIELD | LLM-generated (flexible prompts) |
+| RESOLVE_CONFLICT | Templates |
+| ASK_USER | LLM fallback |
+
+### AnswerMapper: Hybrid Processing
+
+| Input Type | Processing |
+|------------|------------|
+| Button click | Deterministic mapping → StatePatch (confidence=1.0) |
+| Text reply | LLM parsing → StatePatch (confidence varies) |
+
+Low confidence (<0.7) triggers clarification question.
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `QuestionTask`, `QuestionType` | Question schema (src/schemas/question.py) |
+| `ConversationModeStore` | Mode persistence (src/db/conversation_mode_store.py) |
+| `ModeManager` | Mode transition logic (src/questions/mode_manager.py) |
+| `QuestionCatalog` | Question generation (src/questions/catalog.py) |
+| `AnswerMapper` | Answer processing (src/questions/answer_mapper.py) |
+| `BudgetTracker` | Budget enforcement (src/questions/budget_tracker.py) |
+| `question_executor_node` | Question task execution (src/graph/nodes/question_executor.py) |
+| `build_question_blocks()` | Question UI (src/slack/blocks/question.py) |
 
 ---
 

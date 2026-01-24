@@ -463,7 +463,7 @@ Jira = Projection
 
 ### Phase 36: Question Engine — Conversation Driver
 
-**Status:** NOT STARTED
+**Status:** COMPLETE (7/7 plans)
 
 **Objective:** Transform MARO from "event recorder" to "conversation leader". Questions become first-class tasks in TaskPlan, and the bot actively drives toward complete information.
 
@@ -537,13 +537,13 @@ Bot: "To draft stories, pick approach:"
 | 4 | 36-07 | UI: Question blocks, Button handlers |
 
 **Plans:**
-- [ ] 36-01: QuestionTask Schema (extends Task with question fields)
-- [ ] 36-02: ConversationMode + StatePatch (Active/Passive state machine)
-- [ ] 36-03: QuestionCatalog (hybrid template/LLM question generators)
-- [ ] 36-04: AnswerMapper + BudgetTracker (button/text processing, limits)
-- [ ] 36-05: Question Executor Integration (task_executor changes)
-- [ ] 36-06: Mode Integration + Budget Handler (dispatch integration)
-- [ ] 36-07: Question UI + Button Handlers (Slack UI)
+- [x] 36-01: QuestionTask Schema (extends Task with question fields)
+- [x] 36-02: ConversationMode + StatePatch (Active/Passive state machine)
+- [x] 36-03: QuestionCatalog (hybrid template/LLM question generators)
+- [x] 36-04: AnswerMapper + BudgetTracker (button/text processing, limits)
+- [x] 36-05: Question Executor Integration (task_executor changes)
+- [x] 36-06: Mode Integration + Budget Handler (dispatch integration)
+- [x] 36-07: Question UI + Button Handlers (Slack UI)
 
 ## Completed Milestones
 

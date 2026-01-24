@@ -8,12 +8,15 @@ safety classification, and side effects tracking.
 """
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 import uuid
 
 from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.intent import Intent, SuperMode
+
+if TYPE_CHECKING:
+    from src.schemas.question import QuestionTask
 
 
 class TaskStatus(str, Enum):
@@ -70,6 +73,43 @@ class Task(BaseModel):
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    question_task: Optional["QuestionTask"] = None  # For question-type tasks
+
+    @property
+    def is_question(self) -> bool:
+        """Check if this task is a question task.
+
+        Returns:
+            True if question_task is set, False otherwise.
+        """
+        return self.question_task is not None
+
+    @staticmethod
+    def create_question(
+        mode: SuperMode,
+        intent: Intent,
+        question_task: "QuestionTask",
+        depends_on: Optional[list[str]] = None,
+    ) -> "Task":
+        """Factory method to create a question task.
+
+        Args:
+            mode: The user-facing super mode.
+            intent: The internal routing intent.
+            question_task: The QuestionTask containing question details.
+            depends_on: Optional list of task IDs this task depends on.
+
+        Returns:
+            A new Task configured as a question task.
+        """
+        return Task(
+            mode=mode,
+            intent=intent,
+            title=question_task.question_text[:50] + "..." if len(question_task.question_text) > 50 else question_task.question_text,
+            question_task=question_task,
+            requires_user_input=True,
+            depends_on=depends_on or [],
+        )
 
     @model_validator(mode='after')
     def set_safety_level(self) -> 'Task':
@@ -294,3 +334,8 @@ def get_safety_level(mode: SuperMode) -> SafetyLevel:
         The corresponding safety level.
     """
     return SUPER_MODE_TO_SAFETY.get(mode, SafetyLevel.REQUIRES_CONFIRMATION)
+
+
+# Rebuild Task model to resolve forward reference to QuestionTask
+from src.schemas.question import QuestionTask  # noqa: F401
+Task.model_rebuild()

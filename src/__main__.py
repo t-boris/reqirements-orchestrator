@@ -117,6 +117,12 @@ async def init_database() -> None:
         task_plan_store = TaskPlanStore(conn)
         await task_plan_store.create_tables()
 
+        # Phase 36-02: ConversationMode state machine
+        from src.db.conversation_mode_store import ConversationModeStore
+
+        conversation_mode_store = ConversationModeStore(conn)
+        await conversation_mode_store.create_tables()
+
     logger.info("Database initialized")
 
 

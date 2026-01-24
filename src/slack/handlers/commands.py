@@ -112,6 +112,8 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     - /maro mode feature --primary-epic PROJ-50 - Set mode focused on one epic
     - /maro mode bugs - Set mode to bugs/tasks only
     - /maro mode ops - Set mode to ops (incidents, runbooks)
+    - /maro project SCRUM - Set default Jira project for this channel
+    - /maro project - Show current default project
     - /maro debug - Show debug status
     - /maro debug on - Enable debug mode
     - /maro debug off - Disable debug mode
@@ -172,6 +174,9 @@ async def _handle_maro_command_async(command: dict, say, client: WebClient):
     elif subcommand == "mode":
         # /maro mode [project|feature|bugs|ops] [--primary-epic PROJ-50]
         await _handle_maro_mode(channel, user_id, args, say)
+    elif subcommand == "project":
+        # /maro project [PROJECT_KEY] - Set or show default Jira project
+        await _handle_maro_project(channel, team_id, user_id, args, say)
     elif subcommand == "debug":
         # /maro debug [on|off|status|state]
         debug_action = args[0].lower() if args else "status"
@@ -794,6 +799,120 @@ def _get_mode_description(mode: "ChannelMode") -> str:
         ChannelMode.OPS: "Incidents and runbooks. Stricter Jira writes.",
     }
     return descriptions.get(mode, "")
+
+
+async def _handle_maro_project(
+    channel_id: str,
+    team_id: str,
+    user_id: str,
+    args: list[str],
+    say,
+) -> None:
+    """Handle /maro project command.
+
+    Usage:
+    - /maro project           - Show current default project
+    - /maro project SCRUM     - Set default Jira project to SCRUM
+    - /maro project --clear   - Clear default project (use global)
+    """
+    from src.db import get_connection
+    from src.db.channel_context_store import ChannelContextStore
+    from src.db.models import ChannelConfig
+
+    project_arg = args[0].upper() if args else None
+
+    try:
+        async with get_connection() as conn:
+            store = ChannelContextStore(conn)
+            await store.create_tables()
+
+            ctx = await store.get_or_create(team_id, channel_id)
+
+            # View current project
+            if not project_arg:
+                current = ctx.config.default_jira_project
+                if current:
+                    say(
+                        text=f"*Default Jira Project:* `{current}`\n\n"
+                             f"Tickets created in this channel will use this project.\n"
+                             f"Use `/maro project <KEY>` to change.",
+                        channel=channel_id,
+                    )
+                else:
+                    from src.config.settings import get_settings
+                    settings = get_settings()
+                    global_proj = settings.jira_default_project
+                    if global_proj:
+                        say(
+                            text=f"*Default Jira Project:* Not set for this channel\n\n"
+                                 f"Using global default: `{global_proj}`\n"
+                                 f"Use `/maro project <KEY>` to set a channel-specific project.",
+                            channel=channel_id,
+                        )
+                    else:
+                        say(
+                            text="*Default Jira Project:* Not set\n\n"
+                                 "Use `/maro project <KEY>` to set a default project for this channel.",
+                            channel=channel_id,
+                        )
+                return
+
+            # Clear project
+            if project_arg == "--CLEAR":
+                new_config = ChannelConfig(
+                    default_jira_project=None,
+                    secondary_projects=ctx.config.secondary_projects,
+                    trigger_rule=ctx.config.trigger_rule,
+                    epic_binding_behavior=ctx.config.epic_binding_behavior,
+                    config_permissions=ctx.config.config_permissions,
+                )
+                await store.update_config(team_id, channel_id, new_config)
+                say(
+                    text="Default Jira project cleared for this channel.",
+                    channel=channel_id,
+                )
+                return
+
+            # Validate project key format
+            if not project_arg.isalpha() or len(project_arg) < 2:
+                say(
+                    text=f"Invalid project key: `{project_arg}`\n\n"
+                         f"Project keys should be uppercase letters (e.g., SCRUM, PROJ).",
+                    channel=channel_id,
+                )
+                return
+
+            # Set project
+            new_config = ChannelConfig(
+                default_jira_project=project_arg,
+                secondary_projects=ctx.config.secondary_projects,
+                trigger_rule=ctx.config.trigger_rule,
+                epic_binding_behavior=ctx.config.epic_binding_behavior,
+                config_permissions=ctx.config.config_permissions,
+            )
+            await store.update_config(team_id, channel_id, new_config)
+
+            say(
+                text=f"Default Jira project set to `{project_arg}` for this channel.\n\n"
+                     f"All tickets created here will use this project.",
+                channel=channel_id,
+            )
+
+            logger.info(
+                "Channel default project set",
+                extra={
+                    "channel_id": channel_id,
+                    "project": project_arg,
+                    "set_by": user_id,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to handle project command: {e}", exc_info=True)
+        say(
+            text="Sorry, I couldn't process the project command. Please try again.",
+            channel=channel_id,
+        )
 
 
 # --- Debug Commands (Phase 24) ---
