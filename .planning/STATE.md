@@ -160,6 +160,11 @@ Phase 29.4 decisions:
 - Button payloads include pending_action for stateful handling
 - preflight_use_jira same as pull_only; preflight_use_channel same as proceed
 
+Phase 30.1 decisions:
+- DecisionVersion stores snapshot before each update (immutable history)
+- REPLACED status separate from DEPRECATED (tracks replacement chain via replaced_by field)
+- Canonical message tracking for Slack pinned message pattern (canonical_message_ts, discussion_thread_ts)
+
 Phase 30.2 decisions:
 - JiraFieldPath enum with 7 values (6 decision types + CUSTOM_FIELD extension point)
 - Sync tracking is per-link (each decision-ticket pair tracks its own sync version)
@@ -215,7 +220,7 @@ Next action: Execute 30-03-PLAN.md (DecisionStore integration)
 **Objective:** Make Decision a versioned, linked entity that Jira projects from — not the other way around.
 
 **Plans completed:**
-- 30.1: Decision entity and DecisionStore with versioning (uncommitted - work in progress)
+- 30.1: Decision entity and DecisionStore with versioning
 - 30.2: DecisionLink table for decision-to-Jira mappings
 
 **Next:** Execute 30-03-PLAN.md (DecisionStore integration)
