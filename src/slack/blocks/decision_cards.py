@@ -77,6 +77,130 @@ def build_compact_draft_card(
     return blocks
 
 
+def build_approval_block(
+    decision: Decision,
+    linked_tickets: list[str] | None = None,
+) -> list[dict]:
+    """Build full decision block for approval moment.
+
+    This is the "commit screen" — must feel heavy and formal.
+    Shows what will happen when approved.
+
+    Format:
+    ━━━━━━━━━━━━━━━━━━━━━━
+    {type_emoji} Decision DEC-{id} ({type}) — Ready for approval
+
+    Title:
+    {title}
+
+    Description:
+    {description}
+
+    Will update Jira:
+    - SCRUM-123
+    - SCRUM-456
+
+    Version: v{version}
+    Status: PROPOSED
+    ━━━━━━━━━━━━━━━━━━━━━━
+
+    [Approve decision]   [Edit]   [Cancel]
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.upper()
+
+    # Build Jira tickets section
+    jira_section = ""
+    if linked_tickets:
+        jira_list = "\n".join(f"• {key}" for key in linked_tickets)
+        jira_section = f"\n\n*Will update Jira:*\n{jira_list}"
+
+    blocks = [
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{type_emoji} *Decision DEC-{decision.id[:8]}* ({type_label}) — Ready for approval",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Title:*\n{decision.title}",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Description:*\n{decision.description}",
+            },
+        },
+    ]
+
+    # Add Jira section if tickets linked
+    if jira_section:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": jira_section,
+            },
+        })
+
+    # Metadata
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": f"Version: v{decision.version} | Status: {decision.status.value.upper()}",
+            },
+        ],
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Action buttons
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Approve decision"},
+                "style": "primary",
+                "action_id": "decision_approve",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                    "version": decision.version,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Edit"},
+                "action_id": "decision_edit",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                    "version": decision.version,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Cancel"},
+                "action_id": "decision_cancel",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                    "version": decision.version,
+                }),
+            },
+        ],
+    })
+
+    return blocks
+
+
 def _get_type_emoji(decision_type: DecisionType) -> str:
     """Get emoji for decision type."""
     return {
