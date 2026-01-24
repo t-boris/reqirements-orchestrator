@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 34-file-attachment-processing
-Plan: 3 of 8 in current phase
+Plan: 4 of 8 in current phase
 Status: In progress
-Last activity: 2026-01-23 — Completed 34-03-PLAN.md (Extraction Pipeline)
+Last activity: 2026-01-24 — Completed 34-04-PLAN.md (Chunking + Search Index)
 
-Progress: ███░░░░░░░ 38% (Phase 34: 3/8 plans complete)
+Progress: ████░░░░░░ 50% (Phase 34: 4/8 plans complete)
 
 ## Milestones Summary
 
@@ -264,14 +264,14 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-01-23
-Stopped at: Completed 34-03-PLAN.md (Extraction Pipeline)
+Last session: 2026-01-24
+Stopped at: Completed 34-04-PLAN.md (Chunking + Search Index)
 Resume file: None
-Next action: Execute 34-04-PLAN.md (Chunking + Search Index)
+Next action: Execute 34-05-PLAN.md (Pin/Unpin Mechanics)
 
 ## What's Next
 
-**Phase 34: File Attachment Processing** — IN PROGRESS (3/8 plans)
+**Phase 34: File Attachment Processing** — IN PROGRESS (4/8 plans)
 
 **Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
 
@@ -279,7 +279,7 @@ Next action: Execute 34-04-PLAN.md (Chunking + Search Index)
 - 34-01: Attachment Schema + AttachmentStore - COMPLETE
 - 34-02: File Event Handler - COMPLETE
 - 34-03: Extraction Pipeline - COMPLETE
-- 34-04: Chunking + Search Index - PLANNED
+- 34-04: Chunking + Search Index - COMPLETE
 - 34-05: Pin/Unpin Mechanics - PLANNED
 - 34-06: Intent-Scoped Rules - PLANNED
 - 34-07: Transparency UI - PLANNED
@@ -301,6 +301,12 @@ Phase 34-03 decisions:
 - Token estimation at 0.25 tokens per character
 - Semaphore-limited concurrency (max 3) for extraction
 - Fire-and-forget processing trigger (non-blocking via asyncio.create_task)
+
+Phase 34-04 decisions:
+- Use LangChain RecursiveCharacterTextSplitter (not hand-rolled)
+- PostgreSQL full-text search via tsvector (simpler than embeddings)
+- Chunk size 500 tokens with 50 token overlap
+- Only chunk documents > 500 characters
 
 ---
 
