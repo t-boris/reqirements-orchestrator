@@ -201,6 +201,165 @@ def build_approval_block(
     return blocks
 
 
+def build_approved_card(
+    decision: Decision,
+    linked_tickets: list[str] | None = None,
+) -> list[dict]:
+    """Build compact but authoritative card for APPROVED decision.
+
+    No longer conversational — this is infrastructure.
+
+    Format:
+    {type_emoji} DEC-{id} v{version} ({type}) — Approved
+    {title}
+    Applies to: SCRUM-123, SCRUM-456
+    [Change] [Deprecate] [Show history]
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.upper()
+
+    applies_to = ""
+    if linked_tickets:
+        applies_to = f"\n_Applies to: {', '.join(linked_tickets)}_"
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version} ({type_label}) — *Approved*\n"
+                    f"{decision.title}{applies_to}"
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Change"},
+                    "action_id": "decision_change",
+                    "value": json.dumps({
+                        "decision_id": decision.id,
+                        "version": decision.version,
+                    }),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Deprecate"},
+                    "action_id": "decision_deprecate",
+                    "value": json.dumps({
+                        "decision_id": decision.id,
+                        "version": decision.version,
+                    }),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Show history"},
+                    "action_id": "decision_history",
+                    "value": json.dumps({
+                        "decision_id": decision.id,
+                    }),
+                },
+            ],
+        },
+    ]
+
+    return blocks
+
+
+def build_commit_log_entry(
+    decision: Decision,
+    linked_tickets: list[str] | None = None,
+    approved_by: str | None = None,
+) -> list[dict]:
+    """Build ultra-compact commit log entry for Channel Work Board.
+
+    Pure signal, no fluff. Like git log.
+
+    Format:
+    {type_emoji} DEC-{id} v{version}
+    + {type}: {title}
+    Affects: SCRUM-123, SCRUM-456
+    by @user
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.capitalize()
+
+    affects = ""
+    if linked_tickets:
+        affects = f"\nAffects: {', '.join(linked_tickets)}"
+
+    by_user = ""
+    if approved_by:
+        by_user = f"\nby <@{approved_by}>"
+
+    blocks = [
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version}\n"
+                        f"+ {type_label}: {decision.title}{affects}{by_user}"
+                    ),
+                },
+            ],
+        },
+    ]
+
+    return blocks
+
+
+def build_deprecated_decision_blocks(
+    decision: Decision,
+    replacement: Decision | None = None,
+) -> list[dict]:
+    """Build blocks for deprecated decision.
+
+    Message is not deleted — marked as historical with pointer.
+
+    Format:
+    {type_emoji} Decision DEC-{id} ({type})
+    Status: DEPRECATED
+    Replaced by: DEC-{replacement_id}
+
+    [This decision is no longer active]
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.upper()
+
+    replacement_text = ""
+    if replacement:
+        replacement_text = f"\nReplaced by: DEC-{replacement.id[:8]}"
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{type_emoji} *Decision DEC-{decision.id[:8]}* ({type_label})\n"
+                    f"Status: *DEPRECATED*{replacement_text}"
+                ),
+            },
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "_This decision is no longer active_",
+                },
+            ],
+        },
+    ]
+
+    return blocks
+
+
 def _get_type_emoji(decision_type: DecisionType) -> str:
     """Get emoji for decision type."""
     return {
