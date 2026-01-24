@@ -24,7 +24,10 @@ import logging
 import re
 from typing import Optional, TYPE_CHECKING
 
-from src.schemas.intent import Intent, IntentResult, OpsSubtype, SuperMode, get_super_mode
+from src.schemas.intent import (
+    Intent, IntentResult, OpsSubtype, SuperMode, get_super_mode,
+    TaskPlanProposal, TaskProposal, has_multi_intent_markers,
+)
 
 if TYPE_CHECKING:
     from src.schemas.anchor import ThreadContext
@@ -430,6 +433,39 @@ IMPORTANT RULES:
 3. TICKET_ACTION is for CREATING new items (stories, subtasks, comments) linked to a ticket
 4. "Change priority of X" or "set status to Y" = JIRA_COMMAND
 5. "Create stories for X" or "add comment to X" = TICKET_ACTION
+
+CRITICAL RULE - STRUCTURE REQUESTS ARE NEVER WORKITEM_CREATE:
+When user asks for any of these, it is ALWAYS DRAFT_TRANSFORM, NEVER WORKITEM_CREATE:
+- "list" (list of epics, list of tasks)
+- "set" (set of tickets)
+- "structure" (structure of work)
+- "plan" (work plan, project plan)
+- "breakdown" (breakdown into epics)
+- "only epics" (scope change)
+- "based on decisions" (derive from decisions)
+The semantic meaning is: user wants to CHANGE THE FORM of the draft, not create a single ticket.
+Examples:
+- "Create a list of epics" -> DRAFT_TRANSFORM (NOT WORKITEM_CREATE!)
+- "Give me a breakdown into stories" -> DRAFT_TRANSFORM
+- "Plan based on our decisions" -> DRAFT_TRANSFORM
+- "Only epics, no stories" -> DRAFT_TRANSFORM
+- "Structure the work into epics" -> DRAFT_TRANSFORM
+
+EXCEPTION - EXECUTION COMMANDS (PLURAL) MEAN EXECUTE DRAFT:
+When user uses PLURAL form to execute the already-prepared draft:
+- "Create epics" (plural, no "list"/"plan") -> execute draft, create all items in Jira
+- "Create them" -> execute draft
+- "Go ahead" -> execute draft
+- "Do it" -> execute draft
+- "Yes, create" -> execute draft
+- "Create in Jira" -> execute draft
+These should route to WORKITEM_CREATE with the existing draft.
+
+SINGULAR FORM = NEW SINGLE ITEM:
+- "Create epic" / "Create an epic" / "Create one epic" -> WORKITEM_CREATE (new single item)
+- "Create a ticket for X" -> WORKITEM_CREATE (new single item)
+- "File a bug" -> WORKITEM_CREATE (new single item)
+
 6. OPS intent triggers:
    - If error patterns detected (exception, failed, 400, timeout) -> OPS with ops_subtype=debug
    - If asking "why did you" / "explain" / "show reasoning" -> OPS with ops_subtype=explain
@@ -608,23 +644,183 @@ REASON: <brief explanation>"""
         )
 
 
+async def _llm_classify_multi_intent(
+    message: str,
+    conversation_context: dict | None = None,
+    active_draft: dict | None = None,
+) -> TaskPlanProposal:
+    """Use LLM to classify multiple intents from compound requests.
+
+    When message contains conjunctions like "and", "also", "plus", this function
+    extracts multiple distinct intents as a TaskPlanProposal.
+
+    Args:
+        message: User's current message text
+        conversation_context: Full conversation history (messages + summary)
+        active_draft: Active draft summary for context-aware classification
+
+    Returns:
+        TaskPlanProposal with tasks for each detected intent
+    """
+    import json
+    from src.llm import get_llm
+
+    llm = get_llm()
+
+    # Build context string from conversation history
+    context_str = ""
+    if conversation_context:
+        messages = conversation_context.get("messages", [])
+        summary = conversation_context.get("summary")
+
+        if summary:
+            context_str += f"Conversation summary:\n{summary}\n\n"
+
+        if messages:
+            context_str += "Recent messages:\n"
+            for msg in messages[-10:]:  # Last 10 messages for multi-intent context
+                user = msg.get("user", "unknown")
+                text = msg.get("text", "")
+                if text:
+                    context_str += f"[{user}]: {text}\n"
+            context_str += "\n"
+
+    prompt = f"""You are classifying user intent for a Slack bot. The user message may contain MULTIPLE distinct requests.
+
+{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}
+CURRENT USER MESSAGE: "{message}"
+
+When the user message contains multiple distinct requests (e.g., "check duplicates AND create stories"),
+return ALL intents as a JSON array. Look for conjunctions: and, also, plus, then, after that.
+
+AVAILABLE INTENTS:
+- WORKITEM_CREATE: Create new work item
+- TICKET_ACTION: Create items linked to existing ticket
+- JIRA_COMMAND: Modify existing ticket fields
+- JIRA_SEARCH: Search Jira for existing issues
+- SYNC_REQUEST: Sync channel with Jira
+- REVIEW: Analysis/feedback/discussion
+- DISCUSSION: Greeting/casual
+- DECISION: Recording a decision
+- DRAFT_REFINE: Questions about draft structure
+- DRAFT_TRANSFORM: Commands to change draft structure
+
+RESPONSE FORMAT (JSON only):
+{{
+  "intents": [
+    {{"intent": "INTENT_NAME", "confidence": 0.9, "title": "Human readable task title", "params": {{}}}},
+    {{"intent": "INTENT_NAME", "confidence": 0.85, "title": "Human readable task title", "params": {{}}}}
+  ],
+  "multi_intent": true,
+  "reasons": ["why multiple intents detected"]
+}}
+
+For single intent messages, return:
+{{
+  "intents": [{{"intent": "...", "confidence": ..., "title": "...", "params": {{}}}}],
+  "multi_intent": false,
+  "reasons": ["single intent explanation"]
+}}
+
+PARAMS can include:
+- For JIRA_SEARCH: {{"search_query": "query"}}
+- For TICKET_ACTION: {{"ticket_key": "SCRUM-123", "action_type": "create_stories"}}
+- For JIRA_COMMAND: {{"ticket_key": "SCRUM-123", "field": "status", "value": "Done"}}
+
+Respond with valid JSON only, no markdown code blocks."""
+
+    try:
+        result = await llm.chat(prompt)
+
+        # Strip markdown code blocks if present
+        result = result.strip()
+        if result.startswith("```"):
+            # Remove first line (```json or ```)
+            lines = result.split("\n")
+            result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
+        result = result.strip()
+
+        data = json.loads(result)
+
+        intents_data = data.get("intents", [])
+        is_multi = data.get("multi_intent", False)
+        reasons = data.get("reasons", [])
+
+        tasks = []
+        for idx, item in enumerate(intents_data):
+            intent_str = item.get("intent", "REVIEW").upper()
+            if intent_str == "TICKET":
+                intent_str = "WORKITEM_CREATE"
+
+            try:
+                intent = Intent(intent_str.lower())
+            except ValueError:
+                intent = Intent.REVIEW
+
+            super_mode = get_super_mode(intent)
+
+            task = TaskProposal(
+                intent=intent,
+                super_mode=super_mode,
+                confidence=float(item.get("confidence", 0.8)),
+                title=item.get("title", f"Task {idx + 1}"),
+                params=item.get("params", {}),
+                depends_on_indices=[],
+            )
+            tasks.append(task)
+
+        return TaskPlanProposal(
+            tasks=tasks,
+            is_multi_intent=is_multi or len(tasks) > 1,
+            low_confidence_signal=any(t.confidence < 0.7 for t in tasks),
+            trigger_message=message,
+            reasons=reasons,
+        )
+
+    except Exception as e:
+        logger.warning(f"Multi-intent LLM classification failed: {e}, returning single-task fallback")
+        # Fallback to single task with REVIEW intent
+        return TaskPlanProposal(
+            tasks=[TaskProposal(
+                intent=Intent.REVIEW,
+                super_mode=SuperMode.THINK,
+                confidence=0.5,
+                title="Review request",
+                params={},
+                depends_on_indices=[],
+            )],
+            is_multi_intent=False,
+            low_confidence_signal=True,
+            trigger_message=message,
+            reasons=["multi-intent classification failed, fallback to REVIEW"],
+        )
+
+
 async def classify_intent(
     message: str,
     conversation_context: dict | None = None,
     active_draft: dict | None = None,  # Phase 26
-) -> IntentResult:
+    return_proposal: bool = False,  # Phase 35: Return TaskPlanProposal for multi-intent
+) -> IntentResult | TaskPlanProposal:
     """Classify user message intent using pattern matching + LLM.
 
     Pattern matching is used first for DECISION intent detection.
     LLM classification is used as fallback for all intents.
 
+    Phase 35: When return_proposal=True, returns TaskPlanProposal with multiple
+    tasks for compound requests. Uses should_use_multi_intent_classification()
+    to determine if multi-intent re-classification is needed.
+
     Args:
         message: User's message text
         conversation_context: Full conversation history for context
         active_draft: Active draft summary for context-aware classification (Phase 26)
+        return_proposal: If True, return TaskPlanProposal (Phase 35)
 
     Returns:
-        IntentResult with intent type, confidence, and reasons
+        IntentResult for single intent, or TaskPlanProposal if return_proposal=True
     """
     # Phase 30: Pattern-first detection for DECISION intent
     is_decision, title_hint, pattern_name = _match_decision_patterns(message)
@@ -638,7 +834,7 @@ async def classify_intent(
             f"type_hint={type_hint}, title_hint={title_hint[:50] if title_hint else None}"
         )
 
-        return IntentResult(
+        result = IntentResult(
             intent=Intent.DECISION,
             confidence=0.9,  # High confidence for pattern match
             decision_type_hint=type_hint,
@@ -647,13 +843,100 @@ async def classify_intent(
             reasons=[f"pattern match: {pattern_name}"],
         )
 
-    # LLM classification for all other intents
-    result = await _llm_classify(message, conversation_context, active_draft)
+        if return_proposal:
+            # Wrap in TaskPlanProposal for consistent return type
+            return TaskPlanProposal(
+                tasks=[TaskProposal(
+                    intent=result.intent,
+                    super_mode=result.super_mode or SuperMode.DECIDE,
+                    confidence=result.confidence,
+                    title=title_hint or "Record decision",
+                    params={"decision_type_hint": type_hint, "decision_title_hint": title_hint},
+                    depends_on_indices=[],
+                )],
+                is_multi_intent=False,
+                low_confidence_signal=False,
+                trigger_message=message,
+                reasons=result.reasons,
+            )
+        return result
+
+    # First pass: Single-intent LLM classification
+    single_result = await _llm_classify(message, conversation_context, active_draft)
     logger.info(
-        f"Intent classified by LLM: {result.intent.value}, "
-        f"confidence={result.confidence}, persona={result.persona_hint}, reasons={result.reasons}"
+        f"Intent classified by LLM: {single_result.intent.value}, "
+        f"confidence={single_result.confidence}, persona={single_result.persona_hint}, reasons={single_result.reasons}"
     )
-    return result
+
+    # Phase 35: Check if we should use multi-intent classification
+    if return_proposal and should_use_multi_intent_classification(message, single_result):
+        logger.info(
+            f"Multi-intent re-classification triggered for message: "
+            f"markers={has_multi_intent_markers(message)}, confidence={single_result.confidence}"
+        )
+        proposal = await _llm_classify_multi_intent(message, conversation_context, active_draft)
+        return proposal
+
+    if return_proposal:
+        # Wrap single result in TaskPlanProposal
+        return TaskPlanProposal(
+            tasks=[TaskProposal(
+                intent=single_result.intent,
+                super_mode=single_result.super_mode or get_super_mode(single_result.intent),
+                confidence=single_result.confidence,
+                title=_generate_task_title(single_result),
+                params=_extract_intent_params(single_result),
+                depends_on_indices=[],
+            )],
+            is_multi_intent=False,
+            low_confidence_signal=single_result.confidence < 0.7,
+            trigger_message=message,
+            reasons=single_result.reasons,
+        )
+
+    return single_result
+
+
+def _generate_task_title(result: IntentResult) -> str:
+    """Generate human-readable task title from IntentResult."""
+    titles = {
+        Intent.WORKITEM_CREATE: "Create work item",
+        Intent.TICKET_ACTION: f"Action on {result.ticket_key or 'ticket'}",
+        Intent.JIRA_COMMAND: f"Update {result.command_field or 'field'}",
+        Intent.JIRA_SEARCH: f"Search Jira{': ' + result.search_query if result.search_query else ''}",
+        Intent.REVIEW: "Review/analysis",
+        Intent.DISCUSSION: "Discussion",
+        Intent.DECISION: result.decision_title_hint or "Record decision",
+        Intent.DRAFT_REFINE: "Refine draft",
+        Intent.DRAFT_TRANSFORM: f"Transform draft ({result.transform_operation or 'structure'})",
+        Intent.SYNC_REQUEST: "Sync with Jira",
+        Intent.CHANGE_REQUEST: "Change request",
+    }
+    return titles.get(result.intent, "Process request")
+
+
+def _extract_intent_params(result: IntentResult) -> dict:
+    """Extract intent-specific parameters from IntentResult."""
+    params = {}
+    if result.ticket_key:
+        params["ticket_key"] = result.ticket_key
+    if result.action_type:
+        params["action_type"] = result.action_type
+    if result.command_type:
+        params["command_type"] = result.command_type
+    if result.command_field:
+        params["command_field"] = result.command_field
+    if result.command_value:
+        params["command_value"] = result.command_value
+    if result.search_query:
+        params["search_query"] = result.search_query
+    if result.transform_operation:
+        params["transform_operation"] = result.transform_operation
+    if result.decision_type_hint:
+        params["decision_type_hint"] = result.decision_type_hint
+    if result.decision_title_hint:
+        params["decision_title_hint"] = result.decision_title_hint
+    return params
 
 
 async def intent_router_node(state: dict) -> dict:
