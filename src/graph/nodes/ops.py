@@ -7,6 +7,7 @@ Handles OPS intent with two subtypes:
 System operator perspective - not LLM chain-of-thought.
 
 Phase 27.5: Enhanced explain mode with audit trail.
+Phase 38-06: Uses ContextBuilder for structured explain context.
 """
 import logging
 from datetime import datetime
@@ -14,120 +15,13 @@ from typing import Optional
 
 from src.schemas.intent import OpsSubtype
 from src.schemas.state import AgentState
+from src.context import ContextSpec, build_context
 
 logger = logging.getLogger(__name__)
 
 
-async def build_explain_output(state: dict, channel_id: str, thread_ts: Optional[str] = None) -> str:
-    """Build operator protocol explanation for /maro explain.
-
-    Phase 27.5: Enhanced explain output including:
-    - Intent detected with confidence
-    - Current state/phase
-    - Flow reasoning
-    - Next steps
-    - Recent audit trail
-
-    Args:
-        state: Current agent state dict.
-        channel_id: Slack channel ID.
-        thread_ts: Optional thread timestamp for thread-specific audit.
-
-    Returns:
-        Formatted explain output string.
-    """
-    from src.db import get_connection
-    from src.db.audit_store import AuditStore
-
-    sections = []
-
-    # Intent chosen
-    intent_result = state.get("intent_result", {})
-    intent = intent_result.get("intent", "unknown")
-    confidence = intent_result.get("confidence", 0)
-    reasons = intent_result.get("reasons", [])
-
-    sections.append(f"*Intent:* `{intent}` ({confidence:.0%} confident)")
-    if reasons:
-        sections.append(f"_Reasons:_ {', '.join(str(r) for r in reasons[:3])}")
-
-    # Current state
-    phase = state.get("phase", "unknown")
-    pending_action = state.get("pending_action")
-    workflow_step = state.get("workflow_step")
-
-    sections.append(f"\n*State:* phase=`{phase}`")
-    if pending_action:
-        sections.append(f"Waiting for: `{pending_action}`")
-    if workflow_step:
-        sections.append(f"Workflow step: `{workflow_step}`")
-
-    # Why this flow
-    sections.append("\n*Flow reasoning:*")
-    if intent in ("TICKET", "WORKITEM_CREATE"):
-        sections.append("- User wants to create a work item")
-        sections.append("- Routing to draft extraction + validation")
-    elif intent == "REVIEW":
-        sections.append("- User wants analysis without Jira action")
-        sections.append("- Routing to review/discussion flow")
-    elif intent == "DRAFT_REFINE":
-        sections.append("- User asking about draft structure")
-        sections.append("- Offering scope/type options")
-    elif intent == "DISCUSS":
-        sections.append("- User wants to discuss/chat")
-        sections.append("- Routing to discussion flow")
-    elif intent == "JIRA_SEARCH":
-        sections.append("- User searching for existing Jira issues")
-        sections.append("- Routing to search flow")
-    elif intent == "OPS":
-        sections.append("- User requesting operational insight")
-        sections.append("- Routing to debug/explain flow")
-    else:
-        sections.append(f"- Intent `{intent}` detected")
-        sections.append("- Routing to appropriate handler")
-
-    # What happens next
-    sections.append("\n*Next steps:*")
-    if pending_action == "WAITING_APPROVAL":
-        sections.append("1. User clicks Approve or Edit")
-        sections.append("2. On approve: Create Jira ticket")
-        sections.append("3. Post confirmation with link")
-    elif pending_action == "WAITING_SCOPE_CHOICE":
-        sections.append("1. User selects scope (Ticket/Review/Discussion)")
-        sections.append("2. Re-route message with explicit intent")
-    elif phase == "draft":
-        sections.append("1. Continue extraction from message")
-        sections.append("2. Validate draft completeness")
-        sections.append("3. Show preview or ask questions")
-    elif phase == "review":
-        sections.append("1. Generate analysis")
-        sections.append("2. Post review with optional actions")
-    else:
-        sections.append("1. Process user input")
-        sections.append("2. Generate appropriate response")
-
-    # Recent audit trail (Phase 27.5)
-    try:
-        async with get_connection() as conn:
-            audit_store = AuditStore(conn)
-            await audit_store.ensure_table()
-
-            # Get audit entries - prefer thread-specific, fallback to channel
-            if thread_ts:
-                recent = await audit_store.get_for_thread(channel_id, thread_ts, limit=5)
-            else:
-                recent = await audit_store.get_for_channel(channel_id, limit=5)
-
-            if recent:
-                sections.append("\n*Recent actions:*")
-                for entry in recent[:5]:
-                    actor = f"<@{entry.actor_user_id}>"
-                    outcome_emoji = ":white_check_mark:" if entry.outcome == "success" else ":x:"
-                    sections.append(f"- {outcome_emoji} `{entry.action_type.value}` on `{entry.target_type}:{entry.target_id[:20]}` by {actor}")
-    except Exception as e:
-        logger.debug(f"Could not load audit trail: {e}")
-
-    return "\n".join(sections)
+# Note: build_explain_output() removed in Phase 38-06
+# Replaced by ContextBuilder which provides structured context with === sections
 
 
 DEBUG_PROMPT = '''You are MARO in DEBUG mode. A user is asking about an error or failure.
@@ -154,22 +48,24 @@ Example format:
 
 EXPLAIN_PROMPT = '''You are MARO in EXPLAIN mode. A user is asking about your reasoning or decisions.
 
-CONVERSATION CONTEXT:
 {context}
 
 USER MESSAGE: "{message}"
 
 INSTRUCTIONS:
-Output your explanation in system/state machine terms:
-1. Intent detected: What did you classify the user's request as?
-2. Policy applied: What rules/criteria did you use?
-3. Action executed: What did you do as a result?
+Using the structured context above, explain what happened:
+1. What decisions or reviews are active in this thread?
+2. What was the most recent action taken?
+3. Why was that action chosen?
+
+Use the SYSTEM STATE section for decisions and reviews.
+Use the CONVERSATION section to understand the flow.
+Use the RETRIEVED section for any documents or attachments considered.
 
 Be concise and factual. This is system operator perspective, not LLM introspection.
-Maximum 3-4 sentences.
+Maximum 4-5 sentences.
 
-Example format:
-"Intent: [X]. Policy: [Y]. Action: [Z]."'''
+If you see no relevant context, say so honestly and suggest what the user can ask about.'''
 
 
 async def ops_node(state: AgentState) -> dict:
@@ -290,30 +186,26 @@ async def ops_node(state: AgentState) -> dict:
         except Exception as e:
             logger.debug(f"Could not load channel decisions: {e}")
 
-    # Phase 27.5: For EXPLAIN, build structured output with audit trail
+    # Phase 38-06: For EXPLAIN, use ContextBuilder for structured context
     if ops_subtype == OpsSubtype.EXPLAIN and channel_id:
         try:
-            structured_output = await build_explain_output(state, channel_id, thread_ts)
-            # If user asked a specific question, combine structured output with LLM response
-            if latest_human_message and not any(
-                kw in latest_human_message.lower()
-                for kw in ["explain", "what did you", "why did you", "what's happening", "what are you doing"]
-            ):
-                # User asked a specific question - add structured output as context
-                context_str += f"\n\n=== OPERATOR PROTOCOL ===\n{structured_output}"
+            # Build structured context using ContextSpec.for_ops_explain()
+            spec = ContextSpec.for_ops_explain(channel_id, thread_ts or "")
+            packet = await build_context(spec)
+
+            # Use packet.to_prompt() for structured context with === sections
+            structured_context = packet.to_prompt()
+
+            if structured_context and not packet.is_empty:
+                # Replace ad-hoc context with structured context
+                context_str = structured_context
+                logger.debug(f"Built structured explain context: {packet.total_tokens} tokens")
             else:
-                # User just wants explain mode - return structured output directly
-                logger.info(f"OPS response generated (subtype={ops_subtype.value}, structured)")
-                return {
-                    "decision_result": {
-                        "action": "ops",
-                        "subtype": ops_subtype.value,
-                        "message": structured_output,
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                }
+                # Fallback to existing context if ContextBuilder returns empty
+                logger.debug("ContextBuilder returned empty packet, using fallback context")
+
         except Exception as e:
-            logger.warning(f"Could not build structured explain output: {e}")
+            logger.warning(f"Could not build structured explain context: {e}")
 
     if not latest_human_message:
         logger.warning("No human message found for OPS node")
