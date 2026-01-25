@@ -24,6 +24,7 @@ from src.context.message_index import (
     get_message_index,
     normalize_message,
 )
+from src.context.builder import ContextBuilder, build_context
 
 __all__ = [
     "PinExtractor",
@@ -41,4 +42,6 @@ __all__ = [
     "NormalizedMessage",
     "get_message_index",
     "normalize_message",
+    "ContextBuilder",
+    "build_context",
 ]
