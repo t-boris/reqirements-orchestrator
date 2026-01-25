@@ -353,6 +353,12 @@ class AgentState(TypedDict):
     # 5. TaskPlan is persisted via checkpointer for resumability
     task_plan: Optional[TaskPlan]  # Active multi-intent execution plan
 
+    # Context packet (Phase 38 - Context Architecture)
+    # Built once by handler using ContextBuilder, passed through graph.
+    # Serialized as dict since TypedDict doesn't support Pydantic models directly.
+    # Contains structured context with canonical state, history, and retrieved data.
+    context_packet: Optional[dict]  # ContextPacket.model_dump() for serialization
+
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
     status: Literal["collecting", "ready_to_sync", "synced"]  # Deprecated: use phase instead
