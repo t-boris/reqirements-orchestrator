@@ -326,6 +326,54 @@ async def _queue_request(
     await runner._update_state({"queued_requests": queued})
 
 
+async def _build_context_packet(
+    channel_id: str,
+    thread_ts: str,
+    mode: Optional[str] = None,
+) -> Optional[dict]:
+    """Build context packet for graph execution.
+
+    Uses ContextBuilder to assemble structured context with:
+    - Layer A: Canonical state from DB (decisions, reviews)
+    - Layer B: Working history with rendered blocks
+    - Layer C: Retrieval add-ons (attachments, Jira)
+
+    Args:
+        channel_id: Slack channel ID
+        thread_ts: Thread timestamp
+        mode: Optional SuperMode value (defaults to CHAT)
+
+    Returns:
+        Serialized packet dict or None on error.
+
+    Phase 38-06: Context Architecture integration.
+    """
+    try:
+        from src.context import ContextSpec, ContextBuilder
+        from src.schemas.intent import SuperMode
+
+        # Determine mode - default to CHAT if not specified
+        super_mode = SuperMode.CHAT
+        if mode:
+            try:
+                super_mode = SuperMode(mode.lower())
+            except ValueError:
+                pass
+
+        spec = ContextSpec(
+            mode=super_mode,
+            target=f"{channel_id}:{thread_ts}",
+            purpose="process user message",
+            budget_tokens=4000,
+        )
+        builder = ContextBuilder()
+        packet = await builder.build(spec)
+        return packet.model_dump()
+    except Exception as e:
+        logger.debug(f"Could not build context packet: {e}")
+        return None
+
+
 async def _resolve_thread_context(
     channel_id: str,
     thread_ts: str,
@@ -518,6 +566,17 @@ async def _process_mention(
         # Resolve thread context (Phase 33 - Anchor Message Architecture)
         # This implements Rule A3: Context Inheritance
         thread_context = await _resolve_thread_context(channel, thread_ts, collector)
+
+        # Build context packet (Phase 38-06 - Context Architecture)
+        # Opt-in: builds structured context packet for future graph nodes
+        context_packet = await _build_context_packet(channel, thread_ts)
+        if context_packet and collector:
+            collector.add_entry("context", "Context Packet Built", {
+                "total_tokens": context_packet.get("total_tokens", 0),
+                "has_canonical": bool(context_packet.get("canonical")),
+                "has_history": bool(context_packet.get("history")),
+                "has_retrieved": bool(context_packet.get("retrieved")),
+            })
 
         # Check for persona switch before running graph (Phase 9)
         await _check_persona_switch(runner, text, client, channel, thread_ts)
