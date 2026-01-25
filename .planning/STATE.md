@@ -12,10 +12,10 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 ## Current Position
 
-Phase: 38-context-architecture
+Phase: 39-intent-classification-v2
 Plan: 0 of ? in current phase
 Status: Not planned yet
-Last activity: 2026-01-25 — Phase 38 added
+Last activity: 2026-01-25 — Phase 38 complete
 
 Progress: ░░░░░░░░░░░░░░░░░░░░░░░░░ 0/? plans
 
@@ -338,9 +338,39 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Phase 38 added (Context Architecture)
+Stopped at: Phase 38 complete (Context Architecture)
 Resume file: None
-Next action: Plan Phase 38
+Next action: Plan Phase 39
+
+Phase 38-01 decisions:
+- ReviewArtifact stored in review_artifacts table (not checkpoint-only)
+- DB is source of truth, checkpoint is cache
+- CRUD operations follow existing store patterns (ThreadStateStore, DecisionStore)
+
+Phase 38-02 decisions:
+- BlockRenderer handles 9 block types: section, actions, context, header, divider, rich_text, input, image, video
+- render_blocks() convenience function with singleton pattern
+- Unknown blocks fallback to "[{type} block]" placeholder
+
+Phase 38-03 decisions:
+- ContextSpec is goal-driven: mode, target, purpose, budget_tokens
+- Factory methods for common cases: for_extraction(), for_review(), for_ops_explain()
+- ContextPacket.to_prompt() formats with "=== SECTION ===" headers
+
+Phase 38-04 decisions:
+- NormalizedMessage dataclass with message_type (user/bot/system)
+- MessageIndex uses LRU cache (max 1000 entries)
+- Bot messages with blocks get rendered_text via BlockRenderer
+
+Phase 38-05 decisions:
+- Three-layer context: Layer A (canonical), Layer B (history), Layer C (retrieved)
+- Token budget enforcement with prioritized truncation
+- build_context() convenience function exported from src.context
+
+Phase 38-06 decisions:
+- OPS EXPLAIN uses ContextBuilder instead of build_explain_output() state dump
+- context_packet field added to AgentState for graph propagation
+- Handler builds context packet optionally (opt-in, not breaking change)
 
 ## What's Next
 
@@ -508,6 +538,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-25: Phase 39 ADDED — Intent Classification v2 (2-stage architecture, state gates, unified IntentEnvelope, margin-based ambiguity)
 - 2026-01-25: Phase 38 ADDED — Context Architecture (goal-driven context building, three-layer model)
 - 2026-01-24: Phase 37 COMPLETE — Unified Question Engine (5/5 plans, QuestionEngine facade + review integration)
 - 2026-01-24: Phase 37 ADDED — Unified Question Engine (one mechanism, two providers: CatalogProvider for tickets, FreeformProvider for review)

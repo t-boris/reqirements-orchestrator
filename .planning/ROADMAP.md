@@ -610,7 +610,7 @@ Bot: "To draft stories, pick approach:"
 
 ### Phase 38: Context Architecture
 
-**Status:** Not Started
+**Status:** COMPLETE (6/6 plans)
 
 **Objective:** Refactor context building from "load everything we can" to "build from goal". Context is determined by task, not by what's available.
 
@@ -658,7 +658,88 @@ Bot: "To draft stories, pick approach:"
 
 **Depends on:** Phase 37 (Question Engine provides structured state patterns)
 
-**Plans:** TBD (run `/gsd:plan-phase 38` to break down)
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 38-01, 38-02, 38-03 | Foundation: ReviewArtifactStore, BlockRenderer, ContextSpec/Packet |
+| 2 | 38-04 | MessageIndex with LRU cache |
+| 3 | 38-05 | ContextBuilder three-layer assembly |
+| 4 | 38-06 | Integration: OPS explain fix, handler context building |
+
+**Plans:**
+- [x] 38-01: ReviewArtifactStore (DB persistence for review artifacts) (2026-01-25)
+- [x] 38-02: BlockRenderer (Slack blocks to readable text) (2026-01-25)
+- [x] 38-03: ContextSpec + ContextPacket models (2026-01-25)
+- [x] 38-04: MessageIndex (LRU cache for rendered messages) (2026-01-25)
+- [x] 38-05: ContextBuilder (three-layer context assembly) (2026-01-25)
+- [x] 38-06: Integration (OPS explain fix, handler updates) (2026-01-25)
+
+**Full context:** `.planning/phases/38-context-architecture/38-CONTEXT.md`
+**Research:** `.planning/phases/38-context-architecture/38-RESEARCH.md`
+
+### Phase 39: Intent Classification v2
+
+**Status:** Not Started
+
+**Objective:** Rebuild intent classification with 2-stage architecture, state-based gates, unified IntentEnvelope output, and margin-based ambiguity policy.
+
+**Mantra:** "State gates before LLM. Margin before action. Ambiguity before wrong action."
+
+**Key Changes:**
+
+| Current | Target |
+|---------|--------|
+| Single IntentResult OR TaskPlanProposal | Unified IntentEnvelope (single/plan/ambiguous) |
+| confidence only | confidence + margin + alternatives |
+| LLM-first classification | Stage 0 gates → Stage 1 mode → Stage 2 intent |
+| REVIEW allowed with active draft | Draft priority gate blocks REVIEW |
+| DISCUSSION can loop | Terminal intents = single response → END |
+| Implicit target resolution | Explicit target from anchor, LLM confirms |
+
+**Architecture:**
+
+1. **Stage 0: Deterministic pre-gates** (state-based, no LLM)
+   - Terminal handling (commands, CHAT intents → END)
+   - Active TaskPlan continuation (bypass classifier)
+   - Draft priority gate (BUILD intents prioritized)
+   - Risk guard (low margin + write → ambiguous)
+
+2. **Stage 1: Mode classification** (lightweight LLM)
+   - Returns mode_candidates with scores
+   - Detects multi_intent signal
+
+3. **Stage 2: Intent/TaskPlan** (full LLM)
+   - Returns IntentEnvelope (single/plan/ambiguous)
+   - Minimal extraction (identifiers only)
+
+**IntentEnvelope Output:**
+```json
+{
+  "kind": "single|plan|ambiguous",
+  "mode": "BUILD|THINK|DECIDE|OPERATE|CHAT",
+  "intent": "...",
+  "confidence": 0.0,
+  "margin": 0.0,
+  "risk_level": "safe|write|mass_write|destructive",
+  "targets": {"jira_key": null, "decision_id": null, "workitem_id": null},
+  "alternatives": [...]
+}
+```
+
+**Acceptance Criteria:**
+1. Active draft + "Do you think only one epic is enough?" → DRAFT_REFINE, not REVIEW
+2. "hello" → CHAT → single response → END (no loops)
+3. Multi-intent "create stories and check duplicates" → kind=plan, tasks ordered safely
+4. Any Jira write with low margin → kind=ambiguous with choices
+5. BLOCKED Question task + user reply → bypass classifier, route to AnswerMapper
+6. All outputs match JSON schema, parse errors → fallback to ambiguous
+
+**Depends on:** Phase 38 (Context Architecture provides ContextSpec/ContextPacket)
+
+**Full spec:** `.planning/phases/39-intent-classification-v2/39-CONTEXT.md`
+
+**Plans:** TBD (run `/gsd:plan-phase 39` to break down)
 
 ## Completed Milestones
 
@@ -773,4 +854,5 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
-| 38. Context Architecture | v1.2 | 0/? | Not Started | - |
+| 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
+| 39. Intent Classification v2 | v1.2 | 0/? | Not Started | - |
