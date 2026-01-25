@@ -18,6 +18,12 @@ from src.context.retriever import (
 )
 from src.context.spec import ContextSpec
 from src.context.packet import ContextPacket
+from src.context.message_index import (
+    MessageIndex,
+    NormalizedMessage,
+    get_message_index,
+    normalize_message,
+)
 
 __all__ = [
     "PinExtractor",
@@ -31,4 +37,8 @@ __all__ = [
     "ContextSource",
     "ContextSpec",
     "ContextPacket",
+    "MessageIndex",
+    "NormalizedMessage",
+    "get_message_index",
+    "normalize_message",
 ]
