@@ -608,6 +608,58 @@ Bot: "To draft stories, pick approach:"
 
 **Full context:** `.planning/phases/37-unified-question-engine/37-CONTEXT.md`
 
+### Phase 38: Context Architecture
+
+**Status:** Not Started
+
+**Objective:** Refactor context building from "load everything we can" to "build from goal". Context is determined by task, not by what's available.
+
+**Mantra:** "Context is built from goal, not from availability."
+
+**Key Concepts:**
+
+1. **ContextSpec** — Goal-driven context request:
+   ```python
+   ContextSpec:
+     mode: SuperMode  # BUILD, OPERATE, etc.
+     target: str  # channel_id, thread_ts, workitem_id
+     purpose: str  # "extract draft fields", "explain decision"
+     budget_tokens: int
+     required_artifacts: list[str]  # ["review_artifact", "decisions"]
+   ```
+
+2. **Three-Layer Context Model:**
+   - **Layer A: Canonical State (DB)** — Registry, anchors, decisions, workitems, TaskPlan
+   - **Layer B: Working History** — Normalized messages with rendered blocks (bot blocks → text)
+   - **Layer C: Retrieval Add-ons** — Attachments, Jira snapshots, summaries
+
+3. **Block Rendering:**
+   - Slack blocks converted to `rendered_text` for bot messages
+   - MessageIndex cache for expensive conversions
+   - `message_type: "user" | "bot" | "system"`
+
+4. **ContextPacket Output:**
+   ```
+   === SYSTEM STATE ===
+   [canonical from Layer A]
+
+   === CONVERSATION ===
+   [normalized history from Layer B]
+
+   === RETRIEVED ===
+   [chunked add-ons from Layer C]
+   ```
+
+**Key Changes:**
+- `review_artifact` moves from checkpoint to DB (source of truth, not cache)
+- `thread_state` narrows to binding + execution only
+- `conversation_context` gets block renderer + MessageIndex cache
+- `channel_decisions` is Layer A, not fallback
+
+**Depends on:** Phase 37 (Question Engine provides structured state patterns)
+
+**Plans:** TBD (run `/gsd:plan-phase 38` to break down)
+
 ## Completed Milestones
 
 <details>
@@ -721,3 +773,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 35. Multi-Intent Task Orchestration | v1.2 | 8/8 | Complete | 2026-01-24 |
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
+| 38. Context Architecture | v1.2 | 0/? | Not Started | - |
