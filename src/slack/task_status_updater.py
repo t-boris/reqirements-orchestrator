@@ -39,6 +39,10 @@ SIGNIFICANT_EVENTS = {
 }
 
 
+# Elapsed timer configuration
+ELAPSED_TIMER_INTERVAL = 5.0  # Update every 5 seconds
+
+
 class TaskStatusUpdater:
     """Manages TaskPlan status card updates with throttling."""
 
@@ -47,6 +51,7 @@ class TaskStatusUpdater:
         self._last_update: dict[str, float] = {}  # plan_id -> timestamp
         self._pending_updates: dict[str, TaskPlan] = {}  # plan_id -> latest plan
         self._update_lock = asyncio.Lock()
+        self._elapsed_timers: dict[str, asyncio.Task] = {}  # plan_id -> timer task
 
     async def post_initial_card(
         self,
@@ -211,3 +216,85 @@ class TaskStatusUpdater:
             logger.info(f"Deleted TaskPlan status card: {task_plan.ui_message_ts}")
         except Exception as e:
             logger.debug(f"Could not delete status card: {e}")
+
+    async def start_elapsed_timer(
+        self,
+        plan_id: str,
+        channel_id: str,
+    ) -> None:
+        """Start a background task that updates elapsed time every 5s.
+
+        Phase 43: Task Progress UX - shows elapsed time updating live.
+
+        Timer should:
+        - Update every 5 seconds while task is RUNNING
+        - Respect throttling (combine with other updates)
+        - Auto-stop when task completes
+        - Not block main execution
+
+        Args:
+            plan_id: TaskPlan ID to track
+            channel_id: Slack channel ID for card updates
+        """
+        # Don't start if already running
+        if plan_id in self._elapsed_timers:
+            logger.debug(f"Elapsed timer already running for plan {plan_id}")
+            return
+
+        async def _timer_loop():
+            """Background timer that updates status card periodically."""
+            try:
+                while True:
+                    await asyncio.sleep(ELAPSED_TIMER_INTERVAL)
+
+                    # Load fresh plan state from DB
+                    async with get_connection() as conn:
+                        store = TaskPlanStore(conn)
+                        task_plan = await store.get(plan_id)
+
+                    if not task_plan:
+                        logger.debug(f"Elapsed timer: plan {plan_id} not found, stopping")
+                        break
+
+                    # Check if any tasks are still running
+                    if not task_plan.has_running():
+                        logger.debug(f"Elapsed timer: no running tasks in plan {plan_id}, stopping")
+                        break
+
+                    # Check if plan is done or canceled
+                    if task_plan.status in (TaskPlanStatus.DONE, TaskPlanStatus.CANCELED):
+                        logger.debug(f"Elapsed timer: plan {plan_id} is {task_plan.status}, stopping")
+                        break
+
+                    # Update the status card (respects throttling)
+                    await self.update_card(task_plan, channel_id, event="elapsed_tick")
+
+            except asyncio.CancelledError:
+                logger.debug(f"Elapsed timer for plan {plan_id} was cancelled")
+            except Exception as e:
+                logger.warning(f"Elapsed timer error for plan {plan_id}: {e}")
+            finally:
+                # Clean up timer reference
+                self._elapsed_timers.pop(plan_id, None)
+
+        # Start the background task
+        timer_task = asyncio.create_task(_timer_loop())
+        self._elapsed_timers[plan_id] = timer_task
+        logger.info(f"Started elapsed timer for plan {plan_id}")
+
+    async def stop_elapsed_timer(self, plan_id: str) -> None:
+        """Stop the elapsed timer for a plan.
+
+        Called when task completes/fails/blocks to stop the timer.
+
+        Args:
+            plan_id: TaskPlan ID to stop tracking
+        """
+        timer_task = self._elapsed_timers.pop(plan_id, None)
+        if timer_task:
+            timer_task.cancel()
+            try:
+                await timer_task
+            except asyncio.CancelledError:
+                pass
+            logger.info(f"Stopped elapsed timer for plan {plan_id}")
