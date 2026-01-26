@@ -314,6 +314,14 @@ def build_approved_card(
     if linked_tickets:
         applies_to = f"\n_Applies to: {', '.join(linked_tickets)}_"
 
+    # Add description if available (the actual decision content)
+    description_text = ""
+    if decision.description:
+        desc = decision.description
+        if len(desc) > 200:
+            desc = desc[:200] + "..."
+        description_text = f"\n{desc}"
+
     # Add rationale preview if available (Phase 40)
     rationale_preview = ""
     if decision.rationale:
@@ -332,7 +340,7 @@ def build_approved_card(
                 "type": "mrkdwn",
                 "text": (
                     f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version} ({type_label}) — *Approved*\n"
-                    f"{decision.title}{rationale_preview}{applies_to}"
+                    f"*{decision.title}*{description_text}{rationale_preview}{applies_to}"
                 ),
             },
         },
