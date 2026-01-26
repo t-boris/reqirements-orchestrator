@@ -375,6 +375,32 @@ class GraphRunner:
                 "message": decision_result.get("message", ""),
                 "timestamp": decision_result.get("timestamp", ""),
             }
+        elif action == "triage_question":
+            # Phase 44: Triage questions
+            return {
+                "action": "triage_question",
+                "question": decision_result.get("question"),
+                "triage_context": decision_result.get("triage_context"),
+            }
+        elif action == "collect_question":
+            # Question collection: LLM asking clarifying questions
+            return {
+                "action": "collect_question",
+                "question": decision_result.get("question"),
+                "intent": decision_result.get("intent"),
+                "mode": decision_result.get("mode"),
+            }
+        elif action == "proceed":
+            # Question collection complete - proceed to actual flow
+            return {
+                "action": "proceed",
+                "collected_answers": decision_result.get("collected_answers", {}),
+            }
+        elif action == "error":
+            return {
+                "action": "error",
+                "error": decision_result.get("message", "Unknown error"),
+            }
         else:
             return {"action": "continue"}
 
