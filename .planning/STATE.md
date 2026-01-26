@@ -12,12 +12,12 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 ## Current Position
 
-Phase: 40-decision-v2-rich-context
-Plan: 6 of 6 in current phase
-Status: COMPLETE
-Last activity: 2026-01-25 — Completed Phase 40 (Decision v2 — Rich Context)
+Phase: 41-decision-change-propagation
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-26 — Completed 41-01-PLAN.md
 
-Progress: ██████ 6/6 plans
+Progress: █░░░░ 1/5 plans
 
 ## Milestones Summary
 
@@ -337,10 +337,10 @@ Phase 37-05 decisions:
 
 ## Session Continuity
 
-Last session: 2026-01-25
-Stopped at: Completed Phase 40 (Decision v2 — Rich Context)
+Last session: 2026-01-26
+Stopped at: Completed 41-01-PLAN.md (DecisionChangeOp Schema + Store)
 Resume file: None
-Next action: Plan next phase or complete milestone
+Next action: Execute 41-02-PLAN.md (Impact Analysis)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -430,29 +430,32 @@ Phase 40-02 decisions:
 - psycopg.types.json.Json wrapper for JSONB serialization
 - Version history preserves rich context when decisions are updated
 
+Phase 41-01 decisions:
+- 6 lifecycle states: PROPOSED, CONFIRMED, APPLYING, DONE, FAILED, CANCELLED
+- State transitions validated via VALID_TRANSITIONS map
+- ImpactSummary captures jira_keys, pinned_artifacts, conflict_count, total_affected
+- DecisionStore.create_change_op() helper for tracked decision changes
+
 ## What's Next
 
-**Phase 40: Decision v2 — Rich Context & Versioning** — COMPLETE (6/6 plans)
+**Phase 41: Decision Change Propagation** — IN PROGRESS (1/5 plans)
 
-**Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning.
+**Objective:** Track decision changes through impact analysis, confirmation UI, transactional apply, and rollback support.
 
 **Progress:**
-- 40-01: Rich Context Field Models - COMPLETE
-- 40-02: Database Persistence - COMPLETE
-- 40-03: LLM Extraction - COMPLETE
-- 40-04: Jira Projection - COMPLETE
-- 40-05: UI Rendering - COMPLETE
-- 40-06: Migration + Backfill Commands - COMPLETE
+- 41-01: DecisionChangeOp Schema + Store - COMPLETE
+- 41-02: Impact Analysis - PENDING
+- 41-03: Confirmation UI - PENDING
+- 41-04: Transactional Apply - PENDING
+- 41-05: Rollback Support - PENDING
 
-**What shipped:**
-- RationaleItem, Alternative, Consequence structured models
-- DecisionStore CRUD with rich context persistence
-- LLM extraction from conversation via extract_rich_context()
-- Jira managed section formatting with rich context
-- Slack UI blocks with rich context sections
-- /maro decision enrich and /maro decision needs-context commands
+**What shipped so far:**
+- DecisionChangeOp model with 6 lifecycle states
+- DecisionChangeOpStore with CRUD and state machine validation
+- ImpactSummary model for tracking affected entities
+- DecisionStore integration via create_change_op() helper
 
-**Next action:** Plan next phase or run `/gsd:complete-milestone`
+**Next action:** Execute 41-02-PLAN.md
 
 ---
 
@@ -620,6 +623,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-26: Phase 41 ADDED — Decision Change Propagation (impact analysis, confirmation UI, transactional apply, rollback support)
 - 2026-01-25: Phase 40 ADDED — Decision v2: Rich Context & Versioning (rationale, context, alternatives, consequences, DecisionHead/Version split)
 - 2026-01-25: Phase 39 ADDED — Intent Classification v2 (2-stage architecture, state gates, unified IntentEnvelope, margin-based ambiguity)
 - 2026-01-25: Phase 38 ADDED — Context Architecture (goal-driven context building, three-layer model)
