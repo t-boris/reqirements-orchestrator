@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 41-decision-change-propagation
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-26 — Completed 41-02-PLAN.md
+Last activity: 2026-01-26 — Completed 41-03-PLAN.md
 
-Progress: ██░░░ 2/5 plans
+Progress: ███░░ 3/5 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 41-02-PLAN.md (Impact Analysis Service)
+Stopped at: Completed 41-03-PLAN.md (Confirmation UI)
 Resume file: None
-Next action: Execute 41-03-PLAN.md (Confirmation UI)
+Next action: Execute 41-04-PLAN.md (Transactional Apply)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -442,16 +442,24 @@ Phase 41-02 decisions:
 - DEPRECATE operation always has_jira_writes=True (clears managed sections)
 - analyze_and_update_op() convenience function for workflow integration
 
+Phase 41-03 decisions:
+- Impact preview card shows operation type, version, and affected ticket counts
+- Three confirmation buttons: Apply updates (Jira), Apply to Slack only, Cancel
+- DEPRECATE operation always shows confirmation (has_jira_writes=True)
+- EDIT shows confirmation only if has_jira_writes, else auto-confirms
+- Conflict details limited to 5 tickets with messages
+- High risk warning context block for operations with risk_level="high"
+
 ## What's Next
 
-**Phase 41: Decision Change Propagation** — IN PROGRESS (2/5 plans)
+**Phase 41: Decision Change Propagation** — IN PROGRESS (3/5 plans)
 
 **Objective:** Track decision changes through impact analysis, confirmation UI, transactional apply, and rollback support.
 
 **Progress:**
 - 41-01: DecisionChangeOp Schema + Store - COMPLETE
 - 41-02: Impact Analysis - COMPLETE
-- 41-03: Confirmation UI - PENDING
+- 41-03: Confirmation UI - COMPLETE
 - 41-04: Transactional Apply - PENDING
 - 41-05: Rollback Support - PENDING
 
@@ -463,8 +471,11 @@ Phase 41-02 decisions:
 - ImpactAnalysisService with preflight-based analysis
 - ImpactTicket model for per-ticket impact details
 - Risk level computation (none/low/medium/high)
+- Impact preview card UI (build_impact_preview_card)
+- Confirmation button handlers (Apply updates, Apply to Slack only, Cancel)
+- Integration with decision change/deprecate modal handlers
 
-**Next action:** Execute 41-03-PLAN.md
+**Next action:** Execute 41-04-PLAN.md
 
 ---
 
