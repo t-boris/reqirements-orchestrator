@@ -54,6 +54,8 @@ class DecisionStore:
 
         Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
         """
+        from src.db.decision_version_store import DecisionVersionStore
+
         async with self._conn.cursor() as cur:
             # Main decisions table
             await cur.execute("""
@@ -65,23 +67,15 @@ class DecisionStore:
                     description TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'proposed',
                     version INTEGER NOT NULL DEFAULT 1,
-
-                    -- Provenance
                     created_by TEXT NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     approved_by TEXT,
                     approved_at TIMESTAMPTZ,
-
-                    -- Deprecation/replacement
                     replaced_by UUID,
                     deprecation_reason TEXT,
-
-                    -- Slack message tracking
                     canonical_message_ts TEXT,
                     discussion_thread_ts TEXT,
-
-                    -- Rich context fields (Phase 40)
                     rationale JSONB,
                     context_before TEXT,
                     alternatives JSONB,
@@ -89,7 +83,7 @@ class DecisionStore:
                 )
             """)
 
-            # Migration: Add rich context columns if they don't exist (for existing tables)
+            # Migration: Add rich context columns if they don't exist
             await cur.execute("""
                 ALTER TABLE decisions
                 ADD COLUMN IF NOT EXISTS rationale JSONB,
@@ -98,63 +92,22 @@ class DecisionStore:
                 ADD COLUMN IF NOT EXISTS consequences JSONB
             """)
 
-            # Decision versions table for history
+            # Indexes for decisions table
             await cur.execute("""
-                CREATE TABLE IF NOT EXISTS decision_versions (
-                    id UUID PRIMARY KEY,
-                    decision_id UUID NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
-                    version INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    changed_by TEXT NOT NULL,
-                    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    change_reason TEXT,
-
-                    -- Rich context fields (Phase 40)
-                    rationale JSONB,
-                    context_before TEXT,
-                    alternatives JSONB,
-                    consequences JSONB,
-
-                    UNIQUE(decision_id, version)
-                )
+                CREATE INDEX IF NOT EXISTS idx_decisions_channel_id ON decisions(channel_id)
             """)
-
-            # Migration: Add rich context columns to decision_versions if they don't exist
             await cur.execute("""
-                ALTER TABLE decision_versions
-                ADD COLUMN IF NOT EXISTS rationale JSONB,
-                ADD COLUMN IF NOT EXISTS context_before TEXT,
-                ADD COLUMN IF NOT EXISTS alternatives JSONB,
-                ADD COLUMN IF NOT EXISTS consequences JSONB
+                CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status)
             """)
-
-            # Index on channel_id for list queries
             await cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_decisions_channel_id
-                ON decisions(channel_id)
-            """)
-
-            # Index on status for filtering
-            await cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_decisions_status
-                ON decisions(status)
-            """)
-
-            # Composite index for channel + status queries
-            await cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_decisions_channel_status
-                ON decisions(channel_id, status)
-            """)
-
-            # Index on decision_id for version history queries
-            await cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_decision_versions_decision_id
-                ON decision_versions(decision_id)
+                CREATE INDEX IF NOT EXISTS idx_decisions_channel_status ON decisions(channel_id, status)
             """)
 
             await self._conn.commit()
+
+        # Delegate version table creation to DecisionVersionStore
+        version_store = DecisionVersionStore(self._conn)
+        await version_store.create_tables()
 
     async def create(
         self,
@@ -566,27 +519,18 @@ class DecisionStore:
     ) -> list[DecisionVersion]:
         """Get all historical versions of a decision.
 
+        Delegates to DecisionVersionStore for the actual query.
+
         Args:
             decision_id: UUID of the decision.
 
         Returns:
             List of DecisionVersion objects, ordered by version DESC.
         """
-        async with self._conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT id, decision_id, version, title, description,
-                       status, changed_by, changed_at, change_reason,
-                       rationale, context_before, alternatives, consequences
-                FROM decision_versions
-                WHERE decision_id = %s
-                ORDER BY version DESC
-                """,
-                (decision_id,),
-            )
-            rows = await cur.fetchall()
+        from src.db.decision_version_store import DecisionVersionStore
 
-        return [self._row_to_decision_version(row) for row in rows]
+        version_store = DecisionVersionStore(self._conn)
+        return await version_store.get_version_history(decision_id)
 
     async def set_canonical_message(
         self,
@@ -596,45 +540,12 @@ class DecisionStore:
     ) -> Decision:
         """Set the canonical Slack message for this decision.
 
-        Args:
-            decision_id: UUID of the decision.
-            message_ts: Slack message timestamp of canonical message.
-            thread_ts: Optional thread timestamp under canonical message.
-
-        Returns:
-            Decision: Updated decision with message tracking.
-
-        Raises:
-            ValueError: If decision not found.
+        Delegates to DecisionMessageStore.
         """
-        now = datetime.now(timezone.utc)
+        from src.db.decision_message_store import DecisionMessageStore
 
-        async with self._conn.cursor() as cur:
-            await cur.execute(
-                """
-                UPDATE decisions
-                SET canonical_message_ts = %s, discussion_thread_ts = %s, updated_at = %s
-                WHERE id = %s
-                RETURNING id, channel_id, decision_type, title, description,
-                          status, version, created_by, created_at, updated_at,
-                          approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts,
-                          rationale, context_before, alternatives, consequences
-                """,
-                (
-                    message_ts,
-                    thread_ts,
-                    now,
-                    decision_id,
-                ),
-            )
-            row = await cur.fetchone()
-            await self._conn.commit()
-
-        if not row:
-            raise ValueError(f"Decision not found: {decision_id}")
-
-        return self._row_to_decision(row)
+        store = DecisionMessageStore(self._conn)
+        return await store.set_canonical_message(decision_id, message_ts, thread_ts)
 
     async def get_by_canonical_message(
         self,
@@ -643,35 +554,12 @@ class DecisionStore:
     ) -> Optional[Decision]:
         """Get decision by its canonical Slack message timestamp.
 
-        Used for thread binding — when someone posts in a decision thread,
-        we need to find which decision it belongs to.
-
-        Args:
-            channel_id: Slack channel ID
-            message_ts: Message timestamp of the canonical message
-
-        Returns:
-            Decision if found, None otherwise
+        Delegates to DecisionMessageStore.
         """
-        async with self._conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT id, channel_id, decision_type, title, description,
-                       status, version, created_by, created_at, updated_at,
-                       approved_by, approved_at, replaced_by, deprecation_reason,
-                       canonical_message_ts, discussion_thread_ts,
-                       rationale, context_before, alternatives, consequences
-                FROM decisions
-                WHERE channel_id = %s AND canonical_message_ts = %s
-                """,
-                (channel_id, message_ts),
-            )
-            row = await cur.fetchone()
+        from src.db.decision_message_store import DecisionMessageStore
 
-        if not row:
-            return None
-
-        return self._row_to_decision(row)
+        store = DecisionMessageStore(self._conn)
+        return await store.get_by_canonical_message(channel_id, message_ts)
 
     async def update_rich_context(
         self,
@@ -685,9 +573,7 @@ class DecisionStore:
     ) -> Decision:
         """Update only rich context fields (backfill operation).
 
-        Unlike update(), this does NOT create a version history entry
-        or increment the version number. Used for enriching existing
-        decisions with extracted context.
+        Delegates to DecisionRichContextStore.
 
         Args:
             decision_id: UUID of the decision
@@ -703,40 +589,17 @@ class DecisionStore:
         Raises:
             ValueError: If decision not found
         """
-        now = datetime.now(timezone.utc)
+        from src.db.decision_rich_context_store import DecisionRichContextStore
 
-        async with self._conn.cursor() as cur:
-            await cur.execute(
-                """
-                UPDATE decisions
-                SET rationale = %s,
-                    context_before = %s,
-                    alternatives = %s,
-                    consequences = %s,
-                    updated_at = %s
-                WHERE id = %s
-                RETURNING id, channel_id, decision_type, title, description,
-                          status, version, created_by, created_at, updated_at,
-                          approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts,
-                          rationale, context_before, alternatives, consequences
-                """,
-                (
-                    Json(rationale) if rationale else None,
-                    context_before,
-                    Json(alternatives) if alternatives else None,
-                    Json(consequences) if consequences else None,
-                    now,
-                    decision_id,
-                ),
-            )
-            row = await cur.fetchone()
-            await self._conn.commit()
-
-        if not row:
-            raise ValueError(f"Decision not found: {decision_id}")
-
-        return self._row_to_decision(row)
+        store = DecisionRichContextStore(self._conn)
+        return await store.update_rich_context(
+            decision_id,
+            rationale=rationale,
+            context_before=context_before,
+            alternatives=alternatives,
+            consequences=consequences,
+            updated_by=updated_by,
+        )
 
     async def list_without_rich_context(
         self,
@@ -746,7 +609,7 @@ class DecisionStore:
     ) -> list[Decision]:
         """List decisions in channel that lack rich context.
 
-        Useful for identifying decisions that need enrichment.
+        Delegates to DecisionRichContextStore.
 
         Args:
             channel_id: Slack channel ID
@@ -755,28 +618,10 @@ class DecisionStore:
         Returns:
             List of Decision objects without rich context
         """
-        async with self._conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT id, channel_id, decision_type, title, description,
-                       status, version, created_by, created_at, updated_at,
-                       approved_by, approved_at, replaced_by, deprecation_reason,
-                       canonical_message_ts, discussion_thread_ts,
-                       rationale, context_before, alternatives, consequences
-                FROM decisions
-                WHERE channel_id = %s
-                  AND rationale IS NULL
-                  AND context_before IS NULL
-                  AND alternatives IS NULL
-                  AND consequences IS NULL
-                ORDER BY created_at DESC
-                LIMIT %s
-                """,
-                (channel_id, limit),
-            )
-            rows = await cur.fetchall()
+        from src.db.decision_rich_context_store import DecisionRichContextStore
 
-        return [self._row_to_decision(row) for row in rows]
+        store = DecisionRichContextStore(self._conn)
+        return await store.list_without_rich_context(channel_id, limit=limit)
 
     def _row_to_decision(self, row: tuple) -> Decision:
         """Convert database row to Decision model.
@@ -832,37 +677,6 @@ class DecisionStore:
             consequences=consequences,
         )
 
-    def _row_to_decision_version(self, row: tuple) -> DecisionVersion:
-        """Convert database row to DecisionVersion model.
-
-        Args:
-            row: Tuple from database query.
-                Expected order (13 columns):
-                0: id, 1: decision_id, 2: version, 3: title,
-                4: description, 5: status, 6: changed_by,
-                7: changed_at, 8: change_reason,
-                9: rationale (JSONB), 10: context_before (TEXT),
-                11: alternatives (JSONB), 12: consequences (JSONB)
-
-        Returns:
-            DecisionVersion model instance.
-        """
-        return DecisionVersion(
-            id=str(row[0]),
-            decision_id=str(row[1]),
-            version=row[2],
-            title=row[3],
-            description=row[4],
-            status=DecisionStatus(row[5]),
-            changed_by=row[6],
-            changed_at=row[7],
-            change_reason=row[8],
-            # Rich context (Phase 40) - stored as dict in DecisionVersion
-            rationale=row[9],
-            context=row[10],  # context_before in DB, context in model
-            alternatives=row[11],
-            consequences=row[12],
-        )
 
     # =========================================================================
     # Change Operation Helpers (Phase 41)
