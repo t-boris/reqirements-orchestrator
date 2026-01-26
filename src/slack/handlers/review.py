@@ -295,7 +295,7 @@ async def _show_multi_ticket_preview(
     })
 
     # Build and post preview blocks
-    preview_blocks = build_multi_ticket_preview_blocks(items, ui_version)
+    preview_blocks = build_multi_ticket_preview_blocks(items, ui_version, thread_ts=thread_ts)
 
     epic_count = sum(1 for i in items if i["type"] == "epic")
     story_count = sum(1 for i in items if i["type"] == "story")

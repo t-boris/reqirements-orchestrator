@@ -228,13 +228,27 @@ async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> N
 
     channel_id = body.get("channel", {}).get("id")
     message_ts = body.get("message", {}).get("ts")
-    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
     team_id = body.get("team", {}).get("id", "unknown")
     user_id = body.get("user", {}).get("id", "unknown")
 
     if not channel_id or not message_ts:
         logger.warning("Missing channel_id or message_ts in approve body")
         return
+
+    # Extract thread_ts from button value (contains original thread context)
+    # This is critical for state lookup - message thread_ts may differ from state thread_ts
+    action = body.get("actions", [{}])[0]
+    button_value_raw = action.get("value", "{}")
+    try:
+        button_value = json.loads(button_value_raw)
+        thread_ts = button_value.get("thread_ts", "")
+    except (json.JSONDecodeError, TypeError):
+        # Fallback to message context (legacy buttons)
+        thread_ts = body.get("message", {}).get("thread_ts") or message_ts
+        logger.warning(f"Could not parse button value, falling back to message thread_ts: {thread_ts}")
+
+    if not thread_ts:
+        thread_ts = body.get("message", {}).get("thread_ts") or message_ts
 
     # Check ui_version from action value for stale button detection
     ui_version = _extract_ui_version(body)
@@ -244,12 +258,13 @@ async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> N
         extra={
             "channel": channel_id,
             "message_ts": message_ts,
+            "thread_ts": thread_ts,
             "user_id": user_id,
             "ui_version": ui_version,
         },
     )
 
-    # Get items from state
+    # Get items from state using the original thread_ts from button value
     identity = SessionIdentity(team_id=team_id, channel_id=channel_id, thread_ts=thread_ts)
     try:
         runner = get_runner(identity)
@@ -1319,6 +1334,7 @@ async def _handle_multi_ticket_edit_submit_async(body, client: WebClient, view) 
         ui_version=ui_version,
         source_persona=source_persona,
         source_date=source_date,
+        thread_ts=thread_ts,
     )
 
     # Update the preview message
@@ -1504,6 +1520,7 @@ async def _handle_multi_ticket_remove_item_async(body: dict, client: WebClient) 
         ui_version=new_ui_version,
         source_persona=source_persona,
         source_date=source_date,
+        thread_ts=thread_ts,
     )
 
     try:

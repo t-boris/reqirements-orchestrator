@@ -92,11 +92,19 @@ def build_multi_ticket_preview_blocks(
     ui_version: int = 0,
     source_persona: str = "",
     source_date: str = "",
+    thread_ts: str = "",
 ) -> list[dict]:
     """Build preview blocks for multi-ticket creation.
 
     Shows extracted items in a table with edit/remove actions per row.
     Epics displayed first, then stories with hierarchy indication.
+
+    Args:
+        items: List of ticket items to preview
+        ui_version: Version for stale button detection
+        source_persona: Optional persona that generated the items
+        source_date: Optional date when items were generated
+        thread_ts: Thread timestamp for state lookup (critical for Create All)
 
     Args:
         items: List of extracted items with id, type, title, description, parent_id
@@ -195,7 +203,9 @@ def build_multi_ticket_preview_blocks(
 
     blocks.append({"type": "divider"})
 
-    # Action buttons row
+    # Action buttons row - include thread_ts in values for state lookup
+    import json
+    button_value = json.dumps({"thread_ts": thread_ts, "ui_version": ui_version})
     blocks.append({
         "type": "actions",
         "elements": [
@@ -203,17 +213,20 @@ def build_multi_ticket_preview_blocks(
                 "type": "button",
                 "text": {"type": "plain_text", "text": "Create All in Jira"},
                 "action_id": f"multi_ticket_approve:{ui_version}",
+                "value": button_value,
                 "style": "primary",
             },
             {
                 "type": "button",
                 "text": {"type": "plain_text", "text": "Add Item"},
                 "action_id": f"multi_ticket_add_item:{ui_version}",
+                "value": button_value,
             },
             {
                 "type": "button",
                 "text": {"type": "plain_text", "text": "Cancel"},
                 "action_id": "multi_ticket_cancel",
+                "value": button_value,
                 "style": "danger",
             },
         ],
