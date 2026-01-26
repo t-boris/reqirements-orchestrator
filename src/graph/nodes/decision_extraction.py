@@ -64,6 +64,107 @@ Respond ONLY with valid JSON:
 """
 
 
+async def extract_rich_context(
+    title: str,
+    description: str,
+    conversation_context: str,
+) -> dict:
+    """Extract rich context fields from conversation using LLM.
+
+    Uses low temperature for consistent structured output and gracefully
+    handles errors to ensure decision creation is not blocked.
+
+    Args:
+        title: Decision title
+        description: Decision description
+        conversation_context: Recent conversation messages
+
+    Returns:
+        Dict with rationale, context_before, alternatives, consequences.
+        Each field may be None/empty if not extractable.
+    """
+    if not conversation_context:
+        # No conversation to extract from
+        return {
+            "rationale": None,
+            "context_before": None,
+            "alternatives": [],
+            "consequences": [],
+        }
+
+    prompt = RICH_CONTEXT_EXTRACTION_PROMPT.format(
+        title=title,
+        description=description,
+        conversation=conversation_context[:3000],  # Limit context size
+    )
+
+    try:
+        llm = get_llm(temperature=0.3, max_tokens=1000)
+        response = await llm.chat(prompt)
+
+        # Parse JSON response - handle markdown code blocks if present
+        response_text = response.strip()
+        if response_text.startswith("```"):
+            # Remove markdown code block wrapper
+            lines = response_text.split("\n")
+            # Remove first line (```json) and last line (```)
+            if lines[-1].strip() == "```":
+                lines = lines[1:-1]
+            else:
+                lines = lines[1:]
+            response_text = "\n".join(lines)
+
+        result = json.loads(response_text)
+
+        # Validate and normalize
+        return {
+            "rationale": result.get("rationale") or None,
+            "context_before": result.get("context_before") or None,
+            "alternatives": result.get("alternatives") or [],
+            "consequences": result.get("consequences") or [],
+        }
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse rich context JSON: {e}")
+        return {
+            "rationale": None,
+            "context_before": None,
+            "alternatives": [],
+            "consequences": [],
+        }
+    except Exception as e:
+        logger.warning(f"Failed to extract rich context: {e}")
+        return {
+            "rationale": None,
+            "context_before": None,
+            "alternatives": [],
+            "consequences": [],
+        }
+
+
+def _build_conversation_context(messages: list, max_messages: int = 10) -> str:
+    """Build conversation context string from recent messages.
+
+    Args:
+        messages: List of conversation messages
+        max_messages: Maximum messages to include
+
+    Returns:
+        Formatted conversation string
+    """
+    recent = messages[-max_messages:] if len(messages) > max_messages else messages
+
+    lines = []
+    for msg in recent:
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        # Truncate long messages
+        if len(content) > 500:
+            content = content[:500] + "..."
+        lines.append(content)
+
+    return "\n\n---\n\n".join(lines)
+
+
 async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
     """Extract and create decision from user message.
 
