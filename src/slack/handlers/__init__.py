@@ -186,6 +186,11 @@ from src.slack.handlers.decision_change_handlers import (
     register_decision_change_handlers,
 )
 
+# Triage handlers (Phase 44)
+from src.slack.handlers.triage import (
+    register_triage_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -298,4 +303,6 @@ __all__ = [
     "register_question_handlers",
     # Decision change handlers (Phase 41)
     "register_decision_change_handlers",
+    # Triage handlers (Phase 44)
+    "register_triage_handlers",
 ]
