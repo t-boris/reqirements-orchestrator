@@ -78,7 +78,7 @@ async def task_executor_node(state: AgentState) -> dict[str, Any]:
         next_task.status = TaskStatus.BLOCKED
         next_task.requires_user_input = True
         task_plan.status = TaskPlanStatus.BLOCKED
-                await _persist_plan(task_plan)
+        await _persist_plan(task_plan)
 
         return {
             "task_plan": task_plan.model_dump(),
@@ -118,7 +118,7 @@ async def _execute_task(
         if decision_action == "question_posted":
             # Don't continue - wait for answer
             task_plan.status = TaskPlanStatus.BLOCKED
-                        await _persist_plan(task_plan)
+            await _persist_plan(task_plan)
             return {
                 "task_plan": task_plan.model_dump(),
                 **result,
@@ -127,7 +127,7 @@ async def _execute_task(
         if decision_action == "budget_exhausted":
             # Budget hit - show partial preview
             task_plan.status = TaskPlanStatus.BLOCKED
-                        await _persist_plan(task_plan)
+            await _persist_plan(task_plan)
             return {
                 "task_plan": task_plan.model_dump(),
                 **result,
@@ -140,7 +140,7 @@ async def _execute_task(
         task.clear_active_step()
 
         # Check if more tasks to run
-                await _persist_plan(task_plan)
+        await _persist_plan(task_plan)
 
         # Continue to next task (recursive until blocked or done)
         return await task_executor_node({
@@ -154,7 +154,7 @@ async def _execute_task(
         task.last_error = str(e)
         task.clear_active_step()
         task_plan.status = TaskPlanStatus.BLOCKED
-                await _persist_plan(task_plan)
+        await _persist_plan(task_plan)
 
         return {
             "task_plan": task_plan.model_dump(),
@@ -296,7 +296,7 @@ async def handle_task_approval(
         task.status = TaskStatus.PENDING
         task.requires_user_input = False
         task_plan.status = TaskPlanStatus.PENDING
-                await _persist_plan(task_plan)
+        await _persist_plan(task_plan)
 
         # Continue execution
         return await task_executor_node({
@@ -308,7 +308,7 @@ async def handle_task_approval(
         task.status = TaskStatus.CANCELED
         # Cancel dependent tasks too
         _cascade_cancel(task_plan, task_id)
-                await _persist_plan(task_plan)
+        await _persist_plan(task_plan)
 
         return {
             "task_plan": task_plan.model_dump(),
