@@ -1,4 +1,4 @@
-"""Result dispatching and content extraction logic.
+"""Core dispatch module - main router and shared utilities.
 
 INVARIANT I1: SuperMode = sole UI contract
 All user-facing messages use super_mode, never intent.
@@ -49,26 +49,6 @@ from src.slack.blocks.question import build_question_blocks, build_review_questi
 from src.slack.actionable_message_tracker import clear_old_actionable_and_track_new
 
 logger = logging.getLogger(__name__)
-
-# Decision extraction prompt for architecture decisions (Phase 14)
-DECISION_EXTRACTION_PROMPT = '''Based on this architecture review, extract the decision for a permanent record.
-
-Review/Analysis:
-{review_summary}
-
-User's approval: {approval_message}
-
-Return a JSON object:
-{{
-    "topic": "Descriptive topic name (e.g., 'Course Content Delivery Architecture', 'Student Quiz Modal Design')",
-    "decision": "The chosen approach in 1-2 sentences (e.g., 'App Home Tab with Modals for quizzes, Markdown content served via web service')"
-}}
-
-IMPORTANT:
-- topic should describe WHAT was decided, not the original request
-- decision should summarize the CHOSEN approach, not list all options
-- Be specific and actionable
-'''
 
 # Content extraction prompts for ticket operations (Phase 16)
 UPDATE_EXTRACTION_PROMPT = '''Based on this conversation, extract what should be added to the Jira ticket description.
@@ -228,6 +208,79 @@ async def _extract_comment_content(
     return await llm.chat(prompt)
 
 
+async def _check_preflight_for_action(
+    channel_id: str,
+    ticket_key: str,
+    action_type: str,
+    fields_to_update: Optional[dict] = None,
+    target_status: Optional[str] = None,
+) -> Optional["PreflightResult"]:
+    """Check preflight before ticket action.
+
+    Runs preflight check for update or transition operations.
+
+    Args:
+        channel_id: Slack channel ID.
+        ticket_key: Jira ticket key.
+        action_type: Type of action ("update" or "transition").
+        fields_to_update: Dict of fields to update (for update action).
+        target_status: Target status (for transition action).
+
+    Returns:
+        PreflightResult if conflict detected, None if safe to proceed.
+    """
+    from src.sync.preflight import PreflightService, ConflictType
+    from src.jira.client import JiraService
+    from src.db.jira_registry import JiraRegistryStore
+    from src.db import get_connection
+    from src.config.settings import get_settings
+
+    try:
+        settings = get_settings()
+        jira_service = JiraService(settings)
+
+        async with get_connection() as conn:
+            registry = JiraRegistryStore(conn)
+            await registry.create_tables()
+
+            preflight = PreflightService(jira_service, registry)
+
+            if action_type == "transition" and target_status:
+                result = await preflight.check_transition(
+                    channel_id, ticket_key, target_status
+                )
+            elif action_type == "update" and fields_to_update:
+                result = await preflight.check_update(
+                    channel_id, ticket_key, fields_to_update
+                )
+            else:
+                await jira_service.close()
+                return None
+
+            await jira_service.close()
+
+            # IDEMPOTENT auto-succeeds without UI
+            if result.conflict_type == ConflictType.IDEMPOTENT:
+                logger.info(
+                    "Preflight: IDEMPOTENT - operation already done",
+                    extra={
+                        "ticket_key": ticket_key,
+                        "action_type": action_type,
+                    }
+                )
+                return result  # Return so caller can handle auto-success messaging
+
+            # For SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL - return result for UI
+            if result.needs_choice:
+                return result
+
+            return None
+
+    except Exception as e:
+        logger.warning(f"Preflight check failed, proceeding: {e}")
+        return None
+
+
 async def _dispatch_result(
     result: dict,
     identity: SessionIdentity,
@@ -251,6 +304,15 @@ async def _dispatch_result(
     """
     from src.skills.dispatcher import SkillDispatcher
     from src.graph.nodes.decision import DecisionResult
+
+    # Import domain-specific handlers
+    from src.slack.handlers.dispatch.draft import (
+        _handle_draft_conflict,
+        _handle_transform_applied,
+    )
+    from src.slack.handlers.dispatch.decision import (
+        _handle_decision_approval,
+    )
 
     action = result.get("action", "continue")
     logger.info(f"_dispatch_result received action={action}, result_keys={list(result.keys())}")
@@ -436,347 +498,11 @@ async def _dispatch_result(
 
     elif action == "review_continuation":
         # Review continuation - synthesized response to user's answers
-        continuation_msg = result.get("message", "")
-        persona = result.get("persona", "")
-        topic = result.get("topic", "")
-        is_questions = result.get("is_questions", False)
-        questions_data = result.get("questions_data", [])
-
-        if persona:
-            prefix = f"*{persona}:*\n\n"
-        else:
-            prefix = ""
-
-        # If bot is asking questions, render with buttons (Phase 37)
-        if is_questions and questions_data:
-            intro_text = f"{prefix}Great, here are the key questions we need to resolve:"
-            blocks = [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": intro_text}
-                }
-            ]
-
-            # Add each question with options as buttons
-            # Use review thread_ts as pseudo plan_id for button value encoding
-            review_plan_id = f"review_{identity.thread_ts}"
-            review_version = result.get("version", 1)
-
-            for q_data in questions_data:
-                question_blocks = build_question_blocks(
-                    question_data=q_data,
-                    plan_id=review_plan_id,
-                    plan_version=review_version,
-                )
-                blocks.extend(question_blocks)
-                # Add divider between questions
-                blocks.append({"type": "divider"})
-
-            # Remove last divider
-            if blocks and blocks[-1].get("type") == "divider":
-                blocks.pop()
-
-            # Add context about text replies
-            blocks.append({
-                "type": "context",
-                "elements": [{
-                    "type": "mrkdwn",
-                    "text": "_Click buttons above or reply in thread to answer._",
-                }]
-            })
-
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts if identity.thread_ts else None,
-                blocks=blocks,
-                text=continuation_msg[:200],
-            )
-            return  # Questions rendered, exit early
-
-        if continuation_msg:
-            # Use same chunking logic as review (Slack block text limit is 3000 chars)
-            full_text = prefix + continuation_msg
-            MAX_MESSAGE_LENGTH = 2900
-
-            # Split into message-sized chunks at natural boundaries
-            message_chunks = []
-            remaining = full_text
-            while remaining:
-                if len(remaining) <= MAX_MESSAGE_LENGTH:
-                    message_chunks.append(remaining)
-                    break
-
-                split_at = MAX_MESSAGE_LENGTH
-                para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
-                if para_break > MAX_MESSAGE_LENGTH // 2:
-                    split_at = para_break + 2
-                else:
-                    line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
-                    if line_break > MAX_MESSAGE_LENGTH // 2:
-                        split_at = line_break + 1
-                    else:
-                        space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
-                        if space > MAX_MESSAGE_LENGTH // 2:
-                            split_at = space + 1
-
-                message_chunks.append(remaining[:split_at].rstrip())
-                remaining = remaining[split_at:].lstrip()
-
-            logger.info(f"Sending review_continuation: {len(full_text)} chars in {len(message_chunks)} message(s)")
-
-            # Send each chunk as a separate Slack message
-            for i, chunk in enumerate(message_chunks):
-                is_last_message = (i == len(message_chunks) - 1)
-
-                blocks = [
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": chunk}
-                    }
-                ]
-
-                # Add action buttons only to the last message
-                if is_last_message:
-                    ticket_button_value = json.dumps({
-                        "review_text": continuation_msg[:1500],
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-                    approve_button_value = json.dumps({
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-                    blocks.append({
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {"type": "plain_text", "text": "Approve & Post Decision"},
-                                "action_id": "approve_architecture",
-                                "value": approve_button_value,
-                                "style": "primary",
-                            },
-                            {
-                                "type": "button",
-                                "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                                "action_id": "review_to_ticket",
-                                "value": ticket_button_value,
-                            }
-                        ]
-                    })
-
-                client.chat_postMessage(
-                    channel=identity.channel_id,
-                    thread_ts=identity.thread_ts if identity.thread_ts else None,
-                    blocks=blocks,
-                    text=chunk[:200],
-                )
-
-            # Check if there are follow-up questions to ask
-            has_followup = result.get("has_followup", False)
-            followup_questions = result.get("questions_data", []) if has_followup else []
-
-            if followup_questions:
-                # Post follow-up question with buttons after the update
-                review_plan_id = f"review_{identity.thread_ts}"
-                review_version = result.get("version", 1)
-
-                followup_blocks = [
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": "_I need a bit more information:_"}
-                    }
-                ]
-
-                for q_data in followup_questions:
-                    question_blocks = build_question_blocks(
-                        question_data=q_data,
-                        plan_id=review_plan_id,
-                        plan_version=review_version,
-                    )
-                    followup_blocks.extend(question_blocks)
-
-                followup_blocks.append({
-                    "type": "context",
-                    "elements": [{
-                        "type": "mrkdwn",
-                        "text": "_Reply in thread to answer._",
-                    }]
-                })
-
-                client.chat_postMessage(
-                    channel=identity.channel_id,
-                    thread_ts=identity.thread_ts if identity.thread_ts else None,
-                    blocks=followup_blocks,
-                    text="Follow-up question",
-                )
+        await _handle_review_continuation(result, identity, client)
 
     elif action == "review":
         # Review response - persona-based analysis without Jira operations
-        # Like discussion, responds where mentioned. Longer, thoughtful analysis.
-        review_msg = result.get("message", "")
-        persona = result.get("persona", "")
-        topic = result.get("topic", "")
-
-        # Format as review (persona indicator + analysis)
-        if persona:
-            prefix = f"*{persona} Review:*\n\n"
-        else:
-            prefix = ""
-
-        if review_msg:
-            # Split into multiple Slack messages to avoid collapse
-            # Slack block text limit is 3000 chars, so we split at 2900 to be safe
-            full_text = prefix + review_msg
-            MAX_MESSAGE_LENGTH = 2900  # Keep under Slack's 3000 char block text limit
-
-            # Split into message-sized chunks at natural boundaries
-            message_chunks = []
-            remaining = full_text
-            while remaining:
-                if len(remaining) <= MAX_MESSAGE_LENGTH:
-                    message_chunks.append(remaining)
-                    break
-
-                # Find a good split point (prefer double newline, then single newline)
-                split_at = MAX_MESSAGE_LENGTH
-                # Try to find paragraph break
-                para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
-                if para_break > MAX_MESSAGE_LENGTH // 2:
-                    split_at = para_break + 2
-                else:
-                    # Try single newline
-                    line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
-                    if line_break > MAX_MESSAGE_LENGTH // 2:
-                        split_at = line_break + 1
-                    else:
-                        # Fall back to space
-                        space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
-                        if space > MAX_MESSAGE_LENGTH // 2:
-                            split_at = space + 1
-
-                message_chunks.append(remaining[:split_at].rstrip())
-                remaining = remaining[split_at:].lstrip()
-
-            # Log chunking info
-            logger.info(f"Sending review: {len(full_text)} chars in {len(message_chunks)} message(s)")
-
-            # Send each chunk as a separate Slack message
-            # Track last message with buttons for stale button removal
-            last_actionable_ts = None
-
-            for i, chunk in enumerate(message_chunks):
-                is_last_message = (i == len(message_chunks) - 1)
-
-                blocks = [
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": chunk}
-                    }
-                ]
-
-                # Add action buttons only to the last message
-                if is_last_message:
-                    ticket_button_value = json.dumps({
-                        "review_text": review_msg[:1500],
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-
-                    # Build action buttons based on super_mode
-                    # "Approve & Post Decision" only for DECIDE mode
-                    super_mode = result.get("super_mode", "think")
-                    artifact_id = result.get("artifact_id")
-                    action_elements = []
-
-                    if super_mode == "decide":
-                        approve_button_value = json.dumps({
-                            "topic": (topic or "")[:100],
-                            "persona": persona or "",
-                        })
-                        action_elements.append({
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Approve & Post Decision"},
-                            "action_id": "approve_architecture",
-                            "value": approve_button_value,
-                            "style": "primary",
-                        })
-                    elif artifact_id:
-                        # In THINK mode with artifact - offer to capture as decision
-                        capture_button_value = json.dumps({
-                            "artifact_id": artifact_id,
-                            "topic": (topic or "")[:100],
-                            "persona": persona or "",
-                        })
-                        action_elements.append({
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Capture as Decision"},
-                            "action_id": "capture_as_decision",
-                            "value": capture_button_value,
-                        })
-
-                    # "Turn into Jira ticket" always available
-                    action_elements.append({
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                        "action_id": "review_to_ticket",
-                        "value": ticket_button_value,
-                    })
-
-                    blocks.append({
-                        "type": "actions",
-                        "elements": action_elements
-                    })
-
-                try:
-                    post_result = client.chat_postMessage(
-                        channel=identity.channel_id,
-                        thread_ts=identity.thread_ts if identity.thread_ts else None,
-                        blocks=blocks,
-                        text=chunk[:200],  # Fallback text
-                    )
-                    # Track last message with buttons for cleanup
-                    if is_last_message and post_result.get("ts"):
-                        last_actionable_ts = post_result["ts"]
-                except Exception as e:
-                    logger.error(f"Failed to post review message {i+1}/{len(message_chunks)}: {e}")
-                    # Try posting without blocks as fallback
-                    try:
-                        client.chat_postMessage(
-                            channel=identity.channel_id,
-                            thread_ts=identity.thread_ts if identity.thread_ts else None,
-                            text=chunk[:3000],
-                        )
-                    except Exception as e2:
-                        logger.error(f"Fallback text-only message also failed: {e2}")
-
-            # Clear old actionable buttons and track new message
-            if last_actionable_ts and identity.thread_ts:
-                clear_old_actionable_and_track_new(
-                    client,
-                    identity.channel_id,
-                    identity.thread_ts,
-                    last_actionable_ts,
-                )
-
-            # Phase 39: Post structured question if available
-            question_task = result.get("question_task")
-            if question_task:
-                artifact_id = result.get("artifact_id")
-                question_blocks = build_review_question_blocks(
-                    question_data=question_task,
-                    artifact_id=artifact_id,
-                )
-                try:
-                    client.chat_postMessage(
-                        channel=identity.channel_id,
-                        thread_ts=identity.thread_ts if identity.thread_ts else None,
-                        blocks=question_blocks,
-                        text="Question for you",
-                    )
-                    logger.info("Posted structured review question")
-                except Exception as e:
-                    logger.error(f"Failed to post review question: {e}")
+        await _handle_review(result, identity, client)
 
     elif action == "jira_command_confirm":
         # Handle Jira command confirmation (Phase 21)
@@ -880,78 +606,391 @@ async def _dispatch_result(
         )
 
 
-async def _check_preflight_for_action(
-    channel_id: str,
-    ticket_key: str,
-    action_type: str,
-    fields_to_update: Optional[dict] = None,
-    target_status: Optional[str] = None,
-) -> Optional["PreflightResult"]:
-    """Check preflight before ticket action.
+# --- Review Handlers ---
 
-    Runs preflight check for update or transition operations.
+async def _handle_review_continuation(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle review_continuation action - synthesized response to user's answers."""
+    continuation_msg = result.get("message", "")
+    persona = result.get("persona", "")
+    topic = result.get("topic", "")
+    is_questions = result.get("is_questions", False)
+    questions_data = result.get("questions_data", [])
 
-    Args:
-        channel_id: Slack channel ID.
-        ticket_key: Jira ticket key.
-        action_type: Type of action ("update" or "transition").
-        fields_to_update: Dict of fields to update (for update action).
-        target_status: Target status (for transition action).
+    if persona:
+        prefix = f"*{persona}:*\n\n"
+    else:
+        prefix = ""
 
-    Returns:
-        PreflightResult if conflict detected, None if safe to proceed.
-    """
-    from src.sync.preflight import PreflightService, ConflictType
-    from src.jira.client import JiraService
-    from src.db.jira_registry import JiraRegistryStore
-    from src.db import get_connection
-    from src.config.settings import get_settings
+    # If bot is asking questions, render with buttons (Phase 37)
+    if is_questions and questions_data:
+        intro_text = f"{prefix}Great, here are the key questions we need to resolve:"
+        blocks = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": intro_text}
+            }
+        ]
 
-    try:
-        settings = get_settings()
-        jira_service = JiraService(settings)
+        # Add each question with options as buttons
+        # Use review thread_ts as pseudo plan_id for button value encoding
+        review_plan_id = f"review_{identity.thread_ts}"
+        review_version = result.get("version", 1)
 
-        async with get_connection() as conn:
-            registry = JiraRegistryStore(conn)
-            await registry.create_tables()
+        for q_data in questions_data:
+            question_blocks = build_question_blocks(
+                question_data=q_data,
+                plan_id=review_plan_id,
+                plan_version=review_version,
+            )
+            blocks.extend(question_blocks)
+            # Add divider between questions
+            blocks.append({"type": "divider"})
 
-            preflight = PreflightService(jira_service, registry)
+        # Remove last divider
+        if blocks and blocks[-1].get("type") == "divider":
+            blocks.pop()
 
-            if action_type == "transition" and target_status:
-                result = await preflight.check_transition(
-                    channel_id, ticket_key, target_status
-                )
-            elif action_type == "update" and fields_to_update:
-                result = await preflight.check_update(
-                    channel_id, ticket_key, fields_to_update
-                )
+        # Add context about text replies
+        blocks.append({
+            "type": "context",
+            "elements": [{
+                "type": "mrkdwn",
+                "text": "_Click buttons above or reply in thread to answer._",
+            }]
+        })
+
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts if identity.thread_ts else None,
+            blocks=blocks,
+            text=continuation_msg[:200],
+        )
+        return  # Questions rendered, exit early
+
+    if continuation_msg:
+        # Use same chunking logic as review (Slack block text limit is 3000 chars)
+        full_text = prefix + continuation_msg
+        MAX_MESSAGE_LENGTH = 2900
+
+        # Split into message-sized chunks at natural boundaries
+        message_chunks = []
+        remaining = full_text
+        while remaining:
+            if len(remaining) <= MAX_MESSAGE_LENGTH:
+                message_chunks.append(remaining)
+                break
+
+            split_at = MAX_MESSAGE_LENGTH
+            para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
+            if para_break > MAX_MESSAGE_LENGTH // 2:
+                split_at = para_break + 2
             else:
-                await jira_service.close()
-                return None
+                line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
+                if line_break > MAX_MESSAGE_LENGTH // 2:
+                    split_at = line_break + 1
+                else:
+                    space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
+                    if space > MAX_MESSAGE_LENGTH // 2:
+                        split_at = space + 1
 
-            await jira_service.close()
+            message_chunks.append(remaining[:split_at].rstrip())
+            remaining = remaining[split_at:].lstrip()
 
-            # IDEMPOTENT auto-succeeds without UI
-            if result.conflict_type == ConflictType.IDEMPOTENT:
-                logger.info(
-                    "Preflight: IDEMPOTENT - operation already done",
-                    extra={
-                        "ticket_key": ticket_key,
-                        "action_type": action_type,
-                    }
+        logger.info(f"Sending review_continuation: {len(full_text)} chars in {len(message_chunks)} message(s)")
+
+        # Send each chunk as a separate Slack message
+        for i, chunk in enumerate(message_chunks):
+            is_last_message = (i == len(message_chunks) - 1)
+
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": chunk}
+                }
+            ]
+
+            # Add action buttons only to the last message
+            if is_last_message:
+                ticket_button_value = json.dumps({
+                    "review_text": continuation_msg[:1500],
+                    "topic": (topic or "")[:100],
+                    "persona": persona or "",
+                })
+                approve_button_value = json.dumps({
+                    "topic": (topic or "")[:100],
+                    "persona": persona or "",
+                })
+                blocks.append({
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Approve & Post Decision"},
+                            "action_id": "approve_architecture",
+                            "value": approve_button_value,
+                            "style": "primary",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                            "action_id": "review_to_ticket",
+                            "value": ticket_button_value,
+                        }
+                    ]
+                })
+
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                blocks=blocks,
+                text=chunk[:200],
+            )
+
+        # Check if there are follow-up questions to ask
+        has_followup = result.get("has_followup", False)
+        followup_questions = result.get("questions_data", []) if has_followup else []
+
+        if followup_questions:
+            # Post follow-up question with buttons after the update
+            review_plan_id = f"review_{identity.thread_ts}"
+            review_version = result.get("version", 1)
+
+            followup_blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "_I need a bit more information:_"}
+                }
+            ]
+
+            for q_data in followup_questions:
+                question_blocks = build_question_blocks(
+                    question_data=q_data,
+                    plan_id=review_plan_id,
+                    plan_version=review_version,
                 )
-                return result  # Return so caller can handle auto-success messaging
+                followup_blocks.extend(question_blocks)
 
-            # For SAFE_DRIFT, REAL_CONFLICT, STRUCTURAL - return result for UI
-            if result.needs_choice:
-                return result
+            followup_blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "_Reply in thread to answer._",
+                }]
+            })
 
-            return None
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                blocks=followup_blocks,
+                text="Follow-up question",
+            )
 
-    except Exception as e:
-        logger.warning(f"Preflight check failed, proceeding: {e}")
-        return None
 
+async def _handle_review(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Handle review action - persona-based analysis without Jira operations."""
+    review_msg = result.get("message", "")
+    persona = result.get("persona", "")
+    topic = result.get("topic", "")
+
+    # Format as review (persona indicator + analysis)
+    if persona:
+        prefix = f"*{persona} Review:*\n\n"
+    else:
+        prefix = ""
+
+    if review_msg:
+        # Split into multiple Slack messages to avoid collapse
+        # Slack block text limit is 3000 chars, so we split at 2900 to be safe
+        full_text = prefix + review_msg
+        MAX_MESSAGE_LENGTH = 2900  # Keep under Slack's 3000 char block text limit
+
+        # Split into message-sized chunks at natural boundaries
+        message_chunks = []
+        remaining = full_text
+        while remaining:
+            if len(remaining) <= MAX_MESSAGE_LENGTH:
+                message_chunks.append(remaining)
+                break
+
+            # Find a good split point (prefer double newline, then single newline)
+            split_at = MAX_MESSAGE_LENGTH
+            # Try to find paragraph break
+            para_break = remaining.rfind("\n\n", 0, MAX_MESSAGE_LENGTH)
+            if para_break > MAX_MESSAGE_LENGTH // 2:
+                split_at = para_break + 2
+            else:
+                # Try single newline
+                line_break = remaining.rfind("\n", 0, MAX_MESSAGE_LENGTH)
+                if line_break > MAX_MESSAGE_LENGTH // 2:
+                    split_at = line_break + 1
+                else:
+                    # Fall back to space
+                    space = remaining.rfind(" ", 0, MAX_MESSAGE_LENGTH)
+                    if space > MAX_MESSAGE_LENGTH // 2:
+                        split_at = space + 1
+
+            message_chunks.append(remaining[:split_at].rstrip())
+            remaining = remaining[split_at:].lstrip()
+
+        # Log chunking info
+        logger.info(f"Sending review: {len(full_text)} chars in {len(message_chunks)} message(s)")
+
+        # Send each chunk as a separate Slack message
+        # Track last message with buttons for stale button removal
+        last_actionable_ts = None
+
+        for i, chunk in enumerate(message_chunks):
+            is_last_message = (i == len(message_chunks) - 1)
+
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": chunk}
+                }
+            ]
+
+            # Add action buttons only to the last message
+            if is_last_message:
+                ticket_button_value = json.dumps({
+                    "review_text": review_msg[:1500],
+                    "topic": (topic or "")[:100],
+                    "persona": persona or "",
+                })
+
+                # Build action buttons based on super_mode
+                # "Approve & Post Decision" only for DECIDE mode
+                super_mode = result.get("super_mode", "think")
+                artifact_id = result.get("artifact_id")
+                action_elements = []
+
+                if super_mode == "decide":
+                    approve_button_value = json.dumps({
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    action_elements.append({
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Approve & Post Decision"},
+                        "action_id": "approve_architecture",
+                        "value": approve_button_value,
+                        "style": "primary",
+                    })
+                elif artifact_id:
+                    # In THINK mode with artifact - offer to capture as decision
+                    capture_button_value = json.dumps({
+                        "artifact_id": artifact_id,
+                        "topic": (topic or "")[:100],
+                        "persona": persona or "",
+                    })
+                    action_elements.append({
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Capture as Decision"},
+                        "action_id": "capture_as_decision",
+                        "value": capture_button_value,
+                    })
+
+                # "Turn into Jira ticket" always available
+                action_elements.append({
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                    "action_id": "review_to_ticket",
+                    "value": ticket_button_value,
+                })
+
+                blocks.append({
+                    "type": "actions",
+                    "elements": action_elements
+                })
+
+            try:
+                post_result = client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts if identity.thread_ts else None,
+                    blocks=blocks,
+                    text=chunk[:200],  # Fallback text
+                )
+                # Track last message with buttons for cleanup
+                if is_last_message and post_result.get("ts"):
+                    last_actionable_ts = post_result["ts"]
+            except Exception as e:
+                logger.error(f"Failed to post review message {i+1}/{len(message_chunks)}: {e}")
+                # Try posting without blocks as fallback
+                try:
+                    client.chat_postMessage(
+                        channel=identity.channel_id,
+                        thread_ts=identity.thread_ts if identity.thread_ts else None,
+                        text=chunk[:3000],
+                    )
+                except Exception as e2:
+                    logger.error(f"Fallback text-only message also failed: {e2}")
+
+        # Clear old actionable buttons and track new message
+        if last_actionable_ts and identity.thread_ts:
+            clear_old_actionable_and_track_new(
+                client,
+                identity.channel_id,
+                identity.thread_ts,
+                last_actionable_ts,
+            )
+
+        # Phase 39: Post structured questions if available
+        is_questions = result.get("is_questions", False)
+        questions_data = result.get("questions_data", [])
+        if is_questions and questions_data:
+            # Build question blocks for ALL questions
+            review_plan_id = f"review_{identity.thread_ts}"
+            review_version = 1
+
+            question_blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "*To proceed, I need your input on these questions:*"}
+                }
+            ]
+
+            for q_data in questions_data:
+                q_blocks = build_question_blocks(
+                    question_data=q_data,
+                    plan_id=review_plan_id,
+                    plan_version=review_version,
+                )
+                question_blocks.extend(q_blocks)
+                question_blocks.append({"type": "divider"})
+
+            # Remove last divider
+            if question_blocks and question_blocks[-1].get("type") == "divider":
+                question_blocks.pop()
+
+            # Add context
+            question_blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "_Click buttons above or reply in thread to answer._",
+                }]
+            })
+
+            try:
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts if identity.thread_ts else None,
+                    blocks=question_blocks,
+                    text="Questions for you",
+                )
+                logger.info(f"Posted {len(questions_data)} structured review questions")
+            except Exception as e:
+                logger.error(f"Failed to post review questions: {e}")
+
+
+# --- Ticket Action Handler ---
 
 async def _handle_ticket_action(
     result: dict,
@@ -1233,6 +1272,8 @@ async def _handle_ticket_action(
         )
 
 
+# --- Story Generation ---
+
 STORY_GENERATION_PROMPT = '''Based on this Epic, generate user stories that break down the work.
 
 Epic Key: {epic_key}
@@ -1345,7 +1386,7 @@ async def _handle_create_stories(
 
             story_text = f"*{i}. {title}*\n{description}"
             if criteria:
-                story_text += "\n_Acceptance Criteria:_\n" + "\n".join(f"• {c}" for c in criteria[:3])
+                story_text += "\n_Acceptance Criteria:_\n" + "\n".join(f"- {c}" for c in criteria[:3])
 
             # Truncate if too long for Slack block
             if len(story_text) > 2900:
@@ -1400,317 +1441,7 @@ async def _handle_create_stories(
         await jira_service.close()
 
 
-async def _handle_decision_approval(
-    result: dict,
-    identity: SessionIdentity,
-    client: WebClient,
-):
-    """Handle architecture decision approval (Phase 14)."""
-    review_context = result.get("review_context")
-
-    if not review_context:
-        # No recent review to approve
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            text="No recent review to approve. I can only record a decision after giving you a review.",
-        )
-    else:
-        # Extract decision from review context using LLM
-        from src.llm import get_llm
-        from src.slack.blocks import build_decision_blocks
-        import re
-
-        try:
-            # Get latest human message for context
-            approval_message = result.get("approval_message", "approved")
-
-            llm = get_llm()
-            # Use updated_recommendation if available (from Q&A), else original summary
-            effective_summary = (
-                review_context.get("updated_recommendation") or
-                review_context.get("review_summary", "")
-            )
-            extraction_prompt = DECISION_EXTRACTION_PROMPT.format(
-                review_summary=effective_summary,
-                approval_message=approval_message,
-            )
-
-            extraction_result = await llm.chat(extraction_prompt)
-
-            # Parse JSON response
-            # Try to extract JSON from response (handles markdown code blocks)
-            json_match = re.search(r'\{[^{}]*\}', extraction_result, re.DOTALL)
-            if json_match:
-                decision_data = json.loads(json_match.group())
-            else:
-                decision_data = json.loads(extraction_result)
-
-            topic = decision_data.get("topic", review_context.get("topic", "Architecture decision"))
-            decision_text = decision_data.get("decision", "Approved")
-
-            # Get user who approved
-            user_id = result.get("user_id", "unknown")
-            thread_ts = review_context.get("thread_ts", identity.thread_ts)
-            channel_id = review_context.get("channel_id", identity.channel_id)
-
-            logger.info(
-                "Architecture decision detected",
-                extra={
-                    "channel_id": channel_id,
-                    "thread_ts": thread_ts,
-                    "topic": topic,
-                    "user_id": user_id,
-                }
-            )
-
-            # Build and post decision blocks to CHANNEL (not thread!)
-            decision_blocks = build_decision_blocks(
-                topic=topic,
-                decision=decision_text,
-                channel_id=channel_id,
-                thread_ts=thread_ts,
-                user_id=user_id,
-            )
-
-            # Post to channel (no thread_ts = channel root)
-            client.chat_postMessage(
-                channel=channel_id,
-                blocks=decision_blocks,
-                text=f"Architecture Decision: {topic}",  # Fallback text
-            )
-
-            # Confirm in thread
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                text="Decision recorded in channel.",
-            )
-
-            # NEW: Link to Jira (Phase 21-05)
-            await _link_decision_to_jira(
-                topic=topic,
-                decision_text=decision_text,
-                channel_id=channel_id,
-                thread_ts=thread_ts,
-                user_id=user_id,
-                identity=identity,
-                client=client,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to extract/post decision: {e}", exc_info=True)
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                text="I understood that as approval, but couldn't extract the decision. The review is still available above.",
-            )
-
-
-async def _link_decision_to_jira(
-    topic: str,
-    decision_text: str,
-    channel_id: str,
-    thread_ts: str,
-    user_id: str,
-    identity: SessionIdentity,
-    client: WebClient,
-):
-    """Link approved decision to related Jira issues.
-
-    Flow:
-    1. Find related issues using DecisionLinker
-    2. If single match with high confidence: auto-update
-    3. If multiple matches or low confidence: ask user
-    """
-    from datetime import datetime, timezone
-    from src.slack.decision_linker import DecisionLinker
-    from src.slack.thread_bindings import get_binding_store
-
-    try:
-        linker = DecisionLinker()
-
-        # Check for thread binding
-        binding_store = get_binding_store()
-        binding = await binding_store.get_binding(channel_id, thread_ts)
-        thread_binding = binding.issue_key if binding else None
-
-        # Find related issues
-        related_issues = await linker.find_related_issues(
-            decision_topic=topic,
-            decision_text=decision_text,
-            channel_id=channel_id,
-            thread_binding=thread_binding,
-        )
-
-        if not related_issues:
-            # No related issues found now, but record for later sync
-            logger.debug("No related Jira issues found for decision - recording for sync")
-            await linker.record_decision_sync(
-                channel_id=channel_id,
-                decision_ts=thread_ts,
-                topic=topic,
-                decision_text=decision_text,
-                related_issues=[],
-                synced_to_jira=False,  # Not synced yet - will appear in /maro sync
-            )
-            await linker.close()
-            return
-
-        # Build Slack thread link
-        slack_link = f"https://slack.com/archives/{channel_id}/p{thread_ts.replace('.', '')}"
-
-        # Format decision for Jira
-        timestamp = datetime.now(timezone.utc).isoformat()
-        formatted_decision = linker.format_decision_for_jira(
-            topic=topic,
-            decision=decision_text,
-            approver=f"<@{user_id}>",
-            timestamp=timestamp,
-            slack_link=slack_link,
-        )
-
-        if len(related_issues) == 1:
-            # High confidence single match - auto-update
-            issue_key = related_issues[0]
-            success = await linker.apply_decision_to_issue(
-                issue_key,
-                formatted_decision,
-                mode="add_comment",
-                add_label=True,
-                channel_id=channel_id,
-                decision_ts=thread_ts,
-                topic=topic,
-            )
-
-            if success:
-                client.chat_postMessage(
-                    channel=identity.channel_id,
-                    thread_ts=identity.thread_ts,
-                    text=f"Decision added to *{issue_key}*.",
-                )
-        else:
-            # Multiple matches - ask user
-            await _prompt_decision_link(
-                issues=related_issues,
-                topic=topic,
-                decision_text=decision_text,
-                user_id=user_id,
-                identity=identity,
-                client=client,
-            )
-
-        await linker.close()
-
-    except Exception as e:
-        logger.warning(f"Failed to link decision to Jira: {e}", exc_info=True)
-        # Non-blocking - decision was already posted to channel
-
-
-async def _prompt_decision_link(
-    issues: list[str],
-    topic: str,
-    decision_text: str,
-    user_id: str,
-    identity: SessionIdentity,
-    client: WebClient,
-):
-    """Prompt user to select which Jira issue to link decision to.
-
-    Shows up to 5 related issues with Link buttons.
-    """
-    from src.jira.client import JiraService
-    from src.config.settings import get_settings
-
-    blocks = [
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "Link this decision to a Jira ticket?"}
-        },
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*{topic}*\n{decision_text[:200]}..."}
-        },
-        {"type": "divider"},
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "*Related tickets:*"}
-        },
-    ]
-
-    # Fetch issue summaries for context
-    try:
-        settings = get_settings()
-        jira = JiraService(settings)
-
-        for key in issues[:5]:  # Max 5 options
-            try:
-                issue = await jira.get_issue(key)
-                summary = issue.summary[:60] + "..." if len(issue.summary) > 60 else issue.summary
-            except Exception:
-                summary = "(Could not fetch summary)"
-
-            # Store data needed for linking in button value
-            button_value = json.dumps({
-                "key": key,
-                "topic": topic[:100],
-                "decision": decision_text[:500],
-                "user_id": user_id,
-            })
-
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*{key}*: {summary}"},
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Link"},
-                    "action_id": f"link_decision_{key}",
-                    "value": button_value,
-                }
-            })
-
-        await jira.close()
-
-    except Exception as e:
-        logger.warning(f"Failed to fetch issue summaries: {e}")
-        # Show keys without summaries
-        for key in issues[:5]:
-            button_value = json.dumps({
-                "key": key,
-                "topic": topic[:100],
-                "decision": decision_text[:500],
-                "user_id": user_id,
-            })
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*{key}*"},
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Link"},
-                    "action_id": f"link_decision_{key}",
-                    "value": button_value,
-                }
-            })
-
-    # Add skip button
-    blocks.append({
-        "type": "actions",
-        "elements": [
-            {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "Skip"},
-                "action_id": "skip_decision_link"
-            }
-        ]
-    })
-
-    client.chat_postMessage(
-        channel=identity.channel_id,
-        thread_ts=identity.thread_ts,
-        blocks=blocks,
-        text="Link decision to Jira?",
-    )
-
+# --- Sync and Search Handlers ---
 
 async def _handle_sync_request(
     result: dict,
@@ -1881,6 +1612,9 @@ async def _handle_ops_response(
         identity: Session identity
         client: Slack WebClient
     """
+    # Import expand handler from decision module
+    from src.slack.handlers.dispatch.decision import _handle_expand_decision
+
     ops_msg = result.get("message", "")
     subtype = result.get("subtype", "debug")
     timestamp = result.get("timestamp", "")
@@ -1946,212 +1680,6 @@ async def _handle_ops_response(
             "thread_ts": identity.thread_ts,
             "subtype": subtype,
         }
-    )
-
-
-async def _handle_expand_decision(
-    decision_id: str,
-    identity: SessionIdentity,
-    client: WebClient,
-    additional_context: str = "",
-) -> None:
-    """Handle EXPAND subtype: show rich decision details.
-
-    Loads decision from DB and displays it with full context:
-    rationale, alternatives, consequences, etc.
-
-    Args:
-        decision_id: UUID of the decision to expand
-        identity: Session identity
-        client: Slack WebClient
-        additional_context: Optional additional text from LLM
-    """
-    from src.db.decision_store import DecisionStore
-    from src.slack.blocks.decision_cards import build_approved_card
-
-    try:
-        async with DecisionStore() as store:
-            decision = await store.get(decision_id)
-
-        if not decision:
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                text="Decision not found.",
-            )
-            return
-
-        # Build rich decision card
-        blocks = build_approved_card(decision)
-
-        # Add additional context if provided
-        if additional_context:
-            blocks.insert(0, {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f":mag: *Decision Details*\n\n{additional_context}"
-                }
-            })
-            blocks.insert(1, {"type": "divider"})
-
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            blocks=blocks,
-            text=f"Decision: {decision.title}",
-        )
-
-        logger.info(
-            "Expanded decision details",
-            extra={
-                "decision_id": decision_id,
-                "channel_id": identity.channel_id,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to expand decision {decision_id}: {e}")
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            text=f"Failed to load decision details: {e}",
-        )
-
-
-# --- Draft Conflict Handler (Phase 27.3) ---
-
-async def _handle_draft_conflict(
-    result: dict,
-    identity: SessionIdentity,
-    client: WebClient,
-) -> None:
-    """Handle draft conflict detected during extraction.
-
-    Posts conflict UI with resolution buttons for each detected conflict.
-
-    Args:
-        result: Decision result with conflicts list
-        identity: Session identity
-        client: Slack WebClient
-    """
-    from src.slack.blocks.draft_conflict import build_draft_conflict_blocks
-    from src.schemas.conflict import DraftConflict
-
-    conflicts_data = result.get("conflicts", [])
-    if not conflicts_data:
-        logger.warning("No conflicts data in conflict result")
-        return
-
-    # Post each conflict with its resolution buttons
-    for conflict_data in conflicts_data:
-        try:
-            conflict = DraftConflict(**conflict_data)
-            blocks = build_draft_conflict_blocks(conflict)
-
-            client.chat_postMessage(
-                channel=identity.channel_id,
-                thread_ts=identity.thread_ts,
-                blocks=blocks,
-                text=f"Conflict detected in {conflict.field_name}",
-            )
-
-            logger.info(
-                "Posted conflict UI",
-                extra={
-                    "conflict_id": conflict.conflict_id,
-                    "field_name": conflict.field_name,
-                    "channel_id": identity.channel_id,
-                    "thread_ts": identity.thread_ts,
-                },
-            )
-        except Exception as e:
-            logger.error(f"Failed to post conflict UI: {e}", exc_info=True)
-
-    # Post summary if multiple conflicts
-    if len(conflicts_data) > 1:
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            text=f":warning: {len(conflicts_data)} conflicts detected. Please resolve each one above.",
-        )
-
-
-# --- Transform Applied Handler (Phase 28.6) ---
-
-async def _handle_transform_applied(
-    result: dict,
-    identity: SessionIdentity,
-    client: WebClient,
-) -> None:
-    """Handle transform_applied action - show new structure.
-
-    R8: After each Draft form change, bot must show the new form.
-
-    Posts structure visualization with version-bound buttons after
-    any structural mutation to the draft.
-
-    Args:
-        result: Decision result with transform_result and structured_draft
-        identity: Session identity
-        client: Slack WebClient
-    """
-    from src.slack.blocks.draft_structure import build_structure_blocks
-    from src.schemas.structured_draft import StructuredDraft
-
-    transform_result = result.get("transform_result", {})
-    operation = result.get("operation", "unknown")
-    reason = result.get("reason", "")
-
-    # Get structured draft from result or fetch from runner
-    structured_draft_data = result.get("structured_draft")
-
-    if structured_draft_data is None:
-        # Try to get from runner state
-        runner = get_runner(identity)
-        state = await runner._get_current_state()
-        structured_draft = state.get("structured_draft")
-    elif isinstance(structured_draft_data, dict):
-        # Reconstruct from dict
-        structured_draft = StructuredDraft(**structured_draft_data)
-    else:
-        structured_draft = structured_draft_data
-
-    if not structured_draft:
-        # No draft to show
-        client.chat_postMessage(
-            channel=identity.channel_id,
-            thread_ts=identity.thread_ts,
-            text=f"Transform applied: {reason}",
-        )
-        return
-
-    # Build structure blocks with actions
-    structure_blocks = build_structure_blocks(
-        draft=structured_draft,
-        show_actions=True,
-        include_version=True,
-    )
-
-    # Post the structure visualization
-    client.chat_postMessage(
-        channel=identity.channel_id,
-        thread_ts=identity.thread_ts,
-        blocks=structure_blocks,
-        text=f"Draft structure updated (version {structured_draft.version})",
-    )
-
-    logger.info(
-        "Posted structure after transform",
-        extra={
-            "operation": operation,
-            "success": transform_result.get("success"),
-            "draft_id": structured_draft.id,
-            "version": structured_draft.version,
-            "item_count": len(structured_draft.items),
-            "channel_id": identity.channel_id,
-            "thread_ts": identity.thread_ts,
-        },
     )
 
 
