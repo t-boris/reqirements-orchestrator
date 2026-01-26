@@ -42,21 +42,32 @@ from src.questions.mode_manager import ModeManager, detect_activation_reason
 from src.db.conversation_mode_store import ConversationModeStore
 from src.schemas.conversation_mode import ModeTransitionReason
 
+# Phase 37: Question blocks for review questions
+from src.slack.blocks.question import build_question_blocks, build_review_question_blocks
+
+# Phase 39: Actionable message tracker for stale button removal
+from src.slack.actionable_message_tracker import clear_old_actionable_and_track_new
+
 logger = logging.getLogger(__name__)
 
 # Decision extraction prompt for architecture decisions (Phase 14)
-DECISION_EXTRACTION_PROMPT = '''Based on this architecture review, extract the decision:
+DECISION_EXTRACTION_PROMPT = '''Based on this architecture review, extract the decision for a permanent record.
 
-Review: {review_summary}
+Review/Analysis:
+{review_summary}
+
 User's approval: {approval_message}
 
 Return a JSON object:
 {{
-    "topic": "What was being decided (1 line)",
-    "decision": "The chosen approach (1-2 sentences)"
+    "topic": "Descriptive topic name (e.g., 'Course Content Delivery Architecture', 'Student Quiz Modal Design')",
+    "decision": "The chosen approach in 1-2 sentences (e.g., 'App Home Tab with Modals for quizzes, Markdown content served via web service')"
 }}
 
-Be concise. This will be posted to the channel as a permanent record.
+IMPORTANT:
+- topic should describe WHAT was decided, not the original request
+- decision should summarize the CHOSEN approach, not list all options
+- Be specific and actionable
 '''
 
 # Content extraction prompts for ticket operations (Phase 16)
@@ -242,6 +253,7 @@ async def _dispatch_result(
     from src.graph.nodes.decision import DecisionResult
 
     action = result.get("action", "continue")
+    logger.info(f"_dispatch_result received action={action}, result_keys={list(result.keys())}")
 
     if action == "intro" or action == "nudge" or action == "hint":
         # Empty draft - send contextual hint message
@@ -265,6 +277,48 @@ async def _dispatch_result(
                 channel=identity.channel_id,
                 thread_ts=identity.thread_ts,
                 text=message,
+            )
+
+    elif action == "ask_scope_source":
+        # User has actionable intent but draft is empty - ask where to get content
+        message = result.get("message", "Where should I look for requirements?")
+        buttons = result.get("buttons", [])
+
+        # Build scope source buttons
+        blocks = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message},
+            },
+        ]
+
+        if buttons:
+            button_elements = []
+            for btn in buttons:
+                button_elements.append({
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": btn.get("label", btn.get("id", "Option"))},
+                    "action_id": f"scope_source_{btn.get('id', 'unknown')}",
+                    "value": btn.get("value", btn.get("id", "")),
+                })
+
+            blocks.append({
+                "type": "actions",
+                "block_id": "scope_source_buttons",
+                "elements": button_elements,
+            })
+
+        resp = client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=message,
+            blocks=blocks,
+        )
+
+        # Track this as actionable message
+        if resp.get("ok") and resp.get("ts"):
+            clear_old_actionable_and_track_new(
+                client, identity.channel_id, identity.thread_ts, resp["ts"]
             )
 
     elif action == "ask":
@@ -385,11 +439,59 @@ async def _dispatch_result(
         continuation_msg = result.get("message", "")
         persona = result.get("persona", "")
         topic = result.get("topic", "")
+        is_questions = result.get("is_questions", False)
+        questions_data = result.get("questions_data", [])
 
         if persona:
             prefix = f"*{persona}:*\n\n"
         else:
             prefix = ""
+
+        # If bot is asking questions, render with buttons (Phase 37)
+        if is_questions and questions_data:
+            intro_text = f"{prefix}Great, here are the key questions we need to resolve:"
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": intro_text}
+                }
+            ]
+
+            # Add each question with options as buttons
+            # Use review thread_ts as pseudo plan_id for button value encoding
+            review_plan_id = f"review_{identity.thread_ts}"
+            review_version = result.get("version", 1)
+
+            for q_data in questions_data:
+                question_blocks = build_question_blocks(
+                    question_data=q_data,
+                    plan_id=review_plan_id,
+                    plan_version=review_version,
+                )
+                blocks.extend(question_blocks)
+                # Add divider between questions
+                blocks.append({"type": "divider"})
+
+            # Remove last divider
+            if blocks and blocks[-1].get("type") == "divider":
+                blocks.pop()
+
+            # Add context about text replies
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "_Click buttons above or reply in thread to answer._",
+                }]
+            })
+
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts if identity.thread_ts else None,
+                blocks=blocks,
+                text=continuation_msg[:200],
+            )
+            return  # Questions rendered, exit early
 
         if continuation_msg:
             # Use same chunking logic as review (Slack block text limit is 3000 chars)
@@ -521,6 +623,9 @@ async def _dispatch_result(
             logger.info(f"Sending review: {len(full_text)} chars in {len(message_chunks)} message(s)")
 
             # Send each chunk as a separate Slack message
+            # Track last message with buttons for stale button removal
+            last_actionable_ts = None
+
             for i, chunk in enumerate(message_chunks):
                 is_last_message = (i == len(message_chunks) - 1)
 
@@ -538,35 +643,87 @@ async def _dispatch_result(
                         "topic": (topic or "")[:100],
                         "persona": persona or "",
                     })
-                    approve_button_value = json.dumps({
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-                    blocks.append({
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {"type": "plain_text", "text": "Approve & Post Decision"},
-                                "action_id": "approve_architecture",
-                                "value": approve_button_value,
-                                "style": "primary",
-                            },
-                            {
-                                "type": "button",
-                                "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                                "action_id": "review_to_ticket",
-                                "value": ticket_button_value,
-                            }
-                        ]
+
+                    # Build action buttons based on super_mode
+                    # "Approve & Post Decision" only for DECIDE mode
+                    super_mode = result.get("super_mode", "think")
+                    action_elements = []
+
+                    if super_mode == "decide":
+                        approve_button_value = json.dumps({
+                            "topic": (topic or "")[:100],
+                            "persona": persona or "",
+                        })
+                        action_elements.append({
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Approve & Post Decision"},
+                            "action_id": "approve_architecture",
+                            "value": approve_button_value,
+                            "style": "primary",
+                        })
+
+                    # "Turn into Jira ticket" always available
+                    action_elements.append({
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
+                        "action_id": "review_to_ticket",
+                        "value": ticket_button_value,
                     })
 
-                client.chat_postMessage(
-                    channel=identity.channel_id,
-                    thread_ts=identity.thread_ts if identity.thread_ts else None,
-                    blocks=blocks,
-                    text=chunk[:200],  # Fallback text
+                    blocks.append({
+                        "type": "actions",
+                        "elements": action_elements
+                    })
+
+                try:
+                    post_result = client.chat_postMessage(
+                        channel=identity.channel_id,
+                        thread_ts=identity.thread_ts if identity.thread_ts else None,
+                        blocks=blocks,
+                        text=chunk[:200],  # Fallback text
+                    )
+                    # Track last message with buttons for cleanup
+                    if is_last_message and post_result.get("ts"):
+                        last_actionable_ts = post_result["ts"]
+                except Exception as e:
+                    logger.error(f"Failed to post review message {i+1}/{len(message_chunks)}: {e}")
+                    # Try posting without blocks as fallback
+                    try:
+                        client.chat_postMessage(
+                            channel=identity.channel_id,
+                            thread_ts=identity.thread_ts if identity.thread_ts else None,
+                            text=chunk[:3000],
+                        )
+                    except Exception as e2:
+                        logger.error(f"Fallback text-only message also failed: {e2}")
+
+            # Clear old actionable buttons and track new message
+            if last_actionable_ts and identity.thread_ts:
+                clear_old_actionable_and_track_new(
+                    client,
+                    identity.channel_id,
+                    identity.thread_ts,
+                    last_actionable_ts,
                 )
+
+            # Phase 39: Post structured question if available
+            question_task = result.get("question_task")
+            if question_task:
+                artifact_id = result.get("artifact_id")
+                question_blocks = build_review_question_blocks(
+                    question_data=question_task,
+                    artifact_id=artifact_id,
+                )
+                try:
+                    client.chat_postMessage(
+                        channel=identity.channel_id,
+                        thread_ts=identity.thread_ts if identity.thread_ts else None,
+                        blocks=question_blocks,
+                        text="Question for you",
+                    )
+                    logger.info("Posted structured review question")
+                except Exception as e:
+                    logger.error(f"Failed to post review question: {e}")
 
     elif action == "jira_command_confirm":
         # Handle Jira command confirmation (Phase 21)
@@ -1216,8 +1373,13 @@ async def _handle_decision_approval(
             approval_message = result.get("approval_message", "approved")
 
             llm = get_llm()
+            # Use updated_recommendation if available (from Q&A), else original summary
+            effective_summary = (
+                review_context.get("updated_recommendation") or
+                review_context.get("review_summary", "")
+            )
             extraction_prompt = DECISION_EXTRACTION_PROMPT.format(
-                review_summary=review_context.get("review_summary", ""),
+                review_summary=effective_summary,
                 approval_message=approval_message,
             )
 

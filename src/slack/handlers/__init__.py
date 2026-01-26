@@ -64,6 +64,7 @@ from src.slack.handlers.onboarding import (
     handle_hint_selection,
     handle_help_example,
     handle_member_joined_channel,
+    handle_scope_source,
 )
 
 # Review handlers
@@ -215,6 +216,7 @@ __all__ = [
     "handle_hint_selection",
     "handle_help_example",
     "handle_member_joined_channel",
+    "handle_scope_source",
     # Review
     "handle_review_to_ticket",
     "handle_scope_gate_submit",

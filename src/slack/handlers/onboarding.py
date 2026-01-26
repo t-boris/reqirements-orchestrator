@@ -257,3 +257,174 @@ def handle_help_example(ack, body, client: WebClient, action):
             text=f"Example: {example_key.replace('_', ' ').title()}",
             blocks=blocks,
         )
+
+
+# --- Scope Source Button Handlers (Fix B) ---
+
+def handle_scope_source(ack, body, client: WebClient, action):
+    """Handle scope source button selection.
+
+    When user has actionable intent but draft is empty, we ask where
+    to get the architecture/requirements from. This handles their choice.
+    """
+    ack()
+    _run_async(_handle_scope_source_async(body, client, action))
+
+
+async def _handle_scope_source_async(body, client: WebClient, action):
+    """Async handler for scope source selection.
+
+    Routes based on selected source:
+    - thread_decisions: Use decisions found in thread
+    - pinned_baseline: Use pinned architecture baseline
+    - channel_context: Use stored channel decisions
+    - describe: Ask user to describe requirements
+    """
+    channel = body["channel"]["id"]
+    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
+    user_id = body["user"]["id"]
+    team_id = body["team"]["id"]
+
+    selected = action.get("value", "")
+
+    logger.info(
+        "Scope source selected",
+        extra={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "selected": selected,
+            "user_id": user_id,
+        }
+    )
+
+    # Remove the buttons from the original message
+    try:
+        original_ts = body["message"]["ts"]
+        original_blocks = body["message"].get("blocks", [])
+        # Keep only non-action blocks
+        new_blocks = [b for b in original_blocks if b.get("type") != "actions"]
+        # Add selection confirmation
+        new_blocks.append({
+            "type": "context",
+            "elements": [{
+                "type": "mrkdwn",
+                "text": f"_Selected: {selected.replace('_', ' ').title()}_",
+            }]
+        })
+        client.chat_update(
+            channel=channel,
+            ts=original_ts,
+            blocks=new_blocks,
+            text=body["message"].get("text", ""),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update scope source message: {e}")
+
+    if selected == "describe":
+        # User wants to describe requirements manually
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text="Please describe the requirements or architecture you'd like to turn into work items.",
+        )
+        return
+
+    # For other options, try to load content and re-run extraction
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel,
+        thread_ts=thread_ts,
+    )
+
+    try:
+        from src.db.connection import get_connection
+        from src.context.reference_resolver import resolve_architecture_reference
+
+        async with get_connection() as conn:
+            # Get conversation messages if needed
+            conversation_messages = None
+            if selected == "thread_decisions":
+                # Fetch thread messages
+                try:
+                    result = client.conversations_replies(
+                        channel=channel,
+                        ts=thread_ts,
+                        limit=50,
+                    )
+                    conversation_messages = result.get("messages", [])
+                except Exception as e:
+                    logger.warning(f"Failed to fetch thread messages: {e}")
+
+            bundle = await resolve_architecture_reference(
+                conn=conn,
+                channel_id=channel,
+                thread_ts=thread_ts,
+                conversation_messages=conversation_messages,
+            )
+
+        if bundle.is_empty():
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=(
+                    f"I couldn't find architecture content from '{selected.replace('_', ' ')}'.\n"
+                    "Please describe the requirements or paste the architecture here."
+                ),
+            )
+            return
+
+        # Found content - inject into runner and trigger extraction
+        from src.graph.runner import get_runner, _runners
+
+        if identity.session_id in _runners:
+            runner = get_runner(identity)
+
+            # Update state with resolved reference
+            current_state = await runner._get_current_state()
+            updated_state = {
+                **current_state,
+                "review_artifact": {
+                    "summary": bundle.to_context_string(),
+                    "source": bundle.source,
+                    "decision_count": bundle.decision_count,
+                },
+            }
+            await runner._update_state(updated_state)
+
+            # Notify user
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"Found {bundle.decision_count} decision(s) from {bundle.source_description}. Processing...",
+            )
+
+            # Re-trigger the graph with the same message
+            # The extraction node will now find review_artifact
+            from langchain_core.messages import HumanMessage
+
+            messages = current_state.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                if isinstance(last_msg, HumanMessage):
+                    await runner.process_message(
+                        str(last_msg.content),
+                        user_id=user_id,
+                    )
+        else:
+            # No active session - just post what we found
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=(
+                    f"Found {bundle.decision_count} decision(s) from {bundle.source_description}.\n"
+                    "Please repeat your request to create work items."
+                ),
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to handle scope source selection: {e}")
+        client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=f"Error loading content: {e}. Please describe the requirements manually.",
+        )

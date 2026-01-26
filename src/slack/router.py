@@ -36,6 +36,8 @@ from src.slack.handlers import (
     handle_help_example,
     # Channel join handling (Phase 12)
     handle_member_joined_channel,
+    # Scope source selection (Fix B)
+    handle_scope_source,
     # Review to ticket handling (Phase 13)
     handle_review_to_ticket,
     handle_scope_gate_submit,
@@ -166,6 +168,9 @@ def register_handlers(app: App) -> None:
 
     # Help example buttons (Phase 12 onboarding)
     app.action(re.compile(r"^help_example_.*"))(handle_help_example)
+
+    # Scope source buttons (Fix B - ask_scope_source action)
+    app.action(re.compile(r"^scope_source_.*"))(handle_scope_source)
 
     # Review to ticket action (Phase 13)
     app.action("review_to_ticket")(handle_review_to_ticket)

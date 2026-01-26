@@ -860,24 +860,12 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     review_artifact = state.get("review_artifact")
 
     # If user referenced prior content OR we have review_artifact, use special prompt
-    if (references_prior_content or review_artifact) and (conversation_context or review_artifact):
-        # Build thread context from bot's messages (likely reviews/analyses)
-        thread_context_parts = []
-        if conversation_context:
-            conv_messages = conversation_context.get("messages", [])
-            for msg in conv_messages[-10:]:  # Last 10 messages
-                role = msg.get("role", "")
-                content = msg.get("text", "")
-
-                # Include bot messages (likely reviews) and longer human messages
-                if (role == "assistant" and len(content) > 100) or (role == "user" and len(content) > 50):
-                    user = msg.get("user", "Assistant" if role == "assistant" else "User")
-                    thread_context_parts.append(f"[{user}]: {content}")
-
-        thread_context = "\n\n".join(thread_context_parts) if thread_context_parts else "No prior content found"
-
-        # Build review artifact context (CRITICAL: preserves architecture after approval)
+    if (references_prior_content or review_artifact) and (conversation_context or review_artifact or channel_id):
+        # Fix C: Use Architecture Reference Resolver for proper content resolution
+        thread_context = ""
         review_artifact_context = ""
+
+        # First, check if we have a review_artifact in state (highest priority)
         if review_artifact:
             artifact_summary = review_artifact.get("updated_summary") or review_artifact.get("summary", "")
             if artifact_summary:
@@ -901,12 +889,57 @@ Reviewed by: {artifact_persona}
                     }
                 )
 
+        # If no review_artifact, use reference resolver to find architecture content
+        if not review_artifact_context and channel_id:
+            try:
+                from src.context.reference_resolver import get_reference_bundle_for_extraction
+                from src.db.connection import get_connection
+
+                async with get_connection() as conn:
+                    bundle = await get_reference_bundle_for_extraction(
+                        conn=conn,
+                        channel_id=channel_id,
+                        thread_ts=thread_ts,
+                        conversation_context=conversation_context,
+                    )
+
+                if not bundle.is_empty():
+                    review_artifact_context = bundle.to_context_string()
+                    logger.info(
+                        f"Reference resolver found content: source={bundle.source}, count={bundle.decision_count}",
+                    )
+                else:
+                    logger.warning("Reference resolver found no architecture content")
+
+            except Exception as e:
+                logger.warning(f"Reference resolver failed: {e}")
+
+        # Build thread context from conversation messages (fallback/supplementary)
+        thread_context_parts = []
+        if conversation_context:
+            conv_messages = conversation_context.get("messages", [])
+            for msg in conv_messages[-10:]:  # Last 10 messages
+                role = msg.get("role", "")
+                content = msg.get("text", "")
+
+                # Include bot messages (likely reviews) and longer human messages
+                if (role == "assistant" and len(content) > 100) or (role == "user" and len(content) > 50):
+                    user = msg.get("user", "Assistant" if role == "assistant" else "User")
+                    thread_context_parts.append(f"[{user}]: {content}")
+
+        if thread_context_parts:
+            thread_context = "\n\n".join(thread_context_parts)
+        elif not review_artifact_context:
+            # Only say "No prior content" if we also have no artifact context
+            thread_context = "No prior content found in thread"
+
         logger.info(
             "Using reference-aware extraction prompt",
             extra={
                 "has_thread_context": bool(thread_context_parts),
                 "context_messages": len(thread_context_parts),
                 "has_review_artifact": bool(review_artifact),
+                "has_resolved_context": bool(review_artifact_context),
             }
         )
 
@@ -1163,10 +1196,46 @@ Reviewed by: {artifact_persona}
     if input_classification:
         state_update["input_classification"] = input_classification
 
-    # Handle empty draft - use contextual hints instead of static intro/nudge
+    # Handle empty draft - behavior depends on intent
     is_first_message = state.get("is_first_message", True)
     if draft.is_empty():
-        # Use onboarding module for contextual hints
+        # Fix A: Check intent before deciding action
+        intent_result = state.get("intent_result", {})
+        current_intent = intent_result.get("intent", "").upper()
+
+        # Intents that imply user has a real request (not just chatting)
+        actionable_intents = {
+            "WORKITEM_CREATE", "DRAFT_REFINE", "DRAFT_TRANSFORM",
+            "REVIEW", "DECISION", "TICKET_ACTION", "JIRA_COMMAND",
+            "JIRA_SEARCH", "CHANGE_REQUEST", "SYNC_REQUEST",
+        }
+
+        if current_intent in actionable_intents:
+            # Fix B: User has a real request but we lack content
+            # Don't show intro - ask for source instead
+            logger.info(
+                f"Draft empty but intent={current_intent}, asking for source",
+                extra={"intent": current_intent, "requested_scope": str(draft.requested_scope)},
+            )
+
+            # Build ask_scope_source response
+            state_update["decision_result"] = {
+                "action": "ask_scope_source",
+                "message": (
+                    "I can help create work items, but I need a source for the requirements.\n\n"
+                    "Where should I look for the architecture/requirements?"
+                ),
+                "buttons": [
+                    {"id": "scope_decisions", "label": "Use decisions in this thread", "value": "thread_decisions"},
+                    {"id": "scope_pinned", "label": "Use pinned baseline", "value": "pinned_baseline"},
+                    {"id": "scope_channel", "label": "Use channel context", "value": "channel_context"},
+                    {"id": "scope_describe", "label": "Let me describe it", "value": "describe"},
+                ],
+            }
+            state_update["is_first_message"] = False
+            return state_update
+
+        # For DISCUSSION/CONFUSED or unknown intents, use onboarding flow
         from src.slack.onboarding import classify_hesitation, HintType, get_intro_message
 
         # Get the user's message for classification
@@ -1181,10 +1250,21 @@ Reviewed by: {artifact_persona}
 
         if hint_result.hint_type == HintType.NONE and is_first_message:
             # No specific hint detected on first message, use intro
-            state_update["decision_result"] = {
-                "action": "intro",
-                "message": get_intro_message(),
-            }
+            # But only if intent is truly conversational
+            if current_intent in {"DISCUSSION", "META", "AMBIGUOUS", ""}:
+                state_update["decision_result"] = {
+                    "action": "intro",
+                    "message": get_intro_message(),
+                }
+            else:
+                # Unknown actionable intent - ask for clarification
+                state_update["decision_result"] = {
+                    "action": "nudge",
+                    "message": (
+                        "I'm not sure what you'd like to create.\n"
+                        "Could you describe the feature, bug, or change?"
+                    ),
+                }
         elif hint_result.hint_type == HintType.NONE:
             # No hint needed, use standard nudge
             state_update["decision_result"] = {
@@ -1205,6 +1285,6 @@ Reviewed by: {artifact_persona}
 
         # Mark first message as done
         state_update["is_first_message"] = False
-        logger.info(f"Draft empty, returning contextual hint: {hint_result.hint_type}")
+        logger.info(f"Draft empty, intent={current_intent}, hint={hint_result.hint_type}")
 
     return state_update
