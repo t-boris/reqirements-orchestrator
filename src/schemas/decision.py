@@ -80,6 +80,108 @@ class DecisionType(str, Enum):
     PROCESS = "process"  # Process/workflow decisions -> Labels or custom field
 
 
+# =============================================================================
+# Decision Change Operation Schema (Phase 41)
+# =============================================================================
+
+
+class DecisionChangeOpState(str, Enum):
+    """Lifecycle states for decision change operations.
+
+    State transitions:
+    - PROPOSED → CONFIRMED, CANCELLED
+    - CONFIRMED → APPLYING, CANCELLED
+    - APPLYING → DONE, FAILED
+    - FAILED → APPLYING (retry), CANCELLED
+    - DONE → (terminal)
+    - CANCELLED → (terminal)
+    """
+
+    PROPOSED = "proposed"  # Impact analysis in progress
+    CONFIRMED = "confirmed"  # User confirmed, ready to apply
+    APPLYING = "applying"  # Application in progress
+    DONE = "done"  # Successfully applied
+    FAILED = "failed"  # Application failed (retryable)
+    CANCELLED = "cancelled"  # User cancelled
+
+
+class DecisionChangeOpType(str, Enum):
+    """Types of change operations on decisions."""
+
+    EDIT = "edit"  # Version update (vN → vN+1)
+    DEPRECATE = "deprecate"  # Mark as deprecated
+    DELETE = "delete"  # Delete (only for unapproved)
+
+
+class ImpactSummary(BaseModel):
+    """Summary of impact analysis for a decision change.
+
+    Captures what will be affected by the change operation.
+    """
+
+    jira_keys: list[str] = Field(
+        default_factory=list,
+        description="Affected Jira tickets",
+    )
+    pinned_artifacts: list[str] = Field(
+        default_factory=list,
+        description="Affected pinned messages (ts values)",
+    )
+    conflict_count: int = Field(
+        default=0,
+        description="Number of tickets with conflicts",
+    )
+    total_affected: int = Field(
+        default=0,
+        description="Total entities affected by this change",
+    )
+
+
+class DecisionChangeOp(BaseModel):
+    """A tracked operation for changing a decision.
+
+    Every decision change (edit, deprecate, delete) goes through this:
+    PROPOSED → CONFIRMED → APPLYING → DONE/FAILED/CANCELLED
+
+    This enables:
+    - Impact analysis before applying
+    - User confirmation with full visibility
+    - Transactional application (DB → Slack → Jira)
+    - Rollback on failure
+    """
+
+    id: str = Field(description="UUID for the operation")
+    decision_id: str = Field(description="Target decision being changed")
+    operation: DecisionChangeOpType = Field(description="Type of change")
+    from_version: int = Field(description="Version before the change")
+    to_version: Optional[int] = Field(
+        default=None,
+        description="Version after change (None for deprecate/delete)",
+    )
+    actor: str = Field(description="User who initiated the change")
+    state: DecisionChangeOpState = Field(
+        default=DecisionChangeOpState.PROPOSED,
+        description="Current state of the operation",
+    )
+    impact_summary: Optional[ImpactSummary] = Field(
+        default=None,
+        description="Results of impact analysis",
+    )
+    created_at: datetime = Field(description="When operation was created")
+    confirmed_at: Optional[datetime] = Field(
+        default=None,
+        description="When user confirmed the operation",
+    )
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        description="When operation completed (DONE/FAILED/CANCELLED)",
+    )
+    error_details: Optional[str] = Field(
+        default=None,
+        description="Error message if FAILED state",
+    )
+
+
 class DecisionStatus(str, Enum):
     """Lifecycle status of a decision.
 
