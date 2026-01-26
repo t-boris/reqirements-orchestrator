@@ -168,23 +168,38 @@ def _build_attachment_context(state: AgentState) -> str:
 
 
 def _build_channel_context(state: AgentState) -> str:
-    """Build context string from channel history."""
-    # Get thread messages for context
-    messages = state.get("messages", [])
-    if not messages:
-        return ""
+    """Build context string from channel history.
 
+    Uses conversation_context (actual channel/thread messages) not internal graph messages.
+    """
     parts = []
-    for msg in messages[-5:]:  # Last 5 messages
-        content = getattr(msg, 'content', str(msg))
-        if content and len(content) > 10:
-            role = "User" if hasattr(msg, 'type') and msg.type == "human" else "Bot"
-            parts.append(f"{role}: {content[:200]}...")
+
+    # Use conversation_context which has actual channel messages
+    conv_context = state.get("conversation_context", {})
+    if conv_context:
+        messages = conv_context.get("messages", [])
+        for msg in messages[-10:]:  # Last 10 channel messages
+            if isinstance(msg, dict):
+                user = msg.get("user", "User")
+                text = msg.get("text", "")
+                if text and len(text) > 10:
+                    parts.append(f"[{user}]: {text[:500]}")
+            elif hasattr(msg, 'content'):
+                content = msg.content
+                if content and len(content) > 10:
+                    parts.append(f"User: {content[:500]}")
+
+    # Also check thread_context for anchor message
+    thread_context = state.get("thread_context")
+    if thread_context and hasattr(thread_context, 'anchor_message'):
+        anchor = thread_context.anchor_message
+        if anchor:
+            parts.insert(0, f"[Thread anchor]: {anchor[:500]}")
 
     if not parts:
         return ""
 
-    return "=== CONVERSATION HISTORY ===\n" + "\n".join(parts)
+    return "=== CHANNEL/THREAD CONTEXT ===\n" + "\n\n".join(parts)
 
 
 async def question_collection_node(state: AgentState) -> dict[str, Any]:

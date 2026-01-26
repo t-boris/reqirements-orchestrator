@@ -695,11 +695,20 @@ async def _handle_collect_question(
     # Add buttons if options provided
     if options:
         button_elements = []
-        for opt in options:
-            option_id = opt.get("option_id", "")
-            label = opt.get("label", "")[:40]
+        seen_labels = {}  # Track duplicate labels
+        for i, opt in enumerate(options):
+            option_id = opt.get("option_id", f"opt_{i}")
+            raw_label = opt.get("label", "")[:35]
             value = opt.get("value", option_id)
             is_recommended = opt.get("is_recommended", False)
+
+            # Ensure unique button labels (Slack requirement)
+            if raw_label in seen_labels:
+                seen_labels[raw_label] += 1
+                label = f"{raw_label} ({seen_labels[raw_label]})"
+            else:
+                seen_labels[raw_label] = 1
+                label = raw_label
 
             button_value = json.dumps({
                 "question_text": question_text[:100],
@@ -712,7 +721,7 @@ async def _handle_collect_question(
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": label,
+                    "text": label[:40],  # Slack limit
                     "emoji": True,
                 },
                 "action_id": f"collect_answer_{option_id}",
