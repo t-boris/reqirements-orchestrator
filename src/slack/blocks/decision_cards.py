@@ -17,6 +17,7 @@ from src.schemas.decision import (
     ApplyResult,
     Decision,
     DecisionChangeOp,
+    DecisionChangeOpState,
     DecisionChangeOpType,
     DecisionStatus,
     DecisionType,
@@ -765,6 +766,29 @@ def build_change_result_card(
         blocks.append({
             "type": "context",
             "elements": [{"type": "mrkdwn", "text": f"_Error: {result.error}_"}]
+        })
+
+    # Rollback button for successful DONE operations
+    if op.state == DecisionChangeOpState.DONE and result.success:
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Rollback Jira changes"},
+                    "action_id": "decision_change_rollback",
+                    "value": json.dumps({"op_id": op.id}),
+                    "confirm": {
+                        "title": {"type": "plain_text", "text": "Confirm Rollback"},
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "This will revert Jira tickets to the previous decision version. Database state will not change."
+                        },
+                        "confirm": {"type": "plain_text", "text": "Rollback"},
+                        "deny": {"type": "plain_text", "text": "Cancel"},
+                    },
+                },
+            ]
         })
 
     return blocks

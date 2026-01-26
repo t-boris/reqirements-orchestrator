@@ -609,6 +609,145 @@ async def _handle_decision_change_retry_async(body, client: WebClient):
 
 
 # =============================================================================
+# Rollback Jira Changes
+# =============================================================================
+
+
+def handle_decision_change_rollback(ack, body, client: WebClient):
+    """Handle "Rollback Jira changes" button click.
+
+    Rolls back Jira managed sections to the previous decision version.
+    """
+    ack()
+    _run_async(_handle_decision_change_rollback_async(body, client))
+
+
+async def _handle_decision_change_rollback_async(body, client: WebClient):
+    """Async handler for rolling back Jira changes.
+
+    Rollback reverts Jira managed sections to previous decision version.
+    Note: DB state is NOT rolled back - only Jira projection is reverted.
+    """
+    from src.config.settings import get_settings
+    from src.db.connection import get_connection
+    from src.db.decision_change_op_store import DecisionChangeOpStore
+    from src.db.decision_link_store import DecisionLinkStore
+    from src.db.decision_store import DecisionStore
+    from src.jira.client import JiraService
+    from src.schemas.decision import DecisionChangeOpState
+    from src.sync.decision_rollback import DecisionRollbackService
+
+    # Extract data from button
+    action = body["actions"][0]
+    button_value = action.get("value", "{}")
+
+    try:
+        data = json.loads(button_value)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse decision_change_rollback button value: {button_value}")
+        return
+
+    op_id = data.get("op_id")
+    user_id = body["user"]["id"]
+    channel_id = body["channel"]["id"]
+    message = body.get("message", {})
+    message_ts = message.get("ts")
+
+    logger.info(
+        "Decision change rollback button clicked",
+        extra={"op_id": op_id, "user_id": user_id}
+    )
+
+    settings = get_settings()
+    jira_service = JiraService(settings)
+
+    try:
+        async with get_connection() as conn:
+            op_store = DecisionChangeOpStore(conn)
+            decision_store = DecisionStore(conn)
+            link_store = DecisionLinkStore(conn)
+
+            # Get operation and verify state
+            op = await op_store.get(op_id)
+            if not op:
+                client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=user_id,
+                    text="Operation not found.",
+                )
+                return
+
+            # Must be in DONE state to rollback
+            if op.state != DecisionChangeOpState.DONE:
+                client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=user_id,
+                    text=f"Cannot rollback operation in {op.state.value} state. Only DONE operations can be rolled back.",
+                )
+                return
+
+            # Execute rollback
+            rollback_service = DecisionRollbackService(
+                decision_store=decision_store,
+                op_store=op_store,
+                link_store=link_store,
+                jira_service=jira_service,
+            )
+            result = await rollback_service.rollback(op_id)
+
+            # Get decision for message
+            decision = await decision_store.get(op.decision_id)
+
+        # Post result message
+        if result.success:
+            result_text = f"Rollback complete. Reverted {result.rolled_back_count} Jira ticket(s) to previous decision version."
+            if decision:
+                result_text = f"*{decision.title}* (DEC-{decision.id[:8]})\n\n{result_text}"
+        else:
+            result_text = f"Rollback completed with errors. {result.rolled_back_count} ticket(s) reverted, {result.failed_count} failed."
+            if result.error:
+                result_text += f"\n_Error: {result.error}_"
+            if decision:
+                result_text = f"*{decision.title}* (DEC-{decision.id[:8]})\n\n{result_text}"
+
+        try:
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": result_text}
+                }],
+                text="Rollback complete" if result.success else "Rollback completed with errors",
+            )
+        except Exception as slack_err:
+            logger.warning(
+                "Slack message update failed after rollback",
+                extra={"op_id": op_id, "error": str(slack_err)}
+            )
+
+        logger.info(
+            "Decision change rollback completed",
+            extra={
+                "op_id": op_id,
+                "success": result.success,
+                "rolled_back": result.rolled_back_count,
+                "failed": result.failed_count,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to rollback decision change: {e}", exc_info=True)
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=f"Failed to rollback: {str(e)}",
+        )
+    finally:
+        await jira_service.close()
+
+
+# =============================================================================
 # Registration helper
 # =============================================================================
 
@@ -623,5 +762,6 @@ def register_decision_change_handlers(app):
     app.action("decision_change_slack_only")(handle_decision_change_slack_only)
     app.action("decision_change_cancel")(handle_decision_change_cancel)
     app.action("decision_change_retry")(handle_decision_change_retry)
+    app.action("decision_change_rollback")(handle_decision_change_rollback)
 
     logger.info("Decision change confirmation handlers registered")
