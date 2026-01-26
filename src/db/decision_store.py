@@ -243,7 +243,8 @@ class DecisionStore:
                 SELECT id, channel_id, decision_type, title, description,
                        status, version, created_by, created_at, updated_at,
                        approved_by, approved_at, replaced_by, deprecation_reason,
-                       canonical_message_ts, discussion_thread_ts
+                       canonical_message_ts, discussion_thread_ts,
+                       rationale, context_before, alternatives, consequences
                 FROM decisions
                 WHERE id = %s
                 """,
@@ -279,7 +280,8 @@ class DecisionStore:
             SELECT id, channel_id, decision_type, title, description,
                    status, version, created_by, created_at, updated_at,
                    approved_by, approved_at, replaced_by, deprecation_reason,
-                   canonical_message_ts, discussion_thread_ts
+                   canonical_message_ts, discussion_thread_ts,
+                   rationale, context_before, alternatives, consequences
             FROM decisions
             WHERE channel_id = %s
         """
@@ -481,7 +483,8 @@ class DecisionStore:
                 RETURNING id, channel_id, decision_type, title, description,
                           status, version, created_by, created_at, updated_at,
                           approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts
+                          canonical_message_ts, discussion_thread_ts,
+                          rationale, context_before, alternatives, consequences
                 """,
                 (
                     DecisionStatus.APPROVED.value,
@@ -536,7 +539,8 @@ class DecisionStore:
                 RETURNING id, channel_id, decision_type, title, description,
                           status, version, created_by, created_at, updated_at,
                           approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts
+                          canonical_message_ts, discussion_thread_ts,
+                          rationale, context_before, alternatives, consequences
                 """,
                 (
                     status.value,
@@ -570,7 +574,8 @@ class DecisionStore:
             await cur.execute(
                 """
                 SELECT id, decision_id, version, title, description,
-                       status, changed_by, changed_at, change_reason
+                       status, changed_by, changed_at, change_reason,
+                       rationale, context_before, alternatives, consequences
                 FROM decision_versions
                 WHERE decision_id = %s
                 ORDER BY version DESC
@@ -611,7 +616,8 @@ class DecisionStore:
                 RETURNING id, channel_id, decision_type, title, description,
                           status, version, created_by, created_at, updated_at,
                           approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts
+                          canonical_message_ts, discussion_thread_ts,
+                          rationale, context_before, alternatives, consequences
                 """,
                 (
                     message_ts,
@@ -651,7 +657,8 @@ class DecisionStore:
                 SELECT id, channel_id, decision_type, title, description,
                        status, version, created_by, created_at, updated_at,
                        approved_by, approved_at, replaced_by, deprecation_reason,
-                       canonical_message_ts, discussion_thread_ts
+                       canonical_message_ts, discussion_thread_ts,
+                       rationale, context_before, alternatives, consequences
                 FROM decisions
                 WHERE channel_id = %s AND canonical_message_ts = %s
                 """,
@@ -669,16 +676,31 @@ class DecisionStore:
 
         Args:
             row: Tuple from database query.
-                Expected order (16 columns):
+                Expected order (20 columns):
                 0: id, 1: channel_id, 2: decision_type, 3: title,
                 4: description, 5: status, 6: version, 7: created_by,
                 8: created_at, 9: updated_at, 10: approved_by, 11: approved_at,
                 12: replaced_by, 13: deprecation_reason,
-                14: canonical_message_ts, 15: discussion_thread_ts
+                14: canonical_message_ts, 15: discussion_thread_ts,
+                16: rationale (JSONB), 17: context_before (TEXT),
+                18: alternatives (JSONB), 19: consequences (JSONB)
 
         Returns:
             Decision model instance.
         """
+        # Parse JSONB fields back to models (Phase 40)
+        rationale = None
+        if row[16]:
+            rationale = [RationaleItem(**r) for r in row[16]]
+
+        alternatives = None
+        if row[18]:
+            alternatives = [Alternative(**a) for a in row[18]]
+
+        consequences = None
+        if row[19]:
+            consequences = [Consequence(**c) for c in row[19]]
+
         return Decision(
             id=str(row[0]),
             channel_id=row[1],
@@ -696,6 +718,11 @@ class DecisionStore:
             deprecation_reason=row[13],
             canonical_message_ts=row[14],
             discussion_thread_ts=row[15],
+            # Rich context (Phase 40)
+            rationale=rationale,
+            context=row[17],  # context_before in DB, context in model
+            alternatives=alternatives,
+            consequences=consequences,
         )
 
     def _row_to_decision_version(self, row: tuple) -> DecisionVersion:
@@ -703,10 +730,12 @@ class DecisionStore:
 
         Args:
             row: Tuple from database query.
-                Expected order (9 columns):
+                Expected order (13 columns):
                 0: id, 1: decision_id, 2: version, 3: title,
                 4: description, 5: status, 6: changed_by,
-                7: changed_at, 8: change_reason
+                7: changed_at, 8: change_reason,
+                9: rationale (JSONB), 10: context_before (TEXT),
+                11: alternatives (JSONB), 12: consequences (JSONB)
 
         Returns:
             DecisionVersion model instance.
@@ -721,4 +750,9 @@ class DecisionStore:
             changed_by=row[6],
             changed_at=row[7],
             change_reason=row[8],
+            # Rich context (Phase 40) - stored as dict in DecisionVersion
+            rationale=row[9],
+            context=row[10],  # context_before in DB, context in model
+            alternatives=row[11],
+            consequences=row[12],
         )
