@@ -42,6 +42,10 @@ SIGNIFICANT_EVENTS = {
 # Elapsed timer configuration
 ELAPSED_TIMER_INTERVAL = 5.0  # Update every 5 seconds
 
+# Module-level timer tracking for cross-instance timer management
+# Keyed by plan_id -> asyncio.Task
+_active_timers: dict[str, asyncio.Task] = {}
+
 
 class TaskStatusUpdater:
     """Manages TaskPlan status card updates with throttling."""
@@ -51,7 +55,6 @@ class TaskStatusUpdater:
         self._last_update: dict[str, float] = {}  # plan_id -> timestamp
         self._pending_updates: dict[str, TaskPlan] = {}  # plan_id -> latest plan
         self._update_lock = asyncio.Lock()
-        self._elapsed_timers: dict[str, asyncio.Task] = {}  # plan_id -> timer task
 
     async def post_initial_card(
         self,
@@ -236,10 +239,15 @@ class TaskStatusUpdater:
             plan_id: TaskPlan ID to track
             channel_id: Slack channel ID for card updates
         """
+        global _active_timers
+
         # Don't start if already running
-        if plan_id in self._elapsed_timers:
+        if plan_id in _active_timers:
             logger.debug(f"Elapsed timer already running for plan {plan_id}")
             return
+
+        # Need to capture self.client for use in the closure
+        client = self.client
 
         async def _timer_loop():
             """Background timer that updates status card periodically."""
@@ -267,7 +275,9 @@ class TaskStatusUpdater:
                         break
 
                     # Update the status card (respects throttling)
-                    await self.update_card(task_plan, channel_id, event="elapsed_tick")
+                    # Create a fresh updater instance with captured client
+                    updater = TaskStatusUpdater(client)
+                    await updater.update_card(task_plan, channel_id, event="elapsed_tick")
 
             except asyncio.CancelledError:
                 logger.debug(f"Elapsed timer for plan {plan_id} was cancelled")
@@ -275,11 +285,11 @@ class TaskStatusUpdater:
                 logger.warning(f"Elapsed timer error for plan {plan_id}: {e}")
             finally:
                 # Clean up timer reference
-                self._elapsed_timers.pop(plan_id, None)
+                _active_timers.pop(plan_id, None)
 
         # Start the background task
         timer_task = asyncio.create_task(_timer_loop())
-        self._elapsed_timers[plan_id] = timer_task
+        _active_timers[plan_id] = timer_task
         logger.info(f"Started elapsed timer for plan {plan_id}")
 
     async def stop_elapsed_timer(self, plan_id: str) -> None:
@@ -290,7 +300,9 @@ class TaskStatusUpdater:
         Args:
             plan_id: TaskPlan ID to stop tracking
         """
-        timer_task = self._elapsed_timers.pop(plan_id, None)
+        global _active_timers
+
+        timer_task = _active_timers.pop(plan_id, None)
         if timer_task:
             timer_task.cancel()
             try:

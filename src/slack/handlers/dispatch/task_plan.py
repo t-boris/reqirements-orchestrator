@@ -67,6 +67,10 @@ async def _handle_task_plan_created(
         identity.thread_ts,
     )
 
+    # Phase 43: Start elapsed timer if any tasks are running
+    if task_plan.has_running():
+        await updater.start_elapsed_timer(task_plan.plan_id, identity.channel_id)
+
     logger.info(
         f"Posted TaskPlan {task_plan.plan_id} with {len(task_plan.tasks)} tasks",
         extra={
@@ -162,8 +166,11 @@ async def _handle_task_plan_complete(
         except Exception as e:
             logger.warning(f"Failed to deactivate mode on plan complete: {e}")
 
-    # Final status card update
+    # Phase 43: Stop elapsed timer on plan completion
     updater = TaskStatusUpdater(client)
+    await updater.stop_elapsed_timer(task_plan.plan_id)
+
+    # Final status card update
     await updater.flush_pending(task_plan.plan_id, identity.channel_id)
     await updater.update_card(
         task_plan,
@@ -208,8 +215,11 @@ async def _handle_task_plan_blocked(
 
     task_plan = TaskPlan.model_validate(task_plan_data)
 
-    # Update status card
+    # Phase 43: Stop elapsed timer when plan is blocked
     updater = TaskStatusUpdater(client)
+    await updater.stop_elapsed_timer(task_plan.plan_id)
+
+    # Update status card
     await updater.update_card(
         task_plan,
         identity.channel_id,
@@ -258,8 +268,11 @@ async def _handle_task_failed(
 
     task_plan = TaskPlan.model_validate(task_plan_data)
 
-    # Update status card
+    # Phase 43: Stop elapsed timer on task failure
     updater = TaskStatusUpdater(client)
+    await updater.stop_elapsed_timer(task_plan.plan_id)
+
+    # Update status card
     await updater.update_card(
         task_plan,
         identity.channel_id,
@@ -325,8 +338,11 @@ async def _handle_task_rejected(
             except Exception as e:
                 logger.warning(f"Failed to deactivate mode on task rejection: {e}")
 
-        # Update status card
+        # Phase 43: Stop elapsed timer on plan cancellation
         updater = TaskStatusUpdater(client)
+        await updater.stop_elapsed_timer(task_plan.plan_id)
+
+        # Update status card
         await updater.update_card(
             task_plan,
             identity.channel_id,
