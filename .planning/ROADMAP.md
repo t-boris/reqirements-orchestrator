@@ -880,6 +880,36 @@ Bot: "To draft stories, pick approach:"
 
 **Full context:** `.planning/phases/41-decision-change-propagation/41-CONTEXT.md`
 
+### Phase 42: Code Modularization
+
+**Status:** COMPLETE (9/9 plans)
+
+**Objective:** Split files exceeding 600 lines into logical components. Improve maintainability without changing behavior.
+
+**Mantra:** "One file, one responsibility. No file over 600 lines."
+
+**What shipped:**
+
+| Plan | Target | Result |
+|------|--------|--------|
+| 42-01 | dispatch.py (2717 lines) | dispatch/ package (9 modules) |
+| 42-02 | dispatch.py Part 2 | Core reduced to 462 lines |
+| 42-03 | intent.py (1149 lines) | intent/ package (6 modules) |
+| 42-04 | commands.py (1650 lines) | commands/ package (10 modules) |
+| 42-05 | multi_ticket.py (1538 lines) | multi_ticket/ package (5 modules) |
+| 42-06 | decision_buttons.py (1433 lines) | decision_buttons/ package (4 modules) |
+| 42-07 | draft.py, review.py, sync.py | 3 packages (11 modules total) |
+| 42-08 | extraction.py, decision.py, jira/client.py | 3 packages/module sets |
+| 42-09 | decision_store.py, workitem_store.py, structured_draft.py | 3 new modules each |
+
+**Principles applied:**
+- No behavior changes — pure refactoring
+- Logical cohesion — group by domain concept
+- Import hygiene — re-export for backward compatibility
+- All modules under 600 lines (most under 400)
+
+**Full context:** `.planning/phases/42-code-modularization/42-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -997,3 +1027,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 39. Intent Classification v2 | v1.2 | 7/7 | Complete | 2026-01-26 |
 | 40. Decision v2 — Rich Context | v1.2 | 6/6 | Complete | 2026-01-25 |
 | 41. Decision Change Propagation | v1.2 | 5/5 | Complete | 2026-01-26 |
+| 42. Code Modularization | v1.2 | 9/9 | Complete | 2026-01-26 |

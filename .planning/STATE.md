@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 38 added
+**Current focus:** v1.2 Developer Experience — Phase 42 complete
 
 ## Current Position
 
-Phase: 41-decision-change-propagation
-Plan: 5 of 5 in current phase
+Phase: 42-code-modularization
+Plan: 9 of 9 in current phase
 Status: Phase complete
-Last activity: 2026-01-26 — Completed 41-05-PLAN.md
+Last activity: 2026-01-26 — Completed 42-09-PLAN.md
 
-Progress: █████ 5/5 plans
+Progress: █████████ 9/9 plans
 
 ## Milestones Summary
 
@@ -27,7 +27,7 @@ Progress: █████ 5/5 plans
 | v1.1 | Communication as Source of Truth | 11-23.5 | 63 | Complete | 2026-01-20 |
 | v1.2 | Developer Experience | 24+ | 6+ | In Progress | - |
 
-**Total:** 29 phases, 121 plans shipped (v1.2: 15 plans complete)
+**Total:** 30 phases, 130 plans shipped (v1.2: 24 plans complete)
 
 ## v1.1 Summary
 
@@ -663,6 +663,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-26: Phase 42 ADDED — Code Modularization (split 23 files >600 lines into logical components)
 - 2026-01-26: Phase 41 ADDED — Decision Change Propagation (impact analysis, confirmation UI, transactional apply, rollback support)
 - 2026-01-25: Phase 40 ADDED — Decision v2: Rich Context & Versioning (rationale, context, alternatives, consequences, DecisionHead/Version split)
 - 2026-01-25: Phase 39 ADDED — Intent Classification v2 (2-stage architecture, state gates, unified IntentEnvelope, margin-based ambiguity)
