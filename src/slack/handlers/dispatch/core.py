@@ -237,7 +237,6 @@ async def _dispatch_result(
     """
     from src.skills.dispatcher import SkillDispatcher
     from src.graph.nodes.decision import DecisionResult
-    from src.slack.single_task_status import SingleTaskStatus
 
     # Import domain-specific handlers
     from src.slack.handlers.dispatch.draft import (
@@ -251,30 +250,15 @@ async def _dispatch_result(
     action = result.get("action", "continue")
     logger.info(f"_dispatch_result received action={action}, result_keys={list(result.keys())}")
 
-    # Phase 43: Post single-task status card for non-TaskPlan actions
-    single_task_status: Optional[SingleTaskStatus] = None
-    if action not in SKIP_SINGLE_TASK_STATUS:
+    # Phase 43: Update ProgressTracker with specific action description
+    # Instead of creating a new message, update the existing tracker
+    if action not in SKIP_SINGLE_TASK_STATUS and tracker:
         action_description = _get_action_description(action, result)
-        single_task_status = SingleTaskStatus(
-            client=client,
-            channel_id=identity.channel_id,
-            thread_ts=identity.thread_ts,
-        )
-        await single_task_status.start(action_description)
+        await tracker.update(action_description)
 
-    try:
-        await _execute_dispatch_action(
-            action, result, identity, client, runner, tracker
-        )
-    except Exception as e:
-        # Update status to error if dispatch fails
-        if single_task_status:
-            await single_task_status.error(str(e)[:50])
-        raise
-    finally:
-        # Complete status card (will update to done or delete if fast)
-        if single_task_status:
-            await single_task_status.complete()
+    await _execute_dispatch_action(
+        action, result, identity, client, runner, tracker
+    )
 
 
 async def _execute_dispatch_action(
