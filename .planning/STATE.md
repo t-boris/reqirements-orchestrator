@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 43-04-PLAN.md (Visual State Transition Feedback)
+Stopped at: Phase 44 PLANNED (7 plans in 4 waves)
 Resume file: None
-Next action: Phase 43 complete — ready for next phase or milestone completion
+Next action: Execute Phase 44 (/gsd:execute-phase 44)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -708,6 +708,8 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-26: Phase 44 CONTEXT GATHERED — Smart triage vision (context-aware gaps, mode-specific questions, progressive depth, no missing-info loops)
+- 2026-01-26: Phase 44 ADDED — Questions-First Collection Stage (mandatory questions before review/discuss, completeness gate)
 - 2026-01-26: Phase 43 ADDED — Task Progress UX (always show task list, specific action feedback, elapsed time)
 - 2026-01-26: Phase 42 COMPLETE — Code Modularization (9/9 plans, 14 files split into packages)
 - 2026-01-26: Phase 42 ADDED — Code Modularization (split 23 files >600 lines into logical components)

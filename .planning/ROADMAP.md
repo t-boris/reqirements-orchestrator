@@ -931,6 +931,49 @@ Bot: "To draft stories, pick approach:"
 - [x] 43-03: Elapsed Time Indicator (2026-01-26)
 - [x] 43-04: Visual State Transition Feedback (2026-01-26)
 
+### Phase 44: Questions-First Collection Stage
+
+**Status:** PLANNED (7 plans in 4 waves)
+
+**Objective:** Add smart triage before intent classification. Bot reads context, identifies actual gaps, asks targeted questions, then routes with higher confidence.
+
+**Mantra:** "Ask first, analyze second. No more missing-info loops after routing."
+
+**Vision (from CONTEXT.md):**
+- Smart triage: Context-aware gaps (not generic checklists)
+- Mode-specific questions: Different questions for review vs build vs track
+- Progressive depth: Start shallow, go deeper only if needed
+- Fast path: Skip questions if context already complete
+
+**Core Win:** Bot collects everything upfront. Once routed to review/build/track, it has everything it needs.
+
+**Architecture:**
+- New triage gate in Stage 0 (before LLM classification)
+- TriageProvider generates button-based clarifying questions
+- TriageStore persists answers for re-classification
+- Triage answers boost mode classification confidence
+
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 44-01, 44-02 | Foundation: TriageContext schema, TriageProvider questions |
+| 2 | 44-03, 44-04 | Integration: Gate integration, TriageStore persistence |
+| 3 | 44-05, 44-06 | Handlers: Slack UI, classification enrichment |
+| 4 | 44-07 | End-to-end: Dispatch + graph integration |
+
+**Plans:**
+- [ ] 44-01: TriageContext Schema + Triage Gate (Wave 1)
+- [ ] 44-02: TriageProvider Questions (Wave 1)
+- [ ] 44-03: Gate Integration into Intent Router (Wave 2)
+- [ ] 44-04: TriageAnswers Schema + TriageStore (Wave 2)
+- [ ] 44-05: Slack UI Handlers (Wave 3)
+- [ ] 44-06: Classification Enrichment (Wave 3)
+- [ ] 44-07: Dispatch + Graph Integration (Wave 4)
+
+**Depends on:** Phase 43
+**Full context:** `.planning/phases/44-questions-first-collection-stage/44-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
