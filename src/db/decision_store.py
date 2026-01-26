@@ -8,12 +8,16 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from psycopg import AsyncConnection
+from psycopg.types.json import Json
 
 from src.schemas.decision import (
+    Alternative,
+    Consequence,
     Decision,
     DecisionStatus,
     DecisionType,
     DecisionVersion,
+    RationaleItem,
 )
 
 
@@ -159,6 +163,11 @@ class DecisionStore:
         created_by: str,
         *,
         discussion_thread_ts: Optional[str] = None,
+        # Rich context (Phase 40)
+        rationale: Optional[list[dict]] = None,
+        context_before: Optional[str] = None,
+        alternatives: Optional[list[dict]] = None,
+        consequences: Optional[list[dict]] = None,
     ) -> Decision:
         """Create a new decision in PROPOSED status.
 
@@ -169,6 +178,10 @@ class DecisionStore:
             description: Full explanation of the decision.
             created_by: User ID who created the decision.
             discussion_thread_ts: Optional thread timestamp for discussion.
+            rationale: Optional list of rationale items (Phase 40).
+            context_before: Optional status quo context (Phase 40).
+            alternatives: Optional list of considered alternatives (Phase 40).
+            consequences: Optional list of consequences (Phase 40).
 
         Returns:
             Decision: Newly created decision with version=1 and PROPOSED status.
@@ -182,13 +195,15 @@ class DecisionStore:
                 INSERT INTO decisions (
                     id, channel_id, decision_type, title, description,
                     status, version, created_by, created_at, updated_at,
-                    discussion_thread_ts
+                    discussion_thread_ts,
+                    rationale, context_before, alternatives, consequences
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, channel_id, decision_type, title, description,
                           status, version, created_by, created_at, updated_at,
                           approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts
+                          canonical_message_ts, discussion_thread_ts,
+                          rationale, context_before, alternatives, consequences
                 """,
                 (
                     decision_id,
@@ -202,6 +217,10 @@ class DecisionStore:
                     now,
                     now,
                     discussion_thread_ts,
+                    Json(rationale) if rationale else None,
+                    context_before,
+                    Json(alternatives) if alternatives else None,
+                    Json(consequences) if consequences else None,
                 ),
             )
             row = await cur.fetchone()
@@ -293,6 +312,11 @@ class DecisionStore:
         description: str | None = None,
         changed_by: str,
         change_reason: str | None = None,
+        # Rich context (Phase 40)
+        rationale: list[dict] | None = None,
+        context_before: str | None = None,
+        alternatives: list[dict] | None = None,
+        consequences: list[dict] | None = None,
     ) -> Decision:
         """Update decision, creating new version.
 
@@ -305,6 +329,10 @@ class DecisionStore:
             description: New description if provided.
             changed_by: User ID who made this change.
             change_reason: Optional reason for the change.
+            rationale: New rationale if provided (Phase 40).
+            context_before: New context if provided (Phase 40).
+            alternatives: New alternatives if provided (Phase 40).
+            consequences: New consequences if provided (Phase 40).
 
         Returns:
             Decision: Updated decision with incremented version.
@@ -317,19 +345,31 @@ class DecisionStore:
         if not current:
             raise ValueError(f"Decision not found: {decision_id}")
 
-        # Save current version to history
+        # Save current version to history (including rich context)
         version_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
+        # Serialize current rich context for version history
+        current_rationale = None
+        if current.rationale:
+            current_rationale = [r.model_dump() for r in current.rationale]
+        current_alternatives = None
+        if current.alternatives:
+            current_alternatives = [a.model_dump() for a in current.alternatives]
+        current_consequences = None
+        if current.consequences:
+            current_consequences = [c.model_dump() for c in current.consequences]
+
         async with self._conn.cursor() as cur:
-            # Insert version history record
+            # Insert version history record with rich context
             await cur.execute(
                 """
                 INSERT INTO decision_versions (
                     id, decision_id, version, title, description,
-                    status, changed_by, changed_at, change_reason
+                    status, changed_by, changed_at, change_reason,
+                    rationale, context_before, alternatives, consequences
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     version_id,
@@ -341,6 +381,10 @@ class DecisionStore:
                     changed_by,
                     now,
                     change_reason,
+                    Json(current_rationale) if current_rationale else None,
+                    current.context,
+                    Json(current_alternatives) if current_alternatives else None,
+                    Json(current_consequences) if current_consequences else None,
                 ),
             )
 
@@ -356,6 +400,23 @@ class DecisionStore:
                 set_clauses.append("description = %s")
                 params.append(description)
 
+            # Rich context fields (Phase 40)
+            if rationale is not None:
+                set_clauses.append("rationale = %s")
+                params.append(Json(rationale))
+
+            if context_before is not None:
+                set_clauses.append("context_before = %s")
+                params.append(context_before)
+
+            if alternatives is not None:
+                set_clauses.append("alternatives = %s")
+                params.append(Json(alternatives))
+
+            if consequences is not None:
+                set_clauses.append("consequences = %s")
+                params.append(Json(consequences))
+
             # Always increment version and update timestamp
             set_clauses.append("version = version + 1")
             set_clauses.append("updated_at = %s")
@@ -370,7 +431,8 @@ class DecisionStore:
                 RETURNING id, channel_id, decision_type, title, description,
                           status, version, created_by, created_at, updated_at,
                           approved_by, approved_at, replaced_by, deprecation_reason,
-                          canonical_message_ts, discussion_thread_ts
+                          canonical_message_ts, discussion_thread_ts,
+                          rationale, context_before, alternatives, consequences
             """
 
             await cur.execute(query, params)
