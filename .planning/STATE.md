@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 43-task-progress-ux
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-01-26 — Completed 43-02-PLAN.md (Specific Action Feedback)
+Last activity: 2026-01-26 — Completed 43-03-PLAN.md (Elapsed Time Indicator)
 
-Progress: ██░░░░░░░ 2/4 plans
+Progress: ███░░░░░░ 3/4 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 43-02-PLAN.md (Specific Action Feedback)
+Stopped at: Completed 43-03-PLAN.md (Elapsed Time Indicator)
 Resume file: None
-Next action: Execute 43-03-PLAN.md (Elapsed Time Indicator)
+Next action: Execute 43-04-PLAN.md (Visual State Transition Feedback)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -465,19 +465,19 @@ Phase 41-05 decisions:
 
 ## What's Next
 
-**Phase 43: Task Progress UX** — IN PROGRESS (2/4 plans)
+**Phase 43: Task Progress UX** — IN PROGRESS (3/4 plans)
 
 **Objective:** Improve task progress feedback so users always know what MARO is working on.
 
 **Plans:**
 - 43-01: Single-Task Status Card Display — COMPLETE
 - 43-02: Specific Action Feedback — COMPLETE
-- 43-03: Elapsed Time Indicator — PENDING
+- 43-03: Elapsed Time Indicator — COMPLETE
 - 43-04: Visual State Transition Feedback — PENDING
 
 **Wave structure:**
 - Wave 1: 43-01, 43-02 (no dependencies, can run in parallel) — COMPLETE
-- Wave 2: 43-03 (depends on 43-02 for combined display)
+- Wave 2: 43-03 (depends on 43-02 for combined display) — COMPLETE
 - Wave 3: 43-04 (depends on 43-02, 43-03)
 
 Phase 43-01 decisions:
@@ -491,6 +491,12 @@ Phase 43-02 decisions:
 - Step text should be concise (<40 chars) for clean UI display
 - Step changes use regular throttling (not bypassing like significant events)
 - Intent-specific step descriptions in task executor
+
+Phase 43-03 decisions:
+- Module-level timer registry for cross-instance management
+- Timer auto-stops when task completes or plan finishes
+- Only show elapsed time if >5 seconds to avoid clutter
+- Elapsed time format: "<5s" for very short, "Xs" for seconds, "Xm Ys" for longer
 
 ---
 
