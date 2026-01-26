@@ -682,6 +682,16 @@ async def _handle_collect_question(
         logger.warning("collect_question action but no question text")
         return
 
+    # Skip questions with less than 2 options - not useful to ask
+    if options and len(options) < 2:
+        logger.info(
+            f"Skipping single-option question, proceeding to flow",
+            extra={"question": question_text[:50], "options_count": len(options)},
+        )
+        # Trigger proceed instead of asking useless question
+        await _handle_proceed_after_questions(result, identity, client)
+        return
+
     blocks = [
         {
             "type": "section",
@@ -692,8 +702,21 @@ async def _handle_collect_question(
         }
     ]
 
-    # Add buttons if options provided
+    # Add option descriptions prominently BEFORE buttons
     if options:
+        for opt in options[:4]:  # Max 4 options
+            label = opt.get("label", "")
+            description = opt.get("description", "")
+            if description:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{label}*\n{description}",
+                    },
+                })
+
+        # Add buttons
         button_elements = []
         seen_labels = {}  # Track duplicate labels
         for i, opt in enumerate(options):
@@ -737,21 +760,6 @@ async def _handle_collect_question(
             "type": "actions",
             "elements": button_elements[:5],  # Slack limit
         })
-
-        # Add descriptions if available
-        descriptions = [
-            f"• *{opt['label']}*: {opt['description']}"
-            for opt in options
-            if opt.get("description")
-        ]
-        if descriptions:
-            blocks.append({
-                "type": "context",
-                "elements": [{
-                    "type": "mrkdwn",
-                    "text": "\n".join(descriptions[:4]),
-                }],
-            })
 
     # Help text
     blocks.append({

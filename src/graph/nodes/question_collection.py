@@ -58,8 +58,11 @@ DO NOT ask about:
 
 If you have any open questions that would help you do a better job, respond:
 QUESTION: [Your specific question]?
-- Option A: [What this means]
-- Option B: [What this means]
+- Option A: [Detailed description of what this choice means and its implications]
+- Option B: [Detailed description of what this choice means and its implications]
+
+IMPORTANT: Always provide AT LEAST 2 meaningful options. Questions with only 1 option are useless.
+Each option description should be detailed (1-2 sentences explaining the implications).
 
 If you truly have NO questions and understand everything needed, respond:
 NO_QUESTIONS
