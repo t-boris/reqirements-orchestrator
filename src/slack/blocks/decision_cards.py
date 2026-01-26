@@ -14,6 +14,79 @@ from typing import Optional
 from src.schemas.decision import Decision, DecisionStatus, DecisionType
 
 
+def build_rich_context_blocks(decision: Decision) -> list[dict]:
+    """Build Slack blocks for decision rich context.
+
+    Returns collapsible sections for rationale, context, alternatives, consequences.
+    Empty list if no rich context.
+    """
+    if not decision.has_rich_context():
+        return []
+
+    blocks = []
+
+    # Rationale section
+    if decision.rationale:
+        rationale_text = []
+        for item in decision.rationale:
+            prefix = "▸" if item.weight == "primary" else "•"
+            rationale_text.append(f"{prefix} {item.text}")
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Rationale:*\n" + "\n".join(rationale_text),
+            },
+        })
+
+    # Context section
+    if decision.context:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Context (before):*\n{decision.context}",
+            },
+        })
+
+    # Alternatives section
+    if decision.alternatives:
+        alt_text = []
+        for alt in decision.alternatives:
+            alt_text.append(f"• *{alt.option}*")
+            alt_text.append(f"  _Rejected: {alt.rejected_reason}_")
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Alternatives Considered:*\n" + "\n".join(alt_text),
+            },
+        })
+
+    # Consequences section
+    if decision.consequences:
+        cons_text = []
+        for cons in decision.consequences:
+            severity_emoji = {
+                "minor": "🟢",
+                "moderate": "🟡",
+                "major": "🔴",
+            }.get(cons.severity, "⚪")
+            cons_text.append(f"{severity_emoji} *{cons.area}:* {cons.impact}")
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Consequences:*\n" + "\n".join(cons_text),
+            },
+        })
+
+    return blocks
+
+
 def build_compact_draft_card(
     decision: Decision,
 ) -> list[dict]:
