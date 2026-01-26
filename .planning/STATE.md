@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 39-intent-classification-v2
-Plan: 3 of 7 in current phase
+Plan: 4 of 7 in current phase
 Status: In progress
-Last activity: 2026-01-25 — Completed 39-03-PLAN.md
+Last activity: 2026-01-25 — Completed 39-04-PLAN.md
 
-Progress: ███░░░░░░░░░░░░░░░░░░░░░░ 3/7 plans
+Progress: ████░░░░░░░░░░░░░░░░░░░░░ 4/7 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 39-03-PLAN.md (Stage 1 Mode Classification)
+Stopped at: Completed 39-04-PLAN.md (Stage 2 Intent Classifier)
 Resume file: None
-Next action: Execute 39-04-PLAN.md
+Next action: Execute 39-05-PLAN.md
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -359,6 +359,13 @@ Phase 39-03 decisions:
 - Stage1Result exposes top_mode, top_score, margin as properties
 - Fallback to CHAT with 0.5 score on parse errors
 - get_stage2_hints bridges Stage 1 output to Stage 2 input
+
+Phase 39-04 decisions:
+- MODE_INTENTS maps SuperMode to valid intents (restricts LLM choices)
+- INTENT_RISK classifies each intent for safety (SAFE/WRITE/MASS_WRITE/DESTRUCTIVE)
+- _build_plan_envelope sorts tasks by risk (safe reads before writes)
+- Deterministic Jira key extraction via JIRA_KEY_PATTERN regex (not LLM)
+- build_target_hints combines anchor-based and message-based targets
 
 Phase 38-01 decisions:
 - ReviewArtifact stored in review_artifacts table (not checkpoint-only)
