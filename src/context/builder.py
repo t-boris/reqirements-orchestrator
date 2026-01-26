@@ -109,7 +109,24 @@ class ContextBuilder:
                     if decisions:
                         parts.append("Recent decisions:")
                         for dec in decisions:
-                            parts.append(f"- {dec.title}: {dec.description[:200]}")
+                            parts.append(f"- {dec.title}: {dec.description}")
+                            # Phase 40: Include full rich context if available
+                            if dec.rationale:
+                                parts.append("  Rationale:")
+                                for r in dec.rationale:
+                                    weight = f" ({r.weight})" if r.weight else ""
+                                    parts.append(f"    • {r.text}{weight}")
+                            if dec.context:
+                                parts.append(f"  Context: {dec.context}")
+                            if dec.alternatives:
+                                parts.append("  Alternatives considered:")
+                                for a in dec.alternatives:
+                                    parts.append(f"    • {a.option}: {a.rejected_reason or 'not selected'}")
+                            if dec.consequences:
+                                parts.append("  Consequences:")
+                                for c in dec.consequences:
+                                    severity = f" [{c.severity}]" if c.severity else ""
+                                    parts.append(f"    • {c.area}: {c.description}{severity}")
                 except Exception as e:
                     logger.debug(f"Could not load decisions: {e}")
 
