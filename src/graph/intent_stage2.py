@@ -10,6 +10,7 @@ This is the "detailed" stage - fuller prompt, more context.
 """
 import json
 import logging
+import re
 from typing import Any, Optional
 
 from src.schemas.intent import Intent, SuperMode
@@ -297,3 +298,47 @@ def _fallback_envelope(mode: SuperMode, error: str) -> IntentEnvelope:
         confidence=0.3,
         margin=0.0,
     )
+
+
+# =============================================================================
+# Deterministic Target Extraction (before LLM)
+# =============================================================================
+
+# Jira key pattern
+JIRA_KEY_PATTERN = re.compile(r'\b([A-Z][A-Z0-9]+-\d+)\b')
+
+
+def extract_jira_keys(text: str) -> list[str]:
+    """Extract Jira keys from text using regex.
+
+    This is deterministic extraction, not LLM-based.
+    Used to pre-populate targets for LLM confirmation.
+    """
+    return JIRA_KEY_PATTERN.findall(text)
+
+
+def build_target_hints(
+    message: str,
+    anchor_type: Optional[str] = None,
+    anchor_id: Optional[str] = None,
+) -> TargetReference:
+    """Build target hints from message and anchor.
+
+    These are passed to LLM for confirmation, not used directly.
+    """
+    targets = TargetReference()
+
+    # From anchor
+    if anchor_type == "DECISION":
+        targets.decision_id = anchor_id
+    elif anchor_type == "WORKITEM":
+        targets.workitem_id = anchor_id
+    elif anchor_type == "JIRA":
+        targets.jira_key = anchor_id
+
+    # Extract Jira keys from message
+    jira_keys = extract_jira_keys(message)
+    if jira_keys and not targets.jira_key:
+        targets.jira_key = jira_keys[0]  # First mentioned
+
+    return targets
