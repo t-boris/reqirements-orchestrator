@@ -142,6 +142,52 @@ class TaskStatusUpdater:
         except Exception as e:
             logger.error(f"Failed to update status card: {e}")
 
+    async def update_step(
+        self,
+        plan_id: str,
+        task_id: str,
+        step: str,
+        channel_id: str,
+    ) -> None:
+        """Update task's active step and refresh status card.
+
+        This is a convenience method that:
+        1. Loads the TaskPlan from DB
+        2. Updates the task's active_step
+        3. Persists the change
+        4. Triggers a card update (respecting throttle)
+
+        Use this for granular step updates during long operations.
+
+        Args:
+            plan_id: TaskPlan ID
+            task_id: Task ID to update
+            step: New active step description (should be <40 chars)
+            channel_id: Slack channel ID for card update
+        """
+        async with get_connection() as conn:
+            store = TaskPlanStore(conn)
+            task_plan = await store.get(plan_id)
+
+        if not task_plan:
+            logger.warning(f"update_step: plan {plan_id} not found")
+            return
+
+        # Find and update the task
+        task = task_plan.get_task(task_id)
+        if not task:
+            logger.warning(f"update_step: task {task_id} not found in plan {plan_id}")
+            return
+
+        task.set_active_step(step)
+
+        # Persist and update card
+        async with get_connection() as conn:
+            store = TaskPlanStore(conn)
+            await store.update(task_plan)
+
+        await self.update_card(task_plan, channel_id, event="step_change")
+
     async def flush_pending(self, plan_id: str, channel_id: str) -> None:
         """Flush any pending updates for a plan.
 
