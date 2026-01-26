@@ -1,85 +1,29 @@
-"""Jira API client service with retry, backoff, and dry-run support."""
+"""Jira API client service with retry, backoff, and dry-run support.
+
+This is a thin wrapper that delegates to specialized modules:
+- read.py: get_issue operations
+- write.py: create_issue, update_issue, add_comment, create_subtask
+- search.py: search_issues
+- validation.py: validate_issue_dry_run
+"""
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Optional
 
 import aiohttp
 
 from src.config.settings import Settings
+from src.jira.exceptions import JiraAPIError
 from src.jira.types import (
     JiraCreateRequest,
     JiraIssue,
-    PRIORITY_MAP,
 )
 
-
-def _format_updated_time(iso_timestamp: str) -> str:
-    """Format Jira updated timestamp to relative time string.
-
-    Args:
-        iso_timestamp: ISO 8601 timestamp from Jira (e.g., "2026-01-15T10:30:00.000+0000")
-
-    Returns:
-        Human-readable relative time (e.g., "3 days ago", "2 hours ago")
-    """
-    try:
-        # Parse ISO timestamp - Jira uses format like "2026-01-15T10:30:00.000+0000"
-        # Remove milliseconds and normalize timezone
-        ts = iso_timestamp.replace("+0000", "+00:00").replace("Z", "+00:00")
-        if "." in ts:
-            # Remove milliseconds
-            ts = ts.split(".")[0] + ts[-6:] if "+" in ts else ts.split(".")[0]
-
-        updated_dt = datetime.fromisoformat(ts.replace("+00:00", "")).replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        delta = now - updated_dt
-
-        if delta.days > 30:
-            months = delta.days // 30
-            return f"{months} month{'s' if months > 1 else ''} ago"
-        elif delta.days > 0:
-            return f"{delta.days} day{'s' if delta.days > 1 else ''} ago"
-        elif delta.seconds >= 3600:
-            hours = delta.seconds // 3600
-            return f"{hours} hour{'s' if hours > 1 else ''} ago"
-        elif delta.seconds >= 60:
-            minutes = delta.seconds // 60
-            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
-        else:
-            return "just now"
-    except Exception:
-        # Return raw timestamp if parsing fails
-        return iso_timestamp[:10] if len(iso_timestamp) > 10 else iso_timestamp
-
+# Re-export JiraAPIError for backward compatibility
+__all__ = ["JiraService", "JiraAPIError"]
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Exceptions
-# =============================================================================
-
-
-class JiraAPIError(Exception):
-    """Exception for Jira API errors."""
-
-    def __init__(
-        self,
-        status_code: int,
-        message: str,
-        response_body: Optional[dict[str, Any]] = None,
-    ):
-        self.status_code = status_code
-        self.message = message
-        self.response_body = response_body
-        super().__init__(f"Jira API error {status_code}: {message}")
-
-
-# =============================================================================
-# Jira Service
-# =============================================================================
 
 
 class JiraService:
@@ -91,15 +35,12 @@ class JiraService:
     - Structured logging for all operations
     - Environment-aware configuration
 
-    Sections:
-    - Core: init, session, close, _request
-    - CRUD: create_issue, search_issues, get_issue
-    - Operations (Phase 16): update_issue, add_comment, create_subtask
+    Operations are delegated to specialized modules:
+    - read.py: get_issue
+    - write.py: create_issue, update_issue, add_comment, create_subtask
+    - search.py: search_issues
+    - validation.py: validate_issue_dry_run
     """
-
-    # -------------------------------------------------------------------------
-    # Core: Initialization and HTTP request handling
-    # -------------------------------------------------------------------------
 
     def __init__(self, settings: Settings):
         """Initialize JiraService.
@@ -384,234 +325,22 @@ class JiraService:
         )
 
     # -------------------------------------------------------------------------
-    # CRUD: Create, Read, Search operations
+    # Delegated operations - thin wrappers that delegate to modules
     # -------------------------------------------------------------------------
+
+    async def get_issue(self, key: str) -> JiraIssue:
+        """Get a single Jira issue by key. Delegates to read module."""
+        from src.jira.read import get_issue
+        return await get_issue(self, key)
 
     async def create_issue(
         self,
         request: JiraCreateRequest,
         progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> JiraIssue:
-        """Create a Jira issue.
-
-        Args:
-            request: Issue creation request with all required fields.
-            progress_callback: Optional async callback for retry visibility.
-                Called as progress_callback(error_type, attempt, max_attempts)
-
-        Returns:
-            Created JiraIssue with key, summary, status, and URL.
-
-        Raises:
-            JiraAPIError: On API errors.
-        """
-        # Build API payload
-        payload = {
-            "fields": {
-                "project": {"key": request.project_key},
-                "summary": request.summary,
-                "description": {
-                    "type": "doc",
-                    "version": 1,
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": request.description}],
-                        }
-                    ],
-                },
-                "issuetype": {"name": request.issue_type.value},
-                "priority": {"name": PRIORITY_MAP[request.priority]},
-            }
-        }
-
-        # Add optional fields
-        if request.labels:
-            payload["fields"]["labels"] = request.labels
-
-        if request.epic_key:
-            # Get Epic Link custom field (varies by Jira instance)
-            epic_link_field = await self._get_epic_link_field()
-            if epic_link_field:
-                if epic_link_field == "parent":
-                    # Team-managed projects use parent field with key object
-                    payload["fields"]["parent"] = {"key": request.epic_key}
-                else:
-                    # Classic projects use custom field with key string
-                    payload["fields"][epic_link_field] = request.epic_key
-                logger.info(f"Using Epic Link field {epic_link_field} = {request.epic_key}")
-            else:
-                logger.warning(f"Epic Link field not found, story will not be linked to epic {request.epic_key}")
-
-        logger.info(
-            "Creating Jira issue",
-            extra={
-                "project_key": request.project_key,
-                "issue_type": request.issue_type.value,
-                "priority": request.priority.value,
-                "jira_priority": PRIORITY_MAP[request.priority],
-                "dry_run": self.settings.jira_dry_run,
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        # Dry-run mode: log and return mock issue
-        if self.settings.jira_dry_run:
-            self._mock_issue_counter += 1
-            mock_key = f"{request.project_key}-DRY{self._mock_issue_counter}"
-            logger.info(
-                "Dry-run mode: would create issue",
-                extra={
-                    "mock_key": mock_key,
-                    "payload": payload,
-                },
-            )
-            return JiraIssue(
-                key=mock_key,
-                summary=request.summary,
-                status="Open",
-                assignee=None,
-                base_url=self.base_url,
-            )
-
-        # Make API call with progress callback for retry visibility
-        response = await self._request(
-            "POST",
-            "/rest/api/3/issue",
-            json_data=payload,
-            progress_callback=progress_callback,
-        )
-        logger.info(f"Create issue response: {response}")
-
-        # Fetch full issue to get all fields
-        created_key = response.get("key", "")
-        logger.info(f"Fetching created issue: {created_key}")
-        issue = await self.get_issue(created_key)
-        logger.info(f"Returning issue from create_issue: {issue.key}")
-        return issue
-
-    async def search_issues(self, jql: str, limit: int = 5) -> list[JiraIssue]:
-        """Search for Jira issues using JQL.
-
-        Args:
-            jql: Jira Query Language search string.
-            limit: Maximum number of results (default 5).
-
-        Returns:
-            List of matching JiraIssue objects.
-
-        Raises:
-            JiraAPIError: On API errors.
-        """
-        start_time = time.monotonic()
-
-        logger.info(
-            "Searching Jira issues",
-            extra={
-                "jql": jql,
-                "limit": limit,
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        # Use new /search/jql endpoint (old /search was removed in 2024)
-        payload = {
-            "jql": jql,
-            "maxResults": limit,
-            "fields": ["key", "summary", "status", "assignee", "updated"],
-        }
-
-        response = await self._request("POST", "/rest/api/3/search/jql", json_data=payload)
-
-        issues = []
-        for item in response.get("issues", []):
-            fields = item.get("fields", {})
-            assignee = fields.get("assignee")
-            assignee_name = assignee.get("displayName") if assignee else None
-            status = fields.get("status", {}).get("name", "Unknown")
-            updated_raw = fields.get("updated", "")
-            updated = _format_updated_time(updated_raw) if updated_raw else None
-
-            issues.append(
-                JiraIssue(
-                    key=item.get("key", ""),
-                    summary=fields.get("summary", ""),
-                    status=status,
-                    assignee=assignee_name,
-                    updated=updated,
-                    base_url=self.base_url,
-                )
-            )
-
-        duration_ms = (time.monotonic() - start_time) * 1000
-        logger.info(
-            "Jira search complete",
-            extra={
-                "jql": jql,
-                "result_count": len(issues),
-                "duration_ms": round(duration_ms, 2),
-            },
-        )
-
-        return issues
-
-    async def get_issue(self, key: str) -> JiraIssue:
-        """Get a single Jira issue by key.
-
-        Args:
-            key: Issue key (e.g., PROJ-123).
-
-        Returns:
-            JiraIssue with full details.
-
-        Raises:
-            JiraAPIError: On API errors (including 404 if not found).
-        """
-        logger.info(
-            "Getting Jira issue",
-            extra={
-                "key": key,
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        response = await self._request(
-            "GET",
-            f"/rest/api/3/issue/{key}",
-            params={"fields": "key,summary,status,assignee,description"},
-        )
-
-        try:
-            fields = response.get("fields", {})
-            assignee = fields.get("assignee")
-            # Handle various assignee formats
-            if assignee and isinstance(assignee, dict):
-                assignee_name = assignee.get("displayName")
-            else:
-                assignee_name = None
-            status = fields.get("status", {}).get("name", "Unknown")
-
-            # Parse description from ADF to plain text
-            description_adf = fields.get("description")
-            description_text = self._adf_to_text(description_adf) if description_adf else None
-
-            issue = JiraIssue(
-                key=response.get("key", key),
-                summary=fields.get("summary", ""),
-                status=status,
-                assignee=assignee_name,
-                description=description_text,
-                base_url=self.base_url,
-            )
-            logger.info(f"Built JiraIssue: key={issue.key}, url={issue.url}")
-            return issue
-        except Exception as e:
-            logger.error(f"Failed to parse Jira response: {e}, response={response}")
-            raise
-
-    # -------------------------------------------------------------------------
-    # Operations (Phase 16): Update, comment, subtask
-    # -------------------------------------------------------------------------
+        """Create a Jira issue. Delegates to write module."""
+        from src.jira.write import create_issue
+        return await create_issue(self, request, progress_callback)
 
     async def update_issue(
         self,
@@ -619,71 +348,9 @@ class JiraService:
         updates: dict[str, Any],
         progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> JiraIssue:
-        """Update a Jira issue with field changes.
-
-        Uses PUT /rest/api/3/issue/{issueIdOrKey} endpoint.
-
-        Args:
-            issue_key: Issue key (e.g., "SCRUM-111")
-            updates: Fields to update. Supports:
-                - "description": Text (will be converted to ADF)
-                - "summary": Plain text
-                - "priority": {"name": "High"}
-                - "labels": ["label1", "label2"]
-            progress_callback: Optional retry visibility callback
-
-        Returns:
-            Updated JiraIssue with refreshed fields
-
-        Raises:
-            JiraAPIError: On API errors
-        """
-        logger.info(
-            "Updating Jira issue",
-            extra={
-                "issue_key": issue_key,
-                "update_fields": list(updates.keys()),
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        # Convert description to ADF if present
-        if "description" in updates and isinstance(updates["description"], str):
-            updates["description"] = {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": updates["description"]}],
-                    }
-                ],
-            }
-
-        payload = {"fields": updates}
-
-        # Dry-run mode
-        if self.settings.jira_dry_run:
-            logger.info(
-                "Dry-run mode: would update issue",
-                extra={"issue_key": issue_key, "payload": payload},
-            )
-            return await self.get_issue(issue_key)
-
-        await self._request(
-            "PUT",
-            f"/rest/api/3/issue/{issue_key}",
-            json_data=payload,
-            progress_callback=progress_callback,
-        )
-
-        logger.info(
-            "Jira issue updated successfully",
-            extra={"issue_key": issue_key},
-        )
-
-        # Return refreshed issue
-        return await self.get_issue(issue_key)
+        """Update a Jira issue. Delegates to write module."""
+        from src.jira.write import update_issue
+        return await update_issue(self, issue_key, updates, progress_callback)
 
     async def add_comment(
         self,
@@ -691,199 +358,9 @@ class JiraService:
         comment: str,
         progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> dict[str, Any]:
-        """Add comment to a Jira issue.
-
-        Uses POST /rest/api/3/issue/{issueIdOrKey}/comment endpoint.
-
-        Args:
-            issue_key: Issue key (e.g., "SCRUM-111")
-            comment: Comment text (plain text, will be converted to ADF)
-            progress_callback: Optional retry visibility callback
-
-        Returns:
-            Created comment response with id, author, body, created timestamp
-
-        Raises:
-            JiraAPIError: On API errors
-        """
-        logger.info(
-            "Adding comment to Jira issue",
-            extra={
-                "issue_key": issue_key,
-                "comment_length": len(comment),
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        # Convert plain text to ADF
-        payload = {
-            "body": {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": comment}],
-                    }
-                ],
-            }
-        }
-
-        # Dry-run mode
-        if self.settings.jira_dry_run:
-            logger.info(
-                "Dry-run mode: would add comment",
-                extra={"issue_key": issue_key, "comment_preview": comment[:100]},
-            )
-            return {"id": "dry-run", "body": payload["body"]}
-
-        response = await self._request(
-            "POST",
-            f"/rest/api/3/issue/{issue_key}/comment",
-            json_data=payload,
-            progress_callback=progress_callback,
-        )
-
-        logger.info(
-            "Comment added successfully",
-            extra={
-                "issue_key": issue_key,
-                "comment_id": response.get("id"),
-            },
-        )
-
-        return response
-
-    # -------------------------------------------------------------------------
-    # Validation (Phase 20): Dry-run validation for multi-ticket batch creation
-    # -------------------------------------------------------------------------
-
-    async def _get_project(self, project_key: str) -> Optional[dict[str, Any]]:
-        """Get project by key, or None if not found/no access.
-
-        Args:
-            project_key: Jira project key (e.g., "PROJ")
-
-        Returns:
-            Project dict with id, key, name, or None if not found
-        """
-        try:
-            response = await self._request("GET", f"/rest/api/3/project/{project_key}")
-            return response
-        except JiraAPIError as e:
-            if e.status_code == 404:
-                return None
-            raise
-
-    async def _get_issue_types(self, project_key: str) -> list[dict[str, Any]]:
-        """Get available issue types for a project.
-
-        Args:
-            project_key: Jira project key
-
-        Returns:
-            List of issue type dicts with id, name, subtask flag
-        """
-        response = await self._request(
-            "GET",
-            f"/rest/api/3/issue/createmeta/{project_key}/issuetypes",
-        )
-        return response.get("issueTypes", response.get("values", []))
-
-    async def _get_required_fields(
-        self, project_key: str, issue_type: str
-    ) -> list[str]:
-        """Get required fields for creating an issue type in a project.
-
-        Args:
-            project_key: Jira project key
-            issue_type: Issue type name (e.g., "Epic", "Story")
-
-        Returns:
-            List of required field names
-        """
-        # First get issue type ID
-        issue_types = await self._get_issue_types(project_key)
-        issue_type_id = None
-        for it in issue_types:
-            if it.get("name") == issue_type:
-                issue_type_id = it.get("id")
-                break
-
-        if not issue_type_id:
-            return ["summary"]  # Default to just summary if type not found
-
-        # Get fields for this issue type
-        try:
-            response = await self._request(
-                "GET",
-                f"/rest/api/3/issue/createmeta/{project_key}/issuetypes/{issue_type_id}",
-            )
-            fields = response.get("fields", response.get("values", []))
-            required = []
-            for field in fields:
-                if isinstance(field, dict) and field.get("required"):
-                    required.append(field.get("fieldId") or field.get("key", ""))
-            return required if required else ["summary"]
-        except JiraAPIError:
-            return ["summary"]  # Default on error
-
-    async def validate_issue_dry_run(
-        self,
-        project_key: str,
-        issue_type: str,
-        fields: dict,
-    ) -> dict:
-        """Validate issue creation without actually creating.
-
-        Checks:
-        - Project exists and user has access
-        - Issue type valid for project
-        - Required fields present
-        - Field values valid
-
-        Args:
-            project_key: Jira project key (e.g., "PROJ")
-            issue_type: Issue type name (e.g., "Epic", "Story")
-            fields: Field values to validate (e.g., {"summary": "Title", "description": "..."})
-
-        Returns:
-            {"valid": True} or {"valid": False, "errors": [...]}
-        """
-        errors = []
-
-        # Check project access
-        project = await self._get_project(project_key)
-        if not project:
-            errors.append(f"Project {project_key} not found or no access")
-            return {"valid": False, "errors": errors}
-
-        # Check issue type valid
-        valid_types = await self._get_issue_types(project_key)
-        type_names = [t.get("name") for t in valid_types]
-        if issue_type not in type_names:
-            errors.append(
-                f"Issue type '{issue_type}' not valid for project {project_key}. "
-                f"Available types: {', '.join(type_names)}"
-            )
-
-        # Check required fields
-        required = await self._get_required_fields(project_key, issue_type)
-        for field in required:
-            # Map common field names
-            field_key = field
-            if field == "summary":
-                field_key = "summary"
-            elif field == "description":
-                field_key = "description"
-
-            if field_key not in fields or not fields[field_key]:
-                errors.append(f"Required field '{field}' is missing")
-
-        if errors:
-            return {"valid": False, "errors": errors}
-
-        return {"valid": True}
+        """Add comment to a Jira issue. Delegates to write module."""
+        from src.jira.write import add_comment
+        return await add_comment(self, issue_key, comment, progress_callback)
 
     async def create_subtask(
         self,
@@ -892,88 +369,21 @@ class JiraService:
         description: str = "",
         progress_callback: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> JiraIssue:
-        """Create a subtask under parent issue.
+        """Create a subtask under parent issue. Delegates to write module."""
+        from src.jira.write import create_subtask
+        return await create_subtask(self, parent_key, summary, description, progress_callback)
 
-        Uses POST /rest/api/3/issue endpoint with parent link and "Sub-task" issue type.
+    async def search_issues(self, jql: str, limit: int = 5) -> list[JiraIssue]:
+        """Search for Jira issues using JQL. Delegates to search module."""
+        from src.jira.search import search_issues
+        return await search_issues(self, jql, limit)
 
-        Args:
-            parent_key: Parent issue key (e.g., "SCRUM-111")
-            summary: Subtask summary/title
-            description: Subtask description (optional)
-            progress_callback: Optional retry visibility callback
-
-        Returns:
-            Created subtask JiraIssue
-
-        Raises:
-            JiraAPIError: On API errors (including if parent not found or subtasks not allowed)
-        """
-        # Extract project key from parent key
-        project_key = parent_key.split("-")[0]
-
-        logger.info(
-            "Creating subtask",
-            extra={
-                "parent_key": parent_key,
-                "project_key": project_key,
-                "summary": summary,
-                "jira_env": self.settings.jira_env,
-            },
-        )
-
-        # Build payload
-        payload: dict[str, Any] = {
-            "fields": {
-                "project": {"key": project_key},
-                "parent": {"key": parent_key},
-                "summary": summary,
-                "issuetype": {"name": "Sub-task"},
-            }
-        }
-
-        # Add description if provided
-        if description:
-            payload["fields"]["description"] = {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": description}],
-                    }
-                ],
-            }
-
-        # Dry-run mode
-        if self.settings.jira_dry_run:
-            self._mock_issue_counter += 1
-            mock_key = f"{project_key}-DRY{self._mock_issue_counter}"
-            logger.info(
-                "Dry-run mode: would create subtask",
-                extra={"mock_key": mock_key, "parent_key": parent_key, "summary": summary},
-            )
-            return JiraIssue(
-                key=mock_key,
-                summary=summary,
-                status="Open",
-                assignee=None,
-                base_url=self.base_url,
-            )
-
-        response = await self._request(
-            "POST",
-            "/rest/api/3/issue",
-            json_data=payload,
-            progress_callback=progress_callback,
-        )
-
-        created_key = response.get("key", "")
-        logger.info(
-            "Subtask created successfully",
-            extra={
-                "subtask_key": created_key,
-                "parent_key": parent_key,
-            },
-        )
-
-        return await self.get_issue(created_key)
+    async def validate_issue_dry_run(
+        self,
+        project_key: str,
+        issue_type: str,
+        fields: dict,
+    ) -> dict:
+        """Validate issue creation without actually creating. Delegates to validation module."""
+        from src.jira.validation import validate_issue_dry_run
+        return await validate_issue_dry_run(self, project_key, issue_type, fields)

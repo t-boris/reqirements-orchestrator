@@ -10,7 +10,8 @@ from src.jira.types import (
     JiraIssue,
     JiraCreateRequest,
 )
-from src.jira.client import JiraService, JiraAPIError
+from src.jira.client import JiraService
+from src.jira.exceptions import JiraAPIError
 from src.jira.sync_config import (
     FieldOwnership,
     SyncField,
