@@ -17,6 +17,7 @@ This document explains the complete decision-making logic, rules, prompts, and b
    - 1.8 Product Invariants (Phase 32)
    - 1.9 Multi-Intent Task Orchestration (Phase 35)
    - 1.10 Question Engine — Conversation Driver (Phase 36)
+   - 1.11 Intent Classification v2 (Phase 39)
 2. [Intent Classification](#2-intent-classification)
    - 2.0 User Modes (Phase 31)
    - 2.6 Multi-Intent Detection (Phase 35)
@@ -779,6 +780,120 @@ handle_question_answer
     ├─ Mark task → DONE
     ├─ Reset budget
     └─ Continue execution
+```
+
+### 1.11 Intent Classification v2 (Phase 39)
+
+**Core shift:** From monolithic classification to 2-stage architecture with pre-gates and terminal intents.
+
+**Mantra:** "Know intent kind before classification. Terminal intents END immediately."
+
+#### The Problem
+
+Intent classification had accumulated complexity:
+- Single LLM call classifying 13+ intents
+- DISCUSSION/META went through full graph unnecessarily
+- Pre-classification checks scattered across handlers
+- Difficult to add new intents without touching classification prompt
+
+#### The Solution: 2-Stage Architecture
+
+```
+User Message
+    |
+Stage 1: Pre-Gates (deterministic)
+    |   - Empty? → NOOP
+    |   - Button? → Extract from payload
+    |   - Command? → Map to intent
+    |   - Thread-bound? → TICKET_ACTION
+    |
+Stage 2: LLM Classification
+    |   - First: What KIND of intent?
+    |   - Then: Which specific intent?
+    |
+IntentEnvelope
+    |
+Router Decision
+    |-> TERMINAL → terminal_response → END
+    |-> WORK → Full graph workflow
+```
+
+#### IntentEnvelope
+
+The new intent result wrapper:
+
+```python
+class IntentEnvelope(BaseModel):
+    kind: IntentKind          # TERMINAL, WORK, PENDING_ACTION, NOOP
+    intent: Optional[Intent]  # Specific intent
+    confidence: float
+    source: IntentSource      # PRE_GATE, LLM, BUTTON, COMMAND
+    gate_hit: Optional[str]   # Which pre-gate matched
+```
+
+#### IntentKind
+
+First classify the **kind** of intent:
+
+| Kind | Description | Example |
+|------|-------------|---------|
+| **TERMINAL** | Single response, then END | "hi", "what can you do?" |
+| **WORK** | Requires workflow | "create a ticket for auth" |
+| **PENDING_ACTION** | Continuing from button/command | Button click |
+| **NOOP** | No action needed | Empty message |
+
+#### Pre-Gates
+
+Deterministic checks that bypass LLM:
+
+| Gate | Trigger | Result |
+|------|---------|--------|
+| `empty_message` | No text content | NOOP |
+| `button_action` | Button payload present | From payload |
+| `slash_command` | Message is /command | Map to intent |
+| `thread_binding` | Thread bound to ticket | TICKET_ACTION |
+| `explicit_trigger` | Known trigger phrase | Map to intent |
+
+#### Terminal Intents
+
+DISCUSSION and META now route to `terminal_response_node`:
+
+```python
+if is_terminal_intent(envelope):
+    return "terminal_response_flow"  # -> terminal_response_node -> END
+```
+
+Terminal response node:
+- Generates single brief response
+- No state mutations
+- No follow-up questions
+- Graph ends immediately
+
+#### Routing Decision
+
+```python
+def route_after_intent(state):
+    envelope = state.get("envelope")
+
+    # Phase 39: Terminal intents END immediately
+    if envelope and is_terminal_intent(envelope):
+        return "terminal_response_flow"
+
+    # Existing routing for work intents
+    # ...
+```
+
+#### Backward Compatibility
+
+During migration, both systems coexist:
+
+```python
+# classify_intent_v2 returns both formats
+result = await classify_intent_v2(state)
+envelope = result["envelope"]           # New
+intent_result = result["intent_result"] # Legacy
+
+# Router checks envelope first, falls back to legacy
 ```
 
 ---
@@ -1961,6 +2076,14 @@ MARO's intelligence is built on:
 37. **Hybrid answer processing** — Buttons deterministic, text LLM-parsed
 38. **Mode transitions** — @mention/command → ACTIVE, complete/timeout → PASSIVE
 
+### Intent Classification v2 (Phase 39)
+39. **2-stage architecture** — Pre-gates (deterministic) then LLM classification
+40. **IntentEnvelope** — Typed wrapper with kind, intent, source, confidence
+41. **IntentKind** — TERMINAL, WORK, PENDING_ACTION, NOOP for routing
+42. **Pre-gates** — Empty, button, command, thread-binding bypass LLM
+43. **Terminal intents** — DISCUSSION/META route to terminal_response_node -> END
+44. **Backward compatibility** — classify_intent_v2 returns both envelope and legacy result
+
 ### Supporting Systems
 39. **Context-aware intent classification** — Message + draft state → intent (Phase 26)
 27. **Version-bound approvals** — Stale buttons detected and rejected
@@ -1980,9 +2103,10 @@ MARO's intelligence is built on:
 - "Invariants are physics, not rules." (Phase 32)
 - "Safe tasks execute. Dangerous tasks wait." (Phase 35)
 - "Questions are tasks. Mode drives behavior. Budget prevents spam." (Phase 36)
+- "Know intent kind before classification. Terminal intents END immediately." (Phase 39)
 
 The system is designed to be **conversational**, **non-blocking**, and **transparent** — always explaining its reasoning and giving users explicit choices.
 
 ---
 
-*Last updated: 2026-01-24 (Phase 36 Question Engine — Conversation Driver)*
+*Last updated: 2026-01-25 (Phase 39 Intent Classification v2)*

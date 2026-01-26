@@ -15,6 +15,7 @@
 > - **Phase 32: Product Invariants** - 5 invariants enforced as architecture
 > - **Phase 35: Multi-Intent Task Orchestration** - Parse full universe of user intent
 > - **Phase 36: Question Engine — Conversation Driver** - Questions as first-class tasks with active/passive mode
+> - **Phase 39: Intent Classification v2** - 2-stage architecture with IntentEnvelope, pre-gates, and terminal intents
 
 A sophisticated AI-powered system that transforms natural language conversations into structured, validated Jira issues through an intent-based LangGraph workflow with human-in-the-loop approval.
 
@@ -643,6 +644,136 @@ Low confidence (<0.7) triggers clarification question.
 | `BudgetTracker` | Budget enforcement (src/questions/budget_tracker.py) |
 | `question_executor_node` | Question task execution (src/graph/nodes/question_executor.py) |
 | `build_question_blocks()` | Question UI (src/slack/blocks/question.py) |
+
+---
+
+## Phase 39: Intent Classification v2 (Latest)
+
+**Mantra:** "Know intent kind before classification. Terminal intents END immediately."
+
+Phase 39 refactors the intent classification system into a 2-stage architecture that improves accuracy, reduces LLM calls, and simplifies routing for simple intents.
+
+### The Problem
+
+The existing intent classifier has accumulated complexity:
+- Single monolithic prompt classifying 13+ intents
+- Terminal intents (DISCUSSION, META) go through full graph unnecessarily
+- Pre-classification checks scattered across dispatch handlers
+- Multi-intent detection bolted on top of single-intent classification
+
+### The Solution: 2-Stage Architecture
+
+```
+User Message
+    |
+Stage 1: Pre-Gates (deterministic, no LLM)
+    |   - Empty message? -> NOOP
+    |   - Button action? -> Extract intent from payload
+    |   - Slash command? -> Map to known intent
+    |   - Thread-bound ticket? -> TICKET_ACTION default
+    |
+Stage 2: LLM Classification (if needed)
+    |   - Classify into IntentKind first (terminal vs work)
+    |   - Then classify specific Intent within kind
+    |
+IntentEnvelope
+    |
+Router
+    |-> Terminal? -> terminal_response_node -> END
+    |-> Work? -> Existing graph flows
+```
+
+### IntentEnvelope Schema
+
+```python
+class IntentEnvelope(BaseModel):
+    """Envelope wrapping classified intent with routing metadata."""
+    kind: IntentKind          # TERMINAL, WORK, PENDING_ACTION
+    intent: Optional[Intent]  # Specific intent (DISCUSSION, TICKET, etc.)
+    confidence: float         # Classification confidence
+    source: IntentSource      # PRE_GATE, LLM, BUTTON, COMMAND
+    gate_hit: Optional[str]   # Which pre-gate matched
+    legacy_result: Optional[dict]  # Backward compat with IntentResult
+```
+
+### IntentKind Classification
+
+First classify the **kind** of intent, then the specific intent:
+
+| Kind | Description | Routing |
+|------|-------------|---------|
+| **TERMINAL** | Single response then END | terminal_response_node -> END |
+| **WORK** | Requires graph workflow | Existing flow nodes |
+| **PENDING_ACTION** | Button/command continuation | Resume from state |
+| **NOOP** | No action needed | Skip graph entirely |
+
+### Pre-Gates (Stage 1)
+
+Deterministic checks that bypass LLM classification:
+
+| Gate | Check | Result |
+|------|-------|--------|
+| `empty_message` | Message is empty/whitespace | NOOP |
+| `button_action` | Event has button payload | Extract from payload |
+| `slash_command` | Event is slash command | Map command to intent |
+| `thread_binding` | Thread bound to ticket | TICKET_ACTION default |
+| `explicit_trigger` | Message starts with known trigger | Map trigger to intent |
+
+Pre-gates reduce LLM calls and ensure consistent behavior for deterministic cases.
+
+### Terminal Intents
+
+DISCUSSION and META intents are now handled specially:
+
+```
+envelope.kind == TERMINAL
+    |
+    v
+terminal_response_node
+    |   - Generate single response
+    |   - No follow-up questions
+    |   - No state mutations
+    |
+    v
+END (graph terminates immediately)
+```
+
+This replaces the previous flow where DISCUSSION/META went through discussion_node with full state management.
+
+### Backward Compatibility
+
+Phase 39 maintains backward compatibility during migration:
+
+```python
+# New wrapper returns both envelope and legacy result
+result = await classify_intent_v2(state)
+envelope = result["envelope"]        # New
+legacy_result = result["intent_result"]  # Old
+
+# Router checks envelope first
+if envelope and is_terminal_intent(envelope):
+    return "terminal_response_flow"
+# Fall back to legacy routing
+```
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `IntentEnvelope` | Intent wrapper with kind and routing metadata |
+| `IntentKind` | TERMINAL, WORK, PENDING_ACTION, NOOP |
+| `intent_router_node` | Pre-gates + LLM classification |
+| `is_terminal_intent()` | Check if envelope indicates terminal |
+| `terminal_response_node` | Generate single response for CHAT/META |
+| `classify_intent_v2()` | Backward-compatible wrapper |
+| `get_intent_classifier()` | Factory for v1/v2 classifier |
+
+### Migration Path
+
+1. **Phase 39-01 to 39-06**: Build IntentEnvelope, IntentKind, pre-gates
+2. **Phase 39-07**: Wire terminal_response_node to graph
+3. **Phase 39-08+**: Migrate remaining intents to v2 classification
+4. **Phase 39-Final**: Remove legacy IntentResult
 
 ---
 
