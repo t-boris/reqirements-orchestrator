@@ -757,6 +757,79 @@ Bot: "To draft stories, pick approach:"
 - [x] 39-06: Unified intent router (2026-01-26)
 - [x] 39-07: Graph integration + terminal handling (2026-01-26)
 
+### Phase 40: Decision v2 — Rich Context & Versioning
+
+**Status:** Not started
+
+**Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning. Make the WHY as important as the WHAT.
+
+**Mantra:** "A decision without rationale is just a statement. A decision with context is a lesson."
+
+**Key Concepts:**
+
+1. **Rich Decision Fields:**
+   - `rationale` — WHY (2-6 bullets, the reasoning)
+   - `context` — What was before (status quo that led to this decision)
+   - `alternatives` — What was considered (and why rejected)
+   - `consequences` — What this changes (impact, constraints introduced)
+
+2. **DecisionHead + DecisionVersion Split:**
+   ```
+   DecisionHead (stable reference)
+     - decision_id (immutable)
+     - channel_id
+     - canonical_message_ts
+     - created_at, created_by
+
+   DecisionVersion (content snapshot)
+     - version_id
+     - decision_id (FK)
+     - version (1, 2, 3...)
+     - title, description, type, status
+     - rationale, context, alternatives, consequences
+     - created_at, created_by
+   ```
+
+3. **LLM Extraction:**
+   - Extract rich fields from conversation context
+   - Prompt: "Based on the discussion, extract: rationale (why this decision), context (what problem), alternatives (what was considered), consequences (what changes)"
+
+4. **Jira Projection:**
+   - Managed section format includes rationale/context if present
+   - Compact format for description, full format for comments
+
+5. **UI:**
+   - Approval card shows rich fields in collapsible sections
+   - Decision list shows rationale preview (first bullet)
+   - `/maro decision show` displays full context
+
+6. **Migration:**
+   - Existing decisions get NULL rich fields (valid, just missing context)
+   - New decisions prompt for rich fields if not detected
+   - Backfill command: `/maro decision enrich DEC-123`
+
+**Depends on:** Phase 39 (Intent Classification v2)
+
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 40-01, 40-02 | Foundation: Schema changes, DecisionVersion split |
+| 2 | 40-03, 40-04 | Extraction: LLM rich field extraction, Jira projection format |
+| 3 | 40-05, 40-06 | UI: Approval card updates, decision show updates |
+| 4 | 40-07 | Migration: Backfill command, existing decision handling |
+
+**Plans:**
+- [ ] 40-01: DecisionHead + DecisionVersion schema split
+- [ ] 40-02: Rich decision fields (rationale, context, alternatives, consequences)
+- [ ] 40-03: LLM extraction for rich fields
+- [ ] 40-04: Jira projection with rich context
+- [ ] 40-05: Approval card UI with collapsible sections
+- [ ] 40-06: Decision show/list with rationale preview
+- [ ] 40-07: Migration + backfill command
+
+**Full context:** `.planning/phases/40-decision-v2-rich-context/40-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -872,3 +945,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
 | 39. Intent Classification v2 | v1.2 | 7/7 | Complete | 2026-01-26 |
+| 40. Decision v2 — Rich Context | v1.2 | 0/7 | Not started | - |

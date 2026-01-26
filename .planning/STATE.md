@@ -418,6 +418,14 @@ Phase 38-06 decisions:
 
 ## What's Next
 
+**Phase 40: Decision v2 — Rich Context & Versioning** — NOT STARTED (0/7 plans)
+
+**Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning.
+
+**Next action:** Run `/gsd:plan-phase 40` to create detailed execution plans.
+
+---
+
 **Phase 34: File Attachment Processing** — COMPLETE (8/8 plans)
 
 **Objective:** Enable bot to read PDF, DOCX, MD attachments. Attachments as first-class entities with lifecycle states, pinning, and intent-scoped retrieval.
@@ -582,6 +590,7 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-25: Phase 40 ADDED — Decision v2: Rich Context & Versioning (rationale, context, alternatives, consequences, DecisionHead/Version split)
 - 2026-01-25: Phase 39 ADDED — Intent Classification v2 (2-stage architecture, state gates, unified IntentEnvelope, margin-based ambiguity)
 - 2026-01-25: Phase 38 ADDED — Context Architecture (goal-driven context building, three-layer model)
 - 2026-01-24: Phase 37 COMPLETE — Unified Question Engine (5/5 plans, QuestionEngine facade + review integration)
