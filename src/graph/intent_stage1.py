@@ -162,3 +162,17 @@ def build_context_hint(
         hints.append(f"In {anchor_type} thread")
 
     return ". ".join(hints) if hints else None
+
+
+def get_stage2_hints(stage1: Stage1Result) -> dict:
+    """Extract hints from Stage 1 for Stage 2 classification.
+
+    Stage 2 uses these to focus its more detailed classification.
+    """
+    return {
+        "primary_mode": stage1.top_mode.value,
+        "is_multi_intent": stage1.multi_intent,
+        "mode_confidence": stage1.top_score,
+        "mode_margin": stage1.margin,
+        "candidate_modes": [c.mode.value for c in stage1.mode_candidates],
+    }
