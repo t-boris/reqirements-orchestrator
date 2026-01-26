@@ -910,6 +910,27 @@ Bot: "To draft stories, pick approach:"
 
 **Full context:** `.planning/phases/42-code-modularization/42-CONTEXT.md`
 
+### Phase 43: Task Progress UX
+
+**Status:** COMPLETE (4/4 plans)
+
+**Objective:** Improve "In Progress" feedback to always show task list with specific actions being performed, even for single-task operations.
+
+**What shipped:**
+- Single-task status cards for all operations
+- Active step feedback showing current action
+- Elapsed time indicators for long-running operations
+- Visual state change indicators (:new:/:sparkles:)
+- "Just completed" footer for immediate feedback
+
+**Full context:** `.planning/phases/43-task-progress-ux/43-CONTEXT.md`
+
+**Plans:**
+- [x] 43-01: Single-Task Status Card Display (2026-01-26)
+- [x] 43-02: Specific Action Feedback (2026-01-26)
+- [x] 43-03: Elapsed Time Indicator (2026-01-26)
+- [x] 43-04: Visual State Transition Feedback (2026-01-26)
+
 ## Completed Milestones
 
 <details>

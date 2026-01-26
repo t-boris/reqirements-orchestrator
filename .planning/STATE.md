@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 43 planning complete
+**Current focus:** v1.2 Developer Experience — Phase 43 complete
 
 ## Current Position
 
 Phase: 43-task-progress-ux
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-01-26 — Completed 43-03-PLAN.md (Elapsed Time Indicator)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-01-26 — Completed 43-04-PLAN.md (Visual State Transition Feedback)
 
-Progress: ███░░░░░░ 3/4 plans
+Progress: ████░░░░░ 4/4 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 43-03-PLAN.md (Elapsed Time Indicator)
+Stopped at: Completed 43-04-PLAN.md (Visual State Transition Feedback)
 Resume file: None
-Next action: Execute 43-04-PLAN.md (Visual State Transition Feedback)
+Next action: Phase 43 complete — ready for next phase or milestone completion
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -465,7 +465,7 @@ Phase 41-05 decisions:
 
 ## What's Next
 
-**Phase 43: Task Progress UX** — IN PROGRESS (3/4 plans)
+**Phase 43: Task Progress UX** — COMPLETE (4/4 plans)
 
 **Objective:** Improve task progress feedback so users always know what MARO is working on.
 
@@ -473,12 +473,14 @@ Phase 41-05 decisions:
 - 43-01: Single-Task Status Card Display — COMPLETE
 - 43-02: Specific Action Feedback — COMPLETE
 - 43-03: Elapsed Time Indicator — COMPLETE
-- 43-04: Visual State Transition Feedback — PENDING
+- 43-04: Visual State Transition Feedback — COMPLETE
 
-**Wave structure:**
-- Wave 1: 43-01, 43-02 (no dependencies, can run in parallel) — COMPLETE
-- Wave 2: 43-03 (depends on 43-02 for combined display) — COMPLETE
-- Wave 3: 43-04 (depends on 43-02, 43-03)
+**What shipped:**
+- Single-task status cards for all operations (not just TaskPlans)
+- Active step feedback showing current action (e.g., "Parsing requirements")
+- Elapsed time indicators for long-running operations
+- Visual state change indicators (:new: for started, :sparkles: for completed)
+- "Just completed" footer for immediate feedback
 
 Phase 43-01 decisions:
 - SKIP_SINGLE_TASK_STATUS set for actions with their own UI (TaskPlan, Question, etc.)
@@ -497,6 +499,14 @@ Phase 43-03 decisions:
 - Timer auto-stops when task completes or plan finishes
 - Only show elapsed time if >5 seconds to avoid clutter
 - Elapsed time format: "<5s" for very short, "Xs" for seconds, "Xm Ys" for longer
+
+Phase 43-04 decisions:
+- 3-second window for state change visual indicators
+- :new: emoji for recently started tasks, :sparkles: for recently completed
+- "Just completed" footer shows most recent task name and time ago
+- task_state_changed event bypasses throttle for immediate UI updates
+
+**Next action:** Add new phase or complete v1.2 milestone
 
 ---
 
