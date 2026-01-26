@@ -14,36 +14,49 @@ Re-exports all public functions from submodules for backward compatibility.
 from src.slack.handlers.dispatch.core import (
     _dispatch_result,
     resolve_attachment_context,
-    _extract_update_content,
-    _extract_comment_content,
-    _check_preflight_for_action,
-    # Review handlers
+)
+
+# Review handlers
+from src.slack.handlers.dispatch.review import (
     _handle_review_continuation,
     _handle_review,
-    # Ticket action handlers
-    _handle_ticket_action,
-    _handle_create_stories,
-    # Sync and search handlers
-    _handle_sync_request,
-    _handle_jira_search,
-    _handle_change_request_preview,
-    # OPS handler
-    _handle_ops_response,
-    # TaskPlan handlers
+)
+
+# TaskPlan handlers
+from src.slack.handlers.dispatch.task_plan import (
     _handle_task_plan_created,
     _handle_task_confirmation,
     _handle_task_plan_complete,
     _handle_task_plan_blocked,
     _handle_task_failed,
     _handle_task_rejected,
-    # Question engine handlers
+)
+
+# Question engine handlers
+from src.slack.handlers.dispatch.question import (
     _handle_question_posted,
     _handle_budget_exhausted,
     _post_question_ui,
     _post_budget_exhausted_ui,
-    # Constants
+)
+
+# Jira operations handlers
+from src.slack.handlers.dispatch.jira_ops import (
+    _check_preflight_for_action,
+    _extract_update_content,
+    _extract_comment_content,
+    _handle_sync_request,
+    _handle_jira_search,
+    _handle_change_request_preview,
+    _handle_ops_response,
     UPDATE_EXTRACTION_PROMPT,
     COMMENT_EXTRACTION_PROMPT,
+)
+
+# Ticket action handlers
+from src.slack.handlers.dispatch.ticket_action import (
+    _handle_ticket_action,
+    _handle_create_stories,
     STORY_GENERATION_PROMPT,
 )
 
