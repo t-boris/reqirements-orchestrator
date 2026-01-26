@@ -214,6 +214,7 @@ def get_help_blocks() -> list[dict]:
                     "`/maro sync` - Show pending Jira sync\n"
                     "`/maro sync --auto` - Auto-apply changes\n\n"
                     "*Configuration*\n"
+                    "`/maro project SCRUM` - Set default Jira project\n"
                     "`/maro mode` - Show channel mode\n"
                     "`/maro mode project|feature|bugs|ops` - Set mode\n\n"
                     "*Debugging*\n"
