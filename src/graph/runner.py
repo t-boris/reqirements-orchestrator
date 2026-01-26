@@ -94,6 +94,7 @@ class GraphRunner:
                 state["thread_ts"] = self.identity.thread_ts
                 state["channel_id"] = self.identity.channel_id
                 state["user_id"] = user_id
+                state["user_message"] = message_text  # Store for question collection re-runs
 
                 # Inject conversation context (Phase 11)
                 if conversation_context is not None:

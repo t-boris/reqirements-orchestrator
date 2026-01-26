@@ -41,34 +41,25 @@ Topic: {topic}
 {collected_answers}
 
 === YOUR TASK ===
-Determine if you have enough information to proceed with the {mode} action.
+Before proceeding with the {mode} action, check if you have any open questions.
 
-ONLY ask a question if ALL of these are true:
-1. The information is ABSOLUTELY CRITICAL - you literally cannot proceed without it
-2. The answer is NOT in the context above (user message, attachments, channel history)
-3. You cannot make a reasonable assumption based on context
-4. The question is specific and has concrete answer options
+ASK questions when:
+- You're uncertain about scope, priority, or approach
+- Multiple interpretations are possible
+- Key details are missing that would change your output
+- You need to confirm assumptions before acting
 
-NEVER ask questions about:
-- What the user just wrote (if they said "Latest Update", don't ask what that means)
-- Definitions of terms the user used (they know what they mean)
-- Information visible in the attached documents or channel history
-- Nice-to-have details you can assume or infer
-- Generic clarifications that don't block the action
-- Where to find content (if attachments exist, use them; if channel history exists, use it)
+DO NOT ask about:
+- What the user literally just wrote (don't ask "what is X" if they said X)
+- Standard technical terms (use common definitions)
+- Information already in the context above
 
-ASSUME BY DEFAULT:
-- "Latest" means most recent in channel/thread context
-- Technical terms mean their standard definitions
-- If user mentioned a file/doc, it's in the attachments
-- If context is unclear but not blocking, proceed with best guess
+If you have any open questions that would help you do a better job, respond:
+QUESTION: [Your specific question]?
+- Option A: [What this means]
+- Option B: [What this means]
 
-If you absolutely need critical information, respond:
-QUESTION: [Specific question about what's blocking you]?
-- Option A: [What this means for the action]
-- Option B: [What this means for the action]
-
-If you can proceed with the available context (PREFERRED), respond:
+If you truly have NO questions and understand everything needed, respond:
 NO_QUESTIONS
 '''
 

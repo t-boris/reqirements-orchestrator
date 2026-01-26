@@ -129,35 +129,7 @@ async def _handle_review_continuation(
                 }
             ]
 
-            # Add action buttons only to the last message
-            if is_last_message:
-                ticket_button_value = json.dumps({
-                    "review_text": continuation_msg[:1500],
-                    "topic": (topic or "")[:100],
-                    "persona": persona or "",
-                })
-                approve_button_value = json.dumps({
-                    "topic": (topic or "")[:100],
-                    "persona": persona or "",
-                })
-                blocks.append({
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Approve & Post Decision"},
-                            "action_id": "approve_architecture",
-                            "value": approve_button_value,
-                            "style": "primary",
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                            "action_id": "review_to_ticket",
-                            "value": ticket_button_value,
-                        }
-                    ]
-                })
+            # No legacy buttons - review continuation uses question flow
 
             client.chat_postMessage(
                 channel=identity.channel_id,
@@ -273,60 +245,7 @@ async def _handle_review(
                 }
             ]
 
-            # Add action buttons only to the last message
-            # BUT skip buttons if we have questions - questions will be posted separately
-            is_questions = result.get("is_questions", False)
-            if is_last_message and not is_questions:
-                ticket_button_value = json.dumps({
-                    "review_text": review_msg[:1500],
-                    "topic": (topic or "")[:100],
-                    "persona": persona or "",
-                })
-
-                # Build action buttons based on super_mode
-                # "Approve & Post Decision" only for DECIDE mode
-                super_mode = result.get("super_mode", "think")
-                artifact_id = result.get("artifact_id")
-                action_elements = []
-
-                if super_mode == "decide":
-                    approve_button_value = json.dumps({
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-                    action_elements.append({
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Approve & Post Decision"},
-                        "action_id": "approve_architecture",
-                        "value": approve_button_value,
-                        "style": "primary",
-                    })
-                elif artifact_id:
-                    # In THINK mode with artifact - offer to capture as decision
-                    capture_button_value = json.dumps({
-                        "artifact_id": artifact_id,
-                        "topic": (topic or "")[:100],
-                        "persona": persona or "",
-                    })
-                    action_elements.append({
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Capture as Decision"},
-                        "action_id": "capture_as_decision",
-                        "value": capture_button_value,
-                    })
-
-                # "Turn into Jira ticket" always available
-                action_elements.append({
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Turn into Jira ticket"},
-                    "action_id": "review_to_ticket",
-                    "value": ticket_button_value,
-                })
-
-                blocks.append({
-                    "type": "actions",
-                    "elements": action_elements
-                })
+            # No legacy buttons - review uses question flow for follow-ups
 
             try:
                 post_result = client.chat_postMessage(
