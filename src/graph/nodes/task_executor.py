@@ -225,11 +225,21 @@ async def _dispatch_task(
         return {}
 
 
-async def _persist_plan(task_plan: TaskPlan) -> None:
-    """Persist TaskPlan to database."""
+async def _persist_plan(task_plan: TaskPlan) -> TaskPlan:
+    """Persist TaskPlan to database and update version.
+
+    IMPORTANT: Updates task_plan.version in-place with the new version from DB.
+    This is critical for optimistic locking to work correctly on subsequent updates.
+
+    Returns:
+        Updated TaskPlan with new version.
+    """
     async with get_connection() as conn:
         store = TaskPlanStore(conn)
-        await store.update(task_plan)
+        updated = await store.update(task_plan)
+        # Update the passed-in object's version to match DB
+        task_plan.version = updated.version
+        return updated
 
 
 async def handle_task_approval(
