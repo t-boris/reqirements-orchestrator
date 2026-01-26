@@ -34,6 +34,7 @@ SIGNIFICANT_EVENTS = {
     "task_completed",
     "task_blocked",
     "task_failed",
+    "task_state_changed",  # Phase 43: Visual state transition feedback
     "plan_completed",
     "plan_canceled",
 }
