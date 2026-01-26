@@ -32,10 +32,12 @@ def register_question_handlers(app: App) -> None:
         message_ts = body.get("message", {}).get("ts")  # Original message with buttons
         thread_ts = body.get("message", {}).get("thread_ts") or message_ts
         user_id = body.get("user", {}).get("id", "")
+        # Extract team_id from body (critical for session lookup)
+        team_id = body.get("team", {}).get("id") or body.get("user", {}).get("team_id", "")
 
         _run_async(
             _handle_question_button_async(
-                client, action_id, value, channel_id, thread_ts, user_id, message_ts
+                client, action_id, value, channel_id, thread_ts, user_id, message_ts, team_id
             )
         )
 
@@ -67,6 +69,7 @@ async def _handle_question_button_async(
     thread_ts: str,
     user_id: str,
     message_ts: str = None,
+    team_id: str = "",
 ) -> None:
     """Handle question button click asynchronously."""
     try:
@@ -91,6 +94,7 @@ async def _handle_question_button_async(
                     option_id,
                     encoded_value,
                     message_ts,
+                    team_id,
                 )
                 return
 
@@ -121,6 +125,7 @@ async def _handle_question_button_async(
                 option_id,
                 encoded_value,
                 message_ts,
+                team_id,
             )
             return
 
@@ -230,6 +235,7 @@ async def _handle_review_question_answer(
     option_id: str,
     encoded_value: str,
     message_ts: str = None,
+    team_id: str = "",
 ) -> None:
     """Handle review question button answer (Phase 37, fixed Phase 43).
 
@@ -241,12 +247,8 @@ async def _handle_review_question_answer(
     from src.slack.session import SessionIdentity
     from src.graph.runner import get_runner
     from src.slack.blocks.question import build_question_blocks
-    from src.config.settings import get_settings
 
-    settings = get_settings()
-    team_id = getattr(settings, "slack_team_id", "")
-
-    # Create identity for session lookup
+    # Create identity for session lookup (team_id from Slack body)
     identity = SessionIdentity(
         team_id=team_id,
         channel_id=channel_id,
