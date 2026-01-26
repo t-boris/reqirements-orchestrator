@@ -14,6 +14,7 @@ import json
 from typing import Optional
 
 from src.schemas.decision import (
+    ApplyResult,
     Decision,
     DecisionChangeOp,
     DecisionChangeOpType,
@@ -662,5 +663,108 @@ def build_impact_preview_card(
     })
 
     blocks.append({"type": "actions", "elements": buttons})
+
+    return blocks
+
+
+def build_change_result_card(
+    decision: Decision,
+    op: DecisionChangeOp,
+    result: ApplyResult,
+) -> list[dict]:
+    """Build result card after applying decision change.
+
+    Shows what was updated, what failed, and retry options if needed.
+
+    Phase 41-04: Transactional Apply + Result Card
+
+    Args:
+        decision: The decision that was changed
+        op: The change operation that was executed
+        result: Results of applying the change
+
+    Returns:
+        List of Slack blocks for the result card
+    """
+    blocks = []
+
+    # Header with status
+    if result.success:
+        emoji = "white_check_mark"
+        status = "complete"
+    else:
+        emoji = "warning"
+        status = "completed with errors"
+
+    blocks.append({
+        "type": "header",
+        "text": {"type": "plain_text", "text": f":{emoji}: Decision change {status}"}
+    })
+
+    # Decision info
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"*{decision.title}* (DEC-{decision.id[:8]})"}
+    })
+
+    # Results summary
+    summary_lines = []
+    if result.db_updated:
+        summary_lines.append(":white_check_mark: Database updated")
+    if result.slack_updated:
+        summary_lines.append(":white_check_mark: Slack message updated")
+    if result.jira_updated:
+        summary_lines.append(f":white_check_mark: Jira updated ({result.updated_count} ticket(s))")
+    elif result.total_tickets > 0:
+        summary_lines.append(f":warning: Jira: {result.updated_count}/{result.total_tickets} updated")
+
+    # If skipped Jira (slack-only mode)
+    if result.total_tickets == 0 and result.db_updated:
+        summary_lines.append(":white_circle: Jira sync skipped (no tickets or slack-only)")
+
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "\n".join(summary_lines)}
+    })
+
+    # Failed tickets details
+    if result.failed_count > 0:
+        failed = [r for r in result.ticket_results if not r.success]
+        failed_text = "*Failed tickets:*\n"
+        for r in failed[:5]:  # Limit to 5
+            failed_text += f":x: {r.jira_key}: {r.error or 'Unknown error'}\n"
+        if len(failed) > 5:
+            failed_text += f"...and {len(failed) - 5} more\n"
+
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": failed_text}
+        })
+
+        # Retry button
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Retry failed"},
+                    "action_id": "decision_change_retry",
+                    "value": json.dumps({"op_id": op.id}),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View details"},
+                    "action_id": "decision_change_details",
+                    "value": json.dumps({"op_id": op.id}),
+                },
+            ]
+        })
+
+    # Error message if overall failure
+    if result.error and not result.failed_count:
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"_Error: {result.error}_"}]
+        })
 
     return blocks
