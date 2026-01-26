@@ -121,6 +121,14 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
         if task.progress:
             progress = f" ({task.progress.get('current', 0)}/{task.progress.get('total', 0)})"
 
+        # Add elapsed time for running tasks (shows operation duration)
+        elapsed = ""
+        if task.status == TaskStatus.RUNNING and task.started_at:
+            elapsed_str = format_elapsed_time(task.started_at)
+            # Only show if >5 seconds elapsed (don't clutter fast ops)
+            if elapsed_str != "<5s":
+                elapsed = f" ({elapsed_str})"
+
         # Add active step for running tasks (shows what MARO is doing)
         step_info = ""
         if task.status == TaskStatus.RUNNING and task.active_step:
@@ -134,7 +142,7 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
             error_preview = task.last_error[:30]
             suffix = f" _(error: {error_preview}...)_"
 
-        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{progress}{step_info}{suffix}")
+        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{progress}{elapsed}{step_info}{suffix}")
 
     blocks.append({
         "type": "section",
