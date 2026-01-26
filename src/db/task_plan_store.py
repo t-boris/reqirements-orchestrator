@@ -281,6 +281,7 @@ class TaskPlanStore:
 
         # Set timestamps
         now = datetime.now(timezone.utc)
+        task.state_changed_at = now  # Track state change time for visual feedback
         if status == TaskStatus.RUNNING:
             task.started_at = now
         elif status in (TaskStatus.DONE, TaskStatus.CANCELED):
