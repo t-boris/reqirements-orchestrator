@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 41-decision-change-propagation
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-26 — Completed 41-01-PLAN.md
+Last activity: 2026-01-26 — Completed 41-02-PLAN.md
 
-Progress: █░░░░ 1/5 plans
+Progress: ██░░░ 2/5 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 41-01-PLAN.md (DecisionChangeOp Schema + Store)
+Stopped at: Completed 41-02-PLAN.md (Impact Analysis Service)
 Resume file: None
-Next action: Execute 41-02-PLAN.md (Impact Analysis)
+Next action: Execute 41-03-PLAN.md (Confirmation UI)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -436,15 +436,21 @@ Phase 41-01 decisions:
 - ImpactSummary captures jira_keys, pinned_artifacts, conflict_count, total_affected
 - DecisionStore.create_change_op() helper for tracked decision changes
 
+Phase 41-02 decisions:
+- ImpactTicket captures per-ticket sync_status, conflict_type, and message
+- Risk levels: none (0 affected), low (1-3 safe), medium (4-10 OR pending), high (10+ OR conflicts)
+- DEPRECATE operation always has_jira_writes=True (clears managed sections)
+- analyze_and_update_op() convenience function for workflow integration
+
 ## What's Next
 
-**Phase 41: Decision Change Propagation** — IN PROGRESS (1/5 plans)
+**Phase 41: Decision Change Propagation** — IN PROGRESS (2/5 plans)
 
 **Objective:** Track decision changes through impact analysis, confirmation UI, transactional apply, and rollback support.
 
 **Progress:**
 - 41-01: DecisionChangeOp Schema + Store - COMPLETE
-- 41-02: Impact Analysis - PENDING
+- 41-02: Impact Analysis - COMPLETE
 - 41-03: Confirmation UI - PENDING
 - 41-04: Transactional Apply - PENDING
 - 41-05: Rollback Support - PENDING
@@ -454,8 +460,11 @@ Phase 41-01 decisions:
 - DecisionChangeOpStore with CRUD and state machine validation
 - ImpactSummary model for tracking affected entities
 - DecisionStore integration via create_change_op() helper
+- ImpactAnalysisService with preflight-based analysis
+- ImpactTicket model for per-ticket impact details
+- Risk level computation (none/low/medium/high)
 
-**Next action:** Execute 41-02-PLAN.md
+**Next action:** Execute 41-03-PLAN.md
 
 ---
 
