@@ -26,6 +26,60 @@ from src.skills.input_classifier import (
 logger = logging.getLogger(__name__)
 
 
+def _format_channel_context(channel_context: dict | None) -> str:
+    """Format channel context (decisions, artifacts) for injection into prompt.
+
+    Args:
+        channel_context: Channel context dict with recent_artifacts, recent_decisions, active_epics, etc.
+
+    Returns:
+        Formatted string for prompt injection, or empty string if no context.
+    """
+    if not channel_context:
+        return ""
+
+    parts = []
+
+    # Active epics
+    active_epics = channel_context.get("active_epics", [])
+    if active_epics:
+        epics_str = ", ".join(active_epics[:5])
+        parts.append(f"Active epics: {epics_str}")
+
+    # Recent decisions from DecisionStore (Phase 39)
+    recent_decisions = channel_context.get("recent_decisions", [])
+    if recent_decisions:
+        parts.append("*Architecture Decisions:*")
+        for d in recent_decisions[:10]:  # Top 10 decisions
+            title = d.get("title", "Untitled")
+            description = d.get("description", "")
+            parts.append(f"  • {title}")
+            if description:
+                parts.append(f"    {description[:150]}")
+
+    # Recent artifacts with decisions
+    recent_artifacts = channel_context.get("recent_artifacts", [])
+    if recent_artifacts:
+        for artifact in recent_artifacts[:3]:  # Top 3 artifacts
+            kind = artifact.get("kind", "")
+            summary = artifact.get("summary", "")
+            decisions = artifact.get("decisions", [])
+
+            if decisions:
+                artifact_header = f"Recent {kind} review"
+                if summary:
+                    artifact_header += f": {summary[:100]}"
+                parts.append(artifact_header)
+
+                for i, decision in enumerate(decisions, 1):
+                    parts.append(f"  Decision {i}: {decision}")
+
+    if not parts:
+        return ""
+
+    return "\nChannel context (stored decisions and artifacts):\n" + "\n".join(parts) + "\n"
+
+
 CONTRADICTION_CHECK_PROMPT = '''Check if these two statements contradict each other.
 
 Statement A (existing):
@@ -176,7 +230,7 @@ async def _store_and_signal_conflicts(
 
 
 EXTRACTION_PROMPT = '''You are extracting requirements from a conversation to build a Jira ticket draft.
-
+{channel_context}
 Current draft state:
 {draft_json}
 {conversation_context}
@@ -231,7 +285,7 @@ The user is referencing prior discussion in the thread. Here is the recent conte
 {thread_context}
 {review_artifact_context}
 ---
-
+{channel_context}
 Current draft state:
 {draft_json}
 
@@ -786,6 +840,22 @@ async def extraction_node(state: AgentState) -> dict[str, Any]:
     # Build conversation context string (Phase 11)
     conversation_context = state.get("conversation_context")
 
+    # Format channel context (decisions, artifacts) - ALWAYS include
+    channel_context_str = _format_channel_context(channel_context)
+    # Debug: Log what we got (unbuffered for immediate visibility)
+    if channel_context:
+        decisions_count = len(channel_context.get("recent_decisions", []))
+        artifacts_count = len(channel_context.get("recent_artifacts", []))
+        print(f"[EXTRACTION] Channel context loaded: {decisions_count} decisions, {artifacts_count} artifacts", flush=True)
+        if decisions_count > 0:
+            print(f"[EXTRACTION] Decisions: {channel_context.get('recent_decisions', [])[:2]}", flush=True)
+    else:
+        print("[EXTRACTION] WARNING: Channel context is None - decisions won't be included", flush=True)
+
+    if channel_context_str:
+        print(f"[EXTRACTION] Channel context formatted: {len(channel_context_str)} chars", flush=True)
+        print(f"[EXTRACTION] Context preview: {channel_context_str[:500]}", flush=True)
+
     # Check for review_artifact (frozen architecture review from decision_approval)
     review_artifact = state.get("review_artifact")
 
@@ -843,6 +913,7 @@ Reviewed by: {artifact_persona}
         prompt = EXTRACTION_PROMPT_WITH_REFERENCE.format(
             thread_context=thread_context,
             review_artifact_context=review_artifact_context,
+            channel_context=channel_context_str,
             draft_json=draft_json,
             message=message_text,
         )
@@ -874,6 +945,7 @@ Reviewed by: {artifact_persona}
                 context_str = "\nConversation context:\n" + "\n\n".join(parts) + "\n"
 
         prompt = EXTRACTION_PROMPT.format(
+            channel_context=channel_context_str,
             draft_json=draft_json,
             conversation_context=context_str,
             message=message_text,

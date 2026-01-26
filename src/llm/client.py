@@ -19,6 +19,7 @@ Usage:
     result = await llm.invoke(messages, tools=[...])
 """
 
+import sys
 from pydantic import BaseModel
 
 from src.llm.types import (
@@ -187,7 +188,16 @@ class UnifiedChatClient:
             messages.append(Message(role=MessageRole.SYSTEM, content=system_message))
         messages.append(Message(role=MessageRole.USER, content=user_message))
 
+        # Debug: Log request (unbuffered for immediate visibility)
+        print(f"[LLM] REQUEST ({len(user_message)} chars):", flush=True)
+        print(user_message[:2000] + ('...[truncated]' if len(user_message) > 2000 else ''), flush=True)
+
         result = await self.invoke(messages)
+
+        # Debug: Log response (unbuffered)
+        print(f"[LLM] RESPONSE ({len(result.text)} chars):", flush=True)
+        print(result.text[:1000] + ('...[truncated]' if len(result.text) > 1000 else ''), flush=True)
+
         return result.text
 
 

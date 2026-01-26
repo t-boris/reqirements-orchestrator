@@ -165,6 +165,9 @@ class ChannelContextResult:
     # Recent artifacts (Phase 25)
     recent_artifacts: list[ArtifactSummary] = field(default_factory=list)
 
+    # Recent decisions (Phase 39 - from DecisionStore)
+    recent_decisions: list[dict] = field(default_factory=list)
+
     # Source tracking (for explainability)
     sources: list[ContextSource] = field(default_factory=list)
 
@@ -194,6 +197,7 @@ class ChannelContextResult:
                 }
                 for a in self.recent_artifacts
             ],
+            "recent_decisions": self.recent_decisions,
             "retrieved_at": self.retrieved_at.isoformat(),
             "mode": self.mode.value,
         }
@@ -242,6 +246,12 @@ class ChannelContextRetriever:
         # Get recent artifacts (Phase 25)
         recent_artifacts = await self.get_recent_artifacts(channel_id, limit=10)
 
+        # Get recent decisions (Phase 39)
+        recent_decisions = await self.get_recent_decisions(channel_id, limit=10)
+        print(f"[RETRIEVER] Fetched {len(recent_decisions)} decisions for channel {channel_id}", flush=True)
+        if recent_decisions:
+            print(f"[RETRIEVER] Decision titles: {[d.get('title', 'no-title') for d in recent_decisions[:3]]}", flush=True)
+
         if mode == RetrievalMode.RAW:
             result = self._to_raw_result(ctx)
         elif mode == RetrievalMode.DEBUG:
@@ -249,13 +259,18 @@ class ChannelContextRetriever:
         else:
             result = self._to_compact_result(ctx)
 
-        # Attach artifacts to result
+        # Attach artifacts and decisions to result
         result.recent_artifacts = recent_artifacts
+        result.recent_decisions = recent_decisions
 
         # Add artifact summary to bullets if any
         if recent_artifacts and mode == RetrievalMode.COMPACT:
             approved_count = sum(1 for a in recent_artifacts if a.approved)
             result.bullets.append(f"Recent reviews: {len(recent_artifacts)} ({approved_count} approved)")
+
+        # Add decision summary to bullets
+        if recent_decisions and mode == RetrievalMode.COMPACT:
+            result.bullets.append(f"Architecture decisions: {len(recent_decisions)}")
 
         return result
 
@@ -435,4 +450,46 @@ class ChannelContextRetriever:
             ]
         except Exception as e:
             logger.warning(f"Failed to get recent artifacts: {e}")
+            return []
+
+    async def get_recent_decisions(
+        self,
+        channel_id: str,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Get recent architecture decisions for a channel.
+
+        Phase 39: Include decisions from channel_decisions table (legacy) in context.
+
+        Args:
+            channel_id: Slack channel ID.
+            limit: Maximum number of decisions to return.
+
+        Returns:
+            List of decision dicts with topic and decision_text.
+        """
+        try:
+            # Query legacy channel_decisions table (used by decision_linker)
+            query = """
+                SELECT decision_ts, topic, decision_text, related_issues, created_at
+                FROM channel_decisions
+                WHERE channel_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+            """
+            async with self._conn.cursor() as cur:
+                await cur.execute(query, [channel_id, limit])
+                rows = await cur.fetchall()
+
+            return [
+                {
+                    "decision_ts": row[0],
+                    "title": row[1] or "Untitled",
+                    "description": (row[2] or "")[:300],
+                    "related_issues": row[3] or [],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logger.warning(f"Failed to get recent decisions: {e}")
             return []
