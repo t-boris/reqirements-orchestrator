@@ -26,10 +26,22 @@ class MockJiraFieldPath:
 class MockDecision:
     pass
 
+class MockRationaleItem:
+    pass
+
+class MockAlternative:
+    pass
+
+class MockConsequence:
+    pass
+
 # Create mock module for the dependency
 mock_module = type(sys)('src.schemas.decision')
 mock_module.Decision = MockDecision
 mock_module.JiraFieldPath = MockJiraFieldPath
+mock_module.RationaleItem = MockRationaleItem
+mock_module.Alternative = MockAlternative
+mock_module.Consequence = MockConsequence
 sys.modules['src.schemas.decision'] = mock_module
 
 # Now load managed_sections directly
@@ -59,6 +71,15 @@ def _make_decision(id: str = "abc12345", version: int = 1, title: str = "Test De
     mock.id = id
     mock.version = version
     mock.title = title
+    mock.description = "Test decision description"
+    mock.type.value = "architecture"
+    mock.status.value = "approved"
+    mock.deprecation_reason = None
+    # Rich context fields - set to None to prevent MagicMock rendering issues
+    mock.rationale = None
+    mock.context = None
+    mock.alternatives = None
+    mock.consequences = None
     return mock
 
 
