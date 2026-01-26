@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 41-decision-change-propagation
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-26 — Completed 41-03-PLAN.md
+Last activity: 2026-01-26 — Completed 41-04-PLAN.md
 
-Progress: ███░░ 3/5 plans
+Progress: ████░ 4/5 plans
 
 ## Milestones Summary
 
@@ -450,9 +450,16 @@ Phase 41-03 decisions:
 - Conflict details limited to 5 tickets with messages
 - High risk warning context block for operations with risk_level="high"
 
+Phase 41-04 decisions:
+- Truth-first ordering: DB (truth) -> Slack (presentation) -> Jira (projection)
+- Slack failures are logged but don't abort operations (best-effort presentation)
+- Per-ticket results (ApplyTicketResult) enable granular retry capability
+- Result card shows three phases: db_updated, slack_updated, jira_updated
+- Retry handler (decision_change_retry) for failed ticket recovery
+
 ## What's Next
 
-**Phase 41: Decision Change Propagation** — IN PROGRESS (3/5 plans)
+**Phase 41: Decision Change Propagation** — IN PROGRESS (4/5 plans)
 
 **Objective:** Track decision changes through impact analysis, confirmation UI, transactional apply, and rollback support.
 
@@ -460,7 +467,7 @@ Phase 41-03 decisions:
 - 41-01: DecisionChangeOp Schema + Store - COMPLETE
 - 41-02: Impact Analysis - COMPLETE
 - 41-03: Confirmation UI - COMPLETE
-- 41-04: Transactional Apply - PENDING
+- 41-04: Transactional Apply - COMPLETE
 - 41-05: Rollback Support - PENDING
 
 **What shipped so far:**
@@ -474,8 +481,12 @@ Phase 41-03 decisions:
 - Impact preview card UI (build_impact_preview_card)
 - Confirmation button handlers (Apply updates, Apply to Slack only, Cancel)
 - Integration with decision change/deprecate modal handlers
+- ApplyResult and ApplyTicketResult models for execution tracking
+- DecisionChangeExecutor with truth-first ordering
+- Result card UI (build_change_result_card) with retry button
+- Handler integration connecting confirmation to executor
 
-**Next action:** Execute 41-04-PLAN.md
+**Next action:** Execute 41-05-PLAN.md
 
 ---
 
