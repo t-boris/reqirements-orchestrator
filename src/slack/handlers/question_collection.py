@@ -136,8 +136,10 @@ async def handle_collect_answer(
                 logger.warning(f"Could not update collection question message: {e}")
 
         # Get runner and update state
+        # Extract team_id from body (critical for correct session/checkpoint lookup)
+        team_id = body.get("team", {}).get("id") or body.get("user", {}).get("team_id", "")
         identity = SessionIdentity(
-            team_id="",
+            team_id=team_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
         )
