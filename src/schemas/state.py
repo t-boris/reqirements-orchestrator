@@ -1,9 +1,11 @@
 """State schema for the LangGraph agent."""
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from src.schemas.anchor import ThreadContext
@@ -76,6 +78,53 @@ class ReviewArtifact(TypedDict, total=False):
     thread_ts: str  # Source thread for reference
     channel_id: str  # Channel where review happened
     content_hash: str  # For idempotency - same content = same hash
+
+
+class TriageAnswers(BaseModel):
+    """Collected triage answers for context enrichment.
+
+    Phase 44: Questions-First Collection Stage
+
+    Stores answers collected during triage questioning before intent classification.
+    These answers enrich the context to prevent re-asking and enable smarter routing.
+    """
+    mode_hint: Optional[str] = None  # "build", "think", "decide", "chat"
+    target_hint: Optional[str] = None  # "jira_ref", "new_idea", "prior_context"
+    scope_hint: Optional[str] = None  # "epic", "story", "task", "bug"
+    topic: Optional[str] = None  # User-provided topic text
+    clarification: Optional[str] = None  # Additional context
+    jira_key: Optional[str] = None  # Extracted Jira key if provided
+    collected_at: Optional[datetime] = None
+    collected_in_thread: Optional[str] = None  # thread_ts
+
+    def is_mode_known(self) -> bool:
+        """Check if the user's intended mode is known.
+
+        Returns:
+            True if mode_hint has been collected.
+        """
+        return self.mode_hint is not None
+
+    def is_target_known(self) -> bool:
+        """Check if the target of the user's request is known.
+
+        Returns:
+            True if either target_hint or topic has been collected.
+        """
+        return self.target_hint is not None or self.topic is not None
+
+    def to_context_hints(self) -> dict:
+        """Convert to context hints for Stage 1 classification.
+
+        Returns:
+            Dict with mode_hint, target_hint, scope_hint, and topic.
+        """
+        return {
+            "mode_hint": self.mode_hint,
+            "target_hint": self.target_hint,
+            "scope_hint": self.scope_hint,
+            "topic": self.topic,
+        }
 
 
 class UserIntent(str, Enum):
@@ -358,6 +407,11 @@ class AgentState(TypedDict):
     # Serialized as dict since TypedDict doesn't support Pydantic models directly.
     # Contains structured context with canonical state, history, and retrieved data.
     context_packet: Optional[dict]  # ContextPacket.model_dump() for serialization
+
+    # Triage answers (Phase 44 - Questions-First Collection)
+    # Collected answers from triage questioning before intent classification.
+    # Enriches context to prevent re-asking and enable smarter routing.
+    triage_answers: Optional[TriageAnswers]  # Collected triage context
 
     # Legacy fields (kept for backwards compatibility during migration)
     missing_info: list[str]  # Deprecated: use validation_report instead
