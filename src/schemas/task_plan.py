@@ -137,6 +137,19 @@ class Task(BaseModel):
         """
         return self.safety_level == SafetyLevel.REQUIRES_CONFIRMATION
 
+    def set_active_step(self, step: str) -> None:
+        """Set the current action step for progress display.
+
+        Args:
+            step: Description of current action (e.g., "Parsing requirements").
+                  Should be concise (<40 chars) for UI display.
+        """
+        self.active_step = step
+
+    def clear_active_step(self) -> None:
+        """Clear the active step (called when task completes or pauses)."""
+        self.active_step = None
+
 
 class TaskPlanStatus(str, Enum):
     """Status of the overall TaskPlan.
