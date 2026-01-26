@@ -7,11 +7,20 @@ Four visual states matching psychological weight (from CONTEXT.md):
 4. Commit log -> Ultra compact (pure signal)
 
 Same object, four visual identities: idea -> proposal -> law -> record
+
+Phase 41: Added build_impact_preview_card for decision change confirmation UI.
 """
 import json
 from typing import Optional
 
-from src.schemas.decision import Decision, DecisionStatus, DecisionType
+from src.schemas.decision import (
+    Decision,
+    DecisionChangeOp,
+    DecisionChangeOpType,
+    DecisionStatus,
+    DecisionType,
+    ImpactSummary,
+)
 
 
 def build_rich_context_blocks(decision: Decision) -> list[dict]:
@@ -521,3 +530,137 @@ def _get_type_emoji(decision_type: DecisionType) -> str:
         DecisionType.STRUCTURE: "🏗️",   # Structure
         DecisionType.PROCESS: "⚙️",     # Process
     }.get(decision_type, "🧠")
+
+
+def build_impact_preview_card(
+    decision: Decision,
+    op: DecisionChangeOp,
+    impact: ImpactSummary,
+) -> list[dict]:
+    """Build impact preview card for decision change confirmation.
+
+    Shows:
+    - What operation is being performed
+    - Which Jira tickets will be affected
+    - Any conflicts detected
+    - Confirmation buttons
+
+    Phase 41: Decision Change Propagation - Confirmation UI
+
+    Args:
+        decision: The decision being changed
+        op: The change operation with version info
+        impact: Results of impact analysis
+
+    Returns:
+        List of Slack blocks for the impact preview card
+    """
+    blocks = []
+
+    # Header based on operation
+    if op.operation == DecisionChangeOpType.EDIT:
+        header_text = f"Updating DEC-{decision.id[:8]} v{op.from_version} -> v{op.to_version}"
+    elif op.operation == DecisionChangeOpType.DEPRECATE:
+        header_text = f"Deprecating DEC-{decision.id[:8]}"
+    else:  # DELETE
+        header_text = f"Deleting DEC-{decision.id[:8]}"
+
+    blocks.append({
+        "type": "header",
+        "text": {"type": "plain_text", "text": header_text}
+    })
+
+    # Decision title
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"*{decision.title}*"}
+    })
+
+    blocks.append({"type": "divider"})
+
+    # Impact summary
+    impact_lines = []
+
+    if impact.total_affected == 0:
+        impact_lines.append("No Jira tickets linked to this decision.")
+    else:
+        impact_lines.append(f"Will update *{impact.total_affected}* Jira ticket(s) (managed sections only)")
+
+        if impact.safe_count > 0:
+            impact_lines.append(f"  - {impact.safe_count} already synced")
+        if impact.pending_count > 0:
+            impact_lines.append(f"  - {impact.pending_count} pending updates")
+        if impact.conflict_count > 0:
+            impact_lines.append(f"  - {impact.conflict_count} with conflicts")
+
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "\n".join(impact_lines)}
+    })
+
+    # Conflict details if any
+    if impact.conflict_count > 0:
+        conflict_tickets = [t for t in impact.tickets if t.sync_status in ("conflict", "structural")]
+        conflict_text = "*Conflicts detected:*\n"
+        for t in conflict_tickets[:5]:  # Limit to 5
+            conflict_text += f"- {t.jira_key}: {t.message or 'External changes detected'}\n"
+        if len(conflict_tickets) > 5:
+            conflict_text += f"- ...and {len(conflict_tickets) - 5} more\n"
+
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": conflict_text}
+        })
+
+    # Warning for high risk
+    if impact.risk_level == "high":
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "*High impact operation* - review carefully before proceeding"}]
+        })
+
+    blocks.append({"type": "divider"})
+
+    # Buttons
+    button_value = json.dumps({
+        "op_id": op.id,
+        "decision_id": decision.id,
+    })
+
+    buttons = []
+
+    # Primary action - Apply updates (if there are Jira writes)
+    if impact.has_jira_writes:
+        buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Apply updates"},
+            "style": "primary",
+            "action_id": "decision_change_apply",
+            "value": button_value,
+        })
+        buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Apply to Slack only"},
+            "action_id": "decision_change_slack_only",
+            "value": button_value,
+        })
+    else:
+        # No Jira writes needed, just confirm
+        buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Confirm"},
+            "style": "primary",
+            "action_id": "decision_change_apply",
+            "value": button_value,
+        })
+
+    buttons.append({
+        "type": "button",
+        "text": {"type": "plain_text", "text": "Cancel"},
+        "action_id": "decision_change_cancel",
+        "value": button_value,
+    })
+
+    blocks.append({"type": "actions", "elements": buttons})
+
+    return blocks
