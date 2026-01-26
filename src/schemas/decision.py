@@ -113,15 +113,45 @@ class DecisionChangeOpType(str, Enum):
     DELETE = "delete"  # Delete (only for unapproved)
 
 
-class ImpactSummary(BaseModel):
-    """Summary of impact analysis for a decision change.
+class ImpactTicket(BaseModel):
+    """Single Jira ticket impact detail.
 
-    Captures what will be affected by the change operation.
+    Captures the sync status and any conflicts for a linked ticket
+    when analyzing the impact of a decision change.
+    """
+
+    jira_key: str = Field(description="Jira issue key (e.g., SCRUM-123)")
+    sync_status: Literal["synced", "pending", "conflict", "structural"] = Field(
+        description="Current sync status of the ticket"
+    )
+    last_synced_version: Optional[int] = Field(
+        default=None,
+        description="Version of decision last synced to this ticket",
+    )
+    conflict_type: Optional[str] = Field(
+        default=None,
+        description="ConflictType value if conflict detected",
+    )
+    message: Optional[str] = Field(
+        default=None,
+        description="Human-readable message about the impact",
+    )
+
+
+class ImpactSummary(BaseModel):
+    """Full impact analysis result for a decision change.
+
+    Captures what will be affected by the change operation,
+    including detailed per-ticket impact information.
     """
 
     jira_keys: list[str] = Field(
         default_factory=list,
-        description="Affected Jira tickets",
+        description="Affected Jira ticket keys",
+    )
+    tickets: list[ImpactTicket] = Field(
+        default_factory=list,
+        description="Detailed impact per ticket",
     )
     pinned_artifacts: list[str] = Field(
         default_factory=list,
@@ -131,9 +161,25 @@ class ImpactSummary(BaseModel):
         default=0,
         description="Number of tickets with conflicts",
     )
+    pending_count: int = Field(
+        default=0,
+        description="Number of tickets pending sync",
+    )
+    safe_count: int = Field(
+        default=0,
+        description="Number of tickets already synced (safe)",
+    )
     total_affected: int = Field(
         default=0,
         description="Total entities affected by this change",
+    )
+    has_jira_writes: bool = Field(
+        default=False,
+        description="True if operation will write to Jira",
+    )
+    risk_level: Literal["none", "low", "medium", "high"] = Field(
+        default="none",
+        description="Computed risk level based on impact analysis",
     )
 
 
