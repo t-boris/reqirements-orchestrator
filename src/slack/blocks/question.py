@@ -94,9 +94,30 @@ def build_question_blocks(
                     "text": "\n".join(descriptions[:4]),  # Max 4 descriptions
                 }],
             })
+    else:
+        # No predefined options - add default "Reply in thread" button
+        # This gives users something to click for open-ended questions
+        value = encode_button_value(
+            f"{plan_id}:{question_id}:{plan_version}",
+            "reply",
+            "REPLY_IN_THREAD",
+        )
+        blocks.append({
+            "type": "actions",
+            "elements": [{
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Reply in thread to answer.",
+                    "emoji": True,
+                },
+                "action_id": encode_button_action_id(question_id, "reply"),
+                "value": value,
+            }],
+        })
 
-    # Help text for text responses
-    if question_type in ("COLLECT_FIELD", "ASK_USER", "collect_field", "ask_user") or not options:
+    # Help text for text responses (only if not already has reply button)
+    if question_type in ("COLLECT_FIELD", "ASK_USER", "collect_field", "ask_user") and options:
         blocks.append({
             "type": "context",
             "elements": [{

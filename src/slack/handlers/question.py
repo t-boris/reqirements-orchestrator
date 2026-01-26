@@ -108,8 +108,8 @@ async def _handle_question_button_async(
         plan_version = int(version_str)
         option_id, encoded_value = rest.split(":", 1) if ":" in rest else (rest, rest)
 
-        # Handle "Other" button
-        if option_id == "other":
+        # Handle "Other" or "Reply" button
+        if option_id in ("other", "reply"):
             _handle_other_selected(client, channel_id, thread_ts, question_id)
             return
 
