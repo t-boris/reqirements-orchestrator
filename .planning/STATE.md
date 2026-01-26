@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 43 complete
+**Current focus:** v1.2 Developer Experience — Phase 44 in progress
 
 ## Current Position
 
-Phase: 43-task-progress-ux
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-01-26 — Completed 43-04-PLAN.md (Visual State Transition Feedback)
+Phase: 44-questions-first-collection-stage
+Plan: 2 of 7 in current phase
+Status: In progress
+Last activity: 2026-01-26 — Completed 44-02-PLAN.md (TriageProvider Questions)
 
-Progress: ████░░░░░ 4/4 plans
+Progress: ██░░░░░░░ 2/7 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,22 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Phase 44 PLANNED (7 plans in 4 waves)
+Stopped at: Completed 44-02-PLAN.md
 Resume file: None
-Next action: Execute Phase 44 (/gsd:execute-phase 44)
+Next action: Execute 44-03-PLAN.md (/gsd:execute-plan 44-03)
+
+Phase 44-02 decisions:
+- Gap priority ordering: MODE(10) > TARGET(20) > SCOPE(30) > TOPIC(40) > INTENT(50)
+- Button questions use CONFIRM_SCOPE, text questions use ASK_USER
+- TriageGap imported from centralized src.schemas.triage (not duplicated)
+
+Phase 44-01 decisions:
+- TriageSignal enum with 6 signal types for context presence detection
+- TriageGap enum with 5 gap types for missing context identification
+- Completeness threshold 0.7 for fast path (skip questions if score >= 0.7)
+- Gap penalties: UNKNOWN_TARGET=0.3 (highest), UNKNOWN_MODE/AMBIGUOUS_INTENT=0.2
+- No LLM calls in triage gate - fully deterministic for speed
+- Signal-gap-completeness pattern: detect what we have, identify what's missing, compute score
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
