@@ -287,11 +287,14 @@ def build_approved_card(
 
     No longer conversational — this is infrastructure.
 
+    Updated for Phase 40: Shows rationale preview with [Show details] button.
+
     Format:
     {type_emoji} DEC-{id} v{version} ({type}) — Approved
     {title}
+    {rationale_preview}
     Applies to: SCRUM-123, SCRUM-456
-    [Change] [Deprecate] [Show history]
+    [Change] [Deprecate] [Show details]
     """
     type_emoji = _get_type_emoji(decision.decision_type)
     type_label = decision.decision_type.value.upper()
@@ -300,6 +303,17 @@ def build_approved_card(
     if linked_tickets:
         applies_to = f"\n_Applies to: {', '.join(linked_tickets)}_"
 
+    # Add rationale preview if available (Phase 40)
+    rationale_preview = ""
+    if decision.rationale:
+        # Show first rationale item as preview
+        first_rationale = decision.rationale[0].text
+        if len(first_rationale) > 80:
+            first_rationale = first_rationale[:80] + "..."
+        more_count = len(decision.rationale) - 1
+        more_text = f" (+{more_count} more)" if more_count > 0 else ""
+        rationale_preview = f"\n_▸ {first_rationale}{more_text}_"
+
     blocks = [
         {
             "type": "section",
@@ -307,7 +321,7 @@ def build_approved_card(
                 "type": "mrkdwn",
                 "text": (
                     f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version} ({type_label}) — *Approved*\n"
-                    f"{decision.title}{applies_to}"
+                    f"{decision.title}{rationale_preview}{applies_to}"
                 ),
             },
         },
@@ -334,8 +348,8 @@ def build_approved_card(
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Show history"},
-                    "action_id": "decision_history",
+                    "text": {"type": "plain_text", "text": "Show details"},
+                    "action_id": "decision_show_details",
                     "value": json.dumps({
                         "decision_id": decision.id,
                     }),
@@ -343,6 +357,65 @@ def build_approved_card(
             ],
         },
     ]
+
+    return blocks
+
+
+def build_decision_details_blocks(
+    decision: Decision,
+    linked_tickets: list[str] | None = None,
+) -> list[dict]:
+    """Build full decision details blocks for /maro decision show.
+
+    Shows complete decision with all rich context fields.
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.upper()
+    status_emoji = "✅" if decision.status.value == "approved" else "📝"
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"{type_emoji} Decision DEC-{decision.id[:8]}",
+            },
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Type:*\n{type_label}"},
+                {"type": "mrkdwn", "text": f"*Status:*\n{status_emoji} {decision.status.value.upper()}"},
+                {"type": "mrkdwn", "text": f"*Version:*\nv{decision.version}"},
+                {"type": "mrkdwn", "text": f"*Created by:*\n<@{decision.created_by}>"},
+            ],
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{decision.title}*\n\n{decision.description}",
+            },
+        },
+    ]
+
+    # Add rich context (Phase 40)
+    rich_blocks = build_rich_context_blocks(decision)
+    if rich_blocks:
+        blocks.append({"type": "divider"})
+        blocks.extend(rich_blocks)
+
+    # Linked tickets
+    if linked_tickets:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Linked Jira Tickets:*\n" + "\n".join(f"• {k}" for k in linked_tickets),
+            },
+        })
 
     return blocks
 
