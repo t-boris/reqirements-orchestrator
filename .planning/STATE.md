@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 40-decision-v2-rich-context
-Plan: 1 of 6 in current phase
+Plan: 2 of 6 in current phase
 Status: In progress
-Last activity: 2026-01-25 — Completed 40-01-PLAN.md (Rich Context Field Models)
+Last activity: 2026-01-26 — Completed 40-02-PLAN.md (DecisionStore Rich Context)
 
-Progress: █░░░░░ 1/6 plans
+Progress: ██░░░░ 2/6 plans
 
 ## Milestones Summary
 
@@ -423,15 +423,22 @@ Phase 40-01 decisions:
 - DecisionVersion uses list[dict] instead of models for JSON serialization
 - All rich context fields Optional for backward compatibility
 
+Phase 40-02 decisions:
+- context_before column name in DB (context is SQL keyword), maps to context in model
+- JSONB columns for rationale, alternatives, consequences (structured data)
+- ALTER TABLE ADD COLUMN IF NOT EXISTS for backward-compatible migrations
+- psycopg.types.json.Json wrapper for JSONB serialization
+- Version history preserves rich context when decisions are updated
+
 ## What's Next
 
-**Phase 40: Decision v2 — Rich Context & Versioning** — IN PROGRESS (1/6 plans)
+**Phase 40: Decision v2 — Rich Context & Versioning** — IN PROGRESS (2/6 plans)
 
 **Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning.
 
 **Progress:**
 - 40-01: Rich Context Field Models - COMPLETE
-- 40-02: Database Persistence - PENDING
+- 40-02: Database Persistence - COMPLETE
 - 40-03: LLM Extraction - PENDING
 - 40-04: UI Rendering - PENDING
 - 40-05: Jira Projection - PENDING
