@@ -79,6 +79,7 @@ from src.db.audit_store import AuditStore, AuditEntry, AuditActionType
 from src.db.open_question_store import OpenQuestionStore, OpenQuestion
 from src.db.review_state_store import ReviewStateStore
 from src.db.review_artifact_store import ReviewArtifactStore
+from src.db.triage_store import TriageStore
 
 __all__ = [
     # Connection (02-01)
@@ -161,4 +162,6 @@ __all__ = [
     "ReviewStateStore",
     # Review Artifact Store (38-01)
     "ReviewArtifactStore",
+    # Triage Store (44-04)
+    "TriageStore",
 ]
