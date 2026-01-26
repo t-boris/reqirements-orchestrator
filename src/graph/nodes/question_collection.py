@@ -9,6 +9,10 @@ Flow:
 2. question_collection asks LLM for open questions
 3. If questions exist → post with buttons, wait for answer, loop
 4. When no questions → proceed to actual flow
+
+Limits:
+- Max 3 question rounds to avoid infinite loops
+- Includes full context (attachments, channel history, collected answers)
 """
 import logging
 from typing import Any
@@ -17,41 +21,54 @@ from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# Maximum question rounds before forcing proceed
+MAX_QUESTION_ROUNDS = 20
 
-QUESTION_COLLECTION_PROMPT = '''You are helping gather requirements before taking action.
 
-User's request: {user_message}
+QUESTION_COLLECTION_PROMPT = '''You are gathering critical information before taking action.
+
+=== USER REQUEST ===
+{user_message}
+
+=== AVAILABLE CONTEXT ===
 Intent: {intent} ({mode} mode)
 Topic: {topic}
 
-{collected_context}
+{attachment_context}
 
-Based on this request, do you have any clarifying questions that MUST be answered before you can proceed?
+{channel_context}
 
-Rules:
-- Only ask questions that are CRITICAL to proceeding correctly
-- Maximum 1-2 questions at a time (don't overwhelm)
-- Each question should have 2-4 clear answer options
-- If you have enough information to proceed, say "NO_QUESTIONS"
+{collected_answers}
 
-If you have questions, respond in this EXACT format:
-QUESTION: [Your question text]?
-- [Option 1 label]: [Brief description]
-- [Option 2 label]: [Brief description]
-- [Option 3 label]: [Brief description] (optional)
+=== YOUR TASK ===
+Determine if you have enough information to proceed with the {mode} action.
 
-If you have NO questions and are ready to proceed, respond with exactly:
-NO_QUESTIONS
+ONLY ask a question if ALL of these are true:
+1. The information is ABSOLUTELY CRITICAL - you literally cannot proceed without it
+2. The answer is NOT in the context above (user message, attachments, channel history)
+3. You cannot make a reasonable assumption based on context
+4. The question is specific and has concrete answer options
 
-Examples:
+NEVER ask questions about:
+- What the user just wrote (if they said "Latest Update", don't ask what that means)
+- Definitions of terms the user used (they know what they mean)
+- Information visible in the attached documents or channel history
+- Nice-to-have details you can assume or infer
+- Generic clarifications that don't block the action
+- Where to find content (if attachments exist, use them; if channel history exists, use it)
 
-Example 1 (needs clarification):
-QUESTION: What type of work item should this be?
-- Story: A user-facing feature or requirement
-- Bug: A defect that needs fixing
-- Task: Technical work or chore
+ASSUME BY DEFAULT:
+- "Latest" means most recent in channel/thread context
+- Technical terms mean their standard definitions
+- If user mentioned a file/doc, it's in the attachments
+- If context is unclear but not blocking, proceed with best guess
 
-Example 2 (ready to proceed):
+If you absolutely need critical information, respond:
+QUESTION: [Specific question about what's blocking you]?
+- Option A: [What this means for the action]
+- Option B: [What this means for the action]
+
+If you can proceed with the available context (PREFERRED), respond:
 NO_QUESTIONS
 '''
 
@@ -67,7 +84,11 @@ def _parse_question_response(response: str) -> dict | None:
     response = response.strip()
 
     # Check for NO_QUESTIONS
-    if "NO_QUESTIONS" in response.upper() or response.upper().startswith("NO"):
+    if "NO_QUESTIONS" in response.upper():
+        return None
+    if response.upper().strip() == "NO":
+        return None
+    if response.upper().startswith("NO QUESTIONS") or response.upper().startswith("NO,"):
         return None
 
     # Parse QUESTION: format
@@ -75,40 +96,50 @@ def _parse_question_response(response: str) -> dict | None:
     if not question_match:
         # Try to find any question
         lines = response.split('\n')
+        question_text = None
         for line in lines:
             if '?' in line and len(line.strip()) > 10:
                 question_text = line.strip()
                 break
-        else:
+        if not question_text:
+            # No question found - treat as NO_QUESTIONS
             return None
     else:
         question_text = question_match.group(1).strip()
 
-    # Parse options (lines starting with -)
+    # Parse options (lines starting with -, *, or bullet characters)
+    # Include Unicode bullet characters: • ◦ ‣ ⁃
     options = []
+    bullet_pattern = r'^[\-\*•◦‣⁃]\s*'
     for line in response.split('\n'):
         line = line.strip()
-        opt_match = re.match(r'^[\-\*]\s*(.+?):\s*(.+)$', line)
+        # Match: bullet + label + colon + description
+        opt_match = re.match(bullet_pattern + r'(.+?):\s*(.+)$', line)
         if opt_match:
-            label = opt_match.group(1).strip()[:40]
+            raw_label = opt_match.group(1).strip()
+            # Clean up [Option A] format -> Option A
+            clean_label = re.sub(r'^\[(.+?)\]$', r'\1', raw_label)[:40]
             description = opt_match.group(2).strip()
             options.append({
                 "option_id": f"opt_{len(options)}",
-                "label": label,
-                "value": label.lower().replace(" ", "_")[:30],
+                "label": clean_label,
+                "value": clean_label.lower().replace(" ", "_")[:30],
                 "description": description,
                 "is_recommended": len(options) == 0,
             })
-        elif re.match(r'^[\-\*]\s*(.+)$', line) and ':' not in line:
+        elif re.match(bullet_pattern + r'(.+)$', line) and ':' not in line:
             # Option without description
-            label = re.match(r'^[\-\*]\s*(.+)$', line).group(1).strip()[:40]
-            options.append({
-                "option_id": f"opt_{len(options)}",
-                "label": label,
-                "value": label.lower().replace(" ", "_")[:30],
-                "description": "",
-                "is_recommended": len(options) == 0,
-            })
+            match = re.match(bullet_pattern + r'(.+)$', line)
+            if match:
+                raw_label = match.group(1).strip()
+                clean_label = re.sub(r'^\[(.+?)\]$', r'\1', raw_label)[:40]
+                options.append({
+                    "option_id": f"opt_{len(options)}",
+                    "label": clean_label,
+                    "value": clean_label.lower().replace(" ", "_")[:30],
+                    "description": "",
+                    "is_recommended": len(options) == 0,
+                })
 
     if not options:
         # No structured options, let user reply freely
@@ -123,11 +154,55 @@ def _parse_question_response(response: str) -> dict | None:
     }
 
 
+def _build_attachment_context(state: AgentState) -> str:
+    """Build context string from attachments."""
+    attachment_context = state.get("attachment_context")
+    if not attachment_context:
+        return ""
+
+    parts = []
+
+    # Get document summaries
+    docs = getattr(attachment_context, 'documents', []) or []
+    for doc in docs[:5]:  # Limit to 5 docs
+        name = getattr(doc, 'name', 'Document')
+        content = getattr(doc, 'content', '')[:500]  # First 500 chars
+        if content:
+            parts.append(f"[Attached: {name}]\n{content}...")
+
+    if not parts:
+        return ""
+
+    return "=== ATTACHED DOCUMENTS ===\n" + "\n\n".join(parts)
+
+
+def _build_channel_context(state: AgentState) -> str:
+    """Build context string from channel history."""
+    # Get thread messages for context
+    messages = state.get("messages", [])
+    if not messages:
+        return ""
+
+    parts = []
+    for msg in messages[-5:]:  # Last 5 messages
+        content = getattr(msg, 'content', str(msg))
+        if content and len(content) > 10:
+            role = "User" if hasattr(msg, 'type') and msg.type == "human" else "Bot"
+            parts.append(f"{role}: {content[:200]}...")
+
+    if not parts:
+        return ""
+
+    return "=== CONVERSATION HISTORY ===\n" + "\n".join(parts)
+
+
 async def question_collection_node(state: AgentState) -> dict[str, Any]:
     """Ask LLM if it has clarifying questions before proceeding.
 
     If LLM has questions → returns decision_result with action="collect_question"
     If no questions → returns with action="proceed" to continue to actual flow
+
+    Limits to MAX_QUESTION_ROUNDS to prevent infinite loops.
 
     Args:
         state: Current AgentState with intent classification done
@@ -136,6 +211,18 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
         Partial state update with decision_result
     """
     from src.llm import get_llm
+
+    # Check question round limit
+    question_round = state.get("question_collection_round", 0)
+    if question_round >= MAX_QUESTION_ROUNDS:
+        logger.info(f"Question collection: max rounds ({MAX_QUESTION_ROUNDS}) reached, proceeding")
+        return {
+            "decision_result": {
+                "action": "proceed",
+                "collected_answers": state.get("collected_answers", {}),
+            },
+            "question_collection_complete": True,
+        }
 
     # Get classified intent info
     envelope = state.get("envelope")
@@ -158,13 +245,17 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
                 user_message = msg.content
                 break
 
-    # Build collected context from previous answers
+    # Build context sections
+    attachment_context = _build_attachment_context(state)
+    channel_context = _build_channel_context(state)
+
+    # Build collected answers context
     collected_answers = state.get("collected_answers", {})
-    collected_context = ""
+    collected_str = ""
     if collected_answers:
-        collected_context = "Already collected information:\n"
+        collected_str = "=== ALREADY COLLECTED ===\n"
         for q, a in collected_answers.items():
-            collected_context += f"- {q}: {a}\n"
+            collected_str += f"Q: {q}\nA: {a}\n\n"
 
     # Ask LLM for questions
     prompt = QUESTION_COLLECTION_PROMPT.format(
@@ -172,7 +263,9 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
         intent=intent,
         mode=mode,
         topic=topic or user_message[:100],
-        collected_context=collected_context,
+        attachment_context=attachment_context,
+        channel_context=channel_context,
+        collected_answers=collected_str,
     )
 
     llm = get_llm(max_tokens=1024)
@@ -180,12 +273,13 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
         response = await llm.chat(prompt)
 
         logger.info(
-            f"Question collection LLM response",
+            f"Question collection LLM response (round {question_round + 1})",
             extra={
                 "response_preview": response[:200],
                 "intent": intent,
                 "mode": mode,
                 "collected_count": len(collected_answers),
+                "round": question_round + 1,
             }
         )
 
@@ -205,7 +299,7 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
 
         # Has questions - return for posting
         logger.info(
-            f"Question collection has question",
+            f"Question collection has question (round {question_round + 1})",
             extra={
                 "question": question_data["question_text"][:50],
                 "options_count": len(question_data.get("options") or []),
@@ -220,6 +314,7 @@ async def question_collection_node(state: AgentState) -> dict[str, Any]:
                 "mode": mode,
             },
             "question_collection_complete": False,
+            "question_collection_round": question_round + 1,
         }
 
     except Exception as e:
