@@ -276,8 +276,24 @@ async def _handle_review_question_answer(
     try:
         await tracker.start("Processing answer...")
 
-        # Run graph with selected answer as message
+        # Get runner and force REVIEW intent to ensure continuity
+        # Without this, the intent classifier might route the answer text
+        # to ticket creation or another flow
         runner = get_runner(identity)
+
+        # Force REVIEW intent for question answers to maintain context
+        from src.schemas.intent import Intent, SuperMode
+
+        state = await runner._get_current_state()
+        state["intent_result"] = {
+            "intent": Intent.REVIEW.value,
+            "confidence": 1.0,
+            "super_mode": SuperMode.THINK.value,
+            "reasons": ["review_question_answer: forcing REVIEW intent for question answer continuity"],
+        }
+        await runner._update_state(state)
+
+        # Run graph with selected answer as message
         result = await runner.run_with_message(
             message_text=encoded_value,
             user_id=user_id,
