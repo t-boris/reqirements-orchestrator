@@ -277,3 +277,67 @@ async def intent_router_node(state: "AgentState") -> dict[str, Any]:
         "stage1_mode": result.stage1_result.top_mode if result.stage1_result else None,
         "bypassed": result.bypassed,
     }
+
+
+# === LangGraph routing functions ===
+
+def route_after_intent(state: dict) -> str:
+    """LangGraph routing function after intent classification.
+
+    Routes based on envelope kind:
+    - single -> route by intent
+    - plan -> task_decomposer
+    - ambiguous -> ask_user
+
+    Args:
+        state: State with envelope
+
+    Returns:
+        Next node name
+    """
+    envelope: IntentEnvelope = state.get("envelope")
+
+    if not envelope:
+        return "error_handler"
+
+    if envelope.kind == EnvelopeKind.AMBIGUOUS:
+        return "ask_user_choice"
+
+    if envelope.kind == EnvelopeKind.PLAN:
+        return "task_decomposer"
+
+    # Single intent - route by mode/intent
+    if envelope.mode == SuperMode.CHAT:
+        return "terminal_response"
+
+    if envelope.intent == Intent.META:
+        return "terminal_response"
+
+    if envelope.mode == SuperMode.BUILD:
+        return "build_handler"
+
+    if envelope.mode == SuperMode.THINK:
+        return "review_handler"
+
+    if envelope.mode == SuperMode.DECIDE:
+        return "decision_handler"
+
+    if envelope.mode == SuperMode.OPERATE:
+        return "operate_handler"
+
+    return "default_handler"
+
+
+def is_terminal_intent(envelope: IntentEnvelope) -> bool:
+    """Check if intent is terminal (single response -> END).
+
+    Terminal intents per Phase 39 spec:
+    - CHAT mode (DISCUSSION, META)
+    - OPS_DEBUG / explain commands
+    """
+    if envelope.kind != EnvelopeKind.SINGLE:
+        return False
+
+    terminal_intents = {Intent.DISCUSSION, Intent.META}
+
+    return envelope.intent in terminal_intents
