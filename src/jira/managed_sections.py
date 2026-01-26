@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from src.schemas.decision import Decision, JiraFieldPath
+from src.schemas.decision import Decision, JiraFieldPath, RationaleItem, Alternative, Consequence
 
 
 class ManagedSectionError(Exception):
@@ -222,3 +222,55 @@ def update_description_with_managed_section(
 def has_managed_section(description: str) -> bool:
     """Check if description contains a managed section."""
     return SECTION_START in description
+
+
+def format_decision_rich_context(decision: Decision) -> str:
+    """Format decision rich context for Jira managed section.
+
+    Args:
+        decision: Decision with optional rich context fields
+
+    Returns:
+        Formatted string suitable for Jira description.
+        Empty string if no rich context.
+    """
+    if not decision.has_rich_context():
+        return ""
+
+    parts = []
+
+    # Rationale
+    if decision.rationale:
+        parts.append("*Rationale:*")
+        for item in decision.rationale:
+            prefix = "• " if item.weight != "primary" else "▸ "
+            parts.append(f"{prefix}{item.text}")
+        parts.append("")
+
+    # Context (status quo before)
+    if decision.context:
+        parts.append("*Context:*")
+        parts.append(decision.context)
+        parts.append("")
+
+    # Alternatives considered
+    if decision.alternatives:
+        parts.append("*Alternatives Considered:*")
+        for alt in decision.alternatives:
+            parts.append(f"• {alt.option}")
+            parts.append(f"  _Rejected: {alt.rejected_reason}_")
+        parts.append("")
+
+    # Consequences
+    if decision.consequences:
+        parts.append("*Consequences:*")
+        for cons in decision.consequences:
+            severity_icon = {
+                "minor": "○",
+                "moderate": "●",
+                "major": "◉",
+            }.get(cons.severity, "•")
+            parts.append(f"{severity_icon} *{cons.area}:* {cons.impact}")
+        parts.append("")
+
+    return "\n".join(parts).strip()
