@@ -180,6 +180,11 @@ from src.slack.handlers.question import (
     register_question_handlers,
 )
 
+# Decision change handlers (Phase 41)
+from src.slack.handlers.decision_change_handlers import (
+    register_decision_change_handlers,
+)
+
 __all__ = [
     # Core
     "handle_app_mention",
@@ -289,4 +294,6 @@ __all__ = [
     "register_decision_handlers",
     # Question handlers (Phase 36)
     "register_question_handlers",
+    # Decision change handlers (Phase 41)
+    "register_decision_change_handlers",
 ]
