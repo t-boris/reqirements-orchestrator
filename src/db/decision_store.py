@@ -73,8 +73,23 @@ class DecisionStore:
 
                     -- Slack message tracking
                     canonical_message_ts TEXT,
-                    discussion_thread_ts TEXT
+                    discussion_thread_ts TEXT,
+
+                    -- Rich context fields (Phase 40)
+                    rationale JSONB,
+                    context_before TEXT,
+                    alternatives JSONB,
+                    consequences JSONB
                 )
+            """)
+
+            # Migration: Add rich context columns if they don't exist (for existing tables)
+            await cur.execute("""
+                ALTER TABLE decisions
+                ADD COLUMN IF NOT EXISTS rationale JSONB,
+                ADD COLUMN IF NOT EXISTS context_before TEXT,
+                ADD COLUMN IF NOT EXISTS alternatives JSONB,
+                ADD COLUMN IF NOT EXISTS consequences JSONB
             """)
 
             # Decision versions table for history
@@ -90,8 +105,23 @@ class DecisionStore:
                     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     change_reason TEXT,
 
+                    -- Rich context fields (Phase 40)
+                    rationale JSONB,
+                    context_before TEXT,
+                    alternatives JSONB,
+                    consequences JSONB,
+
                     UNIQUE(decision_id, version)
                 )
+            """)
+
+            # Migration: Add rich context columns to decision_versions if they don't exist
+            await cur.execute("""
+                ALTER TABLE decision_versions
+                ADD COLUMN IF NOT EXISTS rationale JSONB,
+                ADD COLUMN IF NOT EXISTS context_before TEXT,
+                ADD COLUMN IF NOT EXISTS alternatives JSONB,
+                ADD COLUMN IF NOT EXISTS consequences JSONB
             """)
 
             # Index on channel_id for list queries
