@@ -133,6 +133,21 @@ async def _execute_task(
                 **result,
             }
 
+        # Check if task produced a result that should be shown to user (review, preview, etc.)
+        # Return it before continuing to next task, so it gets dispatched to Slack
+        if decision_action in ("review", "preview", "full_synthesis"):
+            # Mark this task complete
+            task.status = TaskStatus.DONE
+            task.completed_at = datetime.now(timezone.utc)
+            task.last_error = None
+            task.clear_active_step()
+            await _persist_plan(task_plan)
+            # Return the result so it gets posted to Slack
+            return {
+                "task_plan": task_plan.model_dump(),
+                **result,
+            }
+
         # Mark complete
         task.status = TaskStatus.DONE
         task.completed_at = datetime.now(timezone.utc)
