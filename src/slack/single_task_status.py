@@ -14,8 +14,9 @@ simple single-intent requests that don't create a full TaskPlan.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Union
 
+from slack_sdk.web import WebClient
 from slack_sdk.web.async_client import AsyncWebClient
 
 from src.slack.blocks.task_plan import build_single_task_blocks
@@ -35,18 +36,20 @@ class SingleTaskStatus:
         await status.start("Processing your request")
         # ... do work ...
         await status.complete()  # or status.delete() for fast responses
+
+    Supports both sync (WebClient) and async (AsyncWebClient) Slack clients.
     """
 
     def __init__(
         self,
-        client: AsyncWebClient,
+        client: Union[WebClient, AsyncWebClient],
         channel_id: str,
         thread_ts: Optional[str] = None,
     ):
         """Initialize SingleTaskStatus.
 
         Args:
-            client: Async Slack WebClient.
+            client: Slack WebClient (sync or async).
             channel_id: Channel to post status card in.
             thread_ts: Thread to post in (optional, posts to channel root if None).
         """
@@ -77,12 +80,22 @@ class SingleTaskStatus:
         blocks = build_single_task_blocks(action_text, status="running")
 
         try:
-            response = await self.client.chat_postMessage(
-                channel=self.channel_id,
-                thread_ts=self.thread_ts,
-                text=f"Working on: {action_text}",
-                blocks=blocks,
-            )
+            if isinstance(self.client, AsyncWebClient):
+                response = await self.client.chat_postMessage(
+                    channel=self.channel_id,
+                    thread_ts=self.thread_ts,
+                    text=f"Working on: {action_text}",
+                    blocks=blocks,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                response = await asyncio.to_thread(
+                    self.client.chat_postMessage,
+                    channel=self.channel_id,
+                    thread_ts=self.thread_ts,
+                    text=f"Working on: {action_text}",
+                    blocks=blocks,
+                )
             self._message_ts = response.get("ts")
             logger.debug(
                 "Posted single-task status card",
@@ -117,12 +130,22 @@ class SingleTaskStatus:
         blocks = build_single_task_blocks(self._action_text, status="done")
 
         try:
-            await self.client.chat_update(
-                channel=self.channel_id,
-                ts=self._message_ts,
-                text=f"Done: {self._action_text}",
-                blocks=blocks,
-            )
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                    text=f"Done: {self._action_text}",
+                    blocks=blocks,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                    text=f"Done: {self._action_text}",
+                    blocks=blocks,
+                )
             logger.debug(
                 "Updated single-task status to done",
                 extra={
@@ -149,12 +172,22 @@ class SingleTaskStatus:
         blocks = build_single_task_blocks(action_text, status="error")
 
         try:
-            await self.client.chat_update(
-                channel=self.channel_id,
-                ts=self._message_ts,
-                text=f"Failed: {action_text}",
-                blocks=blocks,
-            )
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_update(
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                    text=f"Failed: {action_text}",
+                    blocks=blocks,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_update,
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                    text=f"Failed: {action_text}",
+                    blocks=blocks,
+                )
             logger.debug(
                 "Updated single-task status to error",
                 extra={
@@ -174,10 +207,18 @@ class SingleTaskStatus:
             return
 
         try:
-            await self.client.chat_delete(
-                channel=self.channel_id,
-                ts=self._message_ts,
-            )
+            if isinstance(self.client, AsyncWebClient):
+                await self.client.chat_delete(
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                )
+            else:
+                # Sync client - run in thread to avoid blocking
+                await asyncio.to_thread(
+                    self.client.chat_delete,
+                    channel=self.channel_id,
+                    ts=self._message_ts,
+                )
             logger.debug(
                 "Deleted single-task status card",
                 extra={"message_ts": self._message_ts},

@@ -11,6 +11,10 @@ Phase 29.4: Preflight Sync integration.
 - Check for conflicts before ticket updates and transitions
 - Show preflight UI when conflicts detected
 - Handle user choices via button handlers
+
+Phase 43: Task Progress UX
+- Single-task status cards for non-TaskPlan requests
+- Shows what MARO is working on during single-intent processing
 """
 
 import json
@@ -19,6 +23,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from slack_sdk.web import WebClient
+from slack_sdk.web.async_client import AsyncWebClient
 
 from src.slack.session import SessionIdentity
 from src.graph.runner import get_runner
@@ -70,6 +75,77 @@ from src.slack.handlers.dispatch.review import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Action descriptions for single-task status cards (Phase 43)
+# Maps action types to human-readable descriptions
+ACTION_DESCRIPTIONS = {
+    "discussion": "Responding to your message",
+    "review": "Analyzing requirements",
+    "review_continuation": "Continuing review",
+    "ask": "Gathering requirements",
+    "preview": "Preparing draft preview",
+    "ticket_action": "Processing ticket update",
+    "decision_approval": "Processing decision",
+    "sync_request": "Syncing with Jira",
+    "jira_search": "Searching Jira",
+    "change_request_preview": "Preparing changes",
+    "ops": "Running diagnostics",
+    "draft_refine": "Refining draft",
+    "transform_applied": "Applying changes",
+}
+
+# Actions that skip single-task status (already have their own UI)
+SKIP_SINGLE_TASK_STATUS = {
+    "task_plan_created",  # Uses TaskPlan status card
+    "task_confirmation_required",
+    "task_plan_complete",
+    "task_plan_blocked",
+    "task_failed",
+    "task_rejected",
+    "question_posted",  # Uses Question UI
+    "budget_exhausted",
+    "intro",  # Quick hint messages
+    "nudge",
+    "hint",
+    "scope_gate",  # Shows button UI
+    "conflict",  # Shows conflict UI
+    "error",  # Shows error message
+}
+
+
+def _get_action_description(action: str, result: dict) -> str:
+    """Get human-readable description for an action.
+
+    Args:
+        action: The action type from the graph result.
+        result: The full result dict (for extracting additional context).
+
+    Returns:
+        Human-readable description of what MARO is doing.
+    """
+    # Check predefined descriptions
+    if action in ACTION_DESCRIPTIONS:
+        return ACTION_DESCRIPTIONS[action]
+
+    # Extract intent for more specific descriptions
+    intent_result = result.get("intent_result", {})
+    intent = intent_result.get("intent", "")
+
+    if intent:
+        intent_descriptions = {
+            "TICKET_CREATE": "Creating ticket",
+            "TICKET_UPDATE": "Updating ticket",
+            "TICKET_TRANSITION": "Transitioning ticket",
+            "REVIEW": "Analyzing requirements",
+            "DISCUSSION": "Responding",
+            "META": "Processing request",
+        }
+        if intent in intent_descriptions:
+            return intent_descriptions[intent]
+
+    # Default fallback
+    return "Processing your request"
 
 
 async def resolve_attachment_context(
@@ -149,6 +225,9 @@ async def _dispatch_result(
     - Dispatcher: calls appropriate skill based on decision
     - Handler: orchestrates and handles Slack-specific response
 
+    Phase 43: Single-task status cards for non-TaskPlan requests.
+    Shows what MARO is working on during dispatch for single-intent processing.
+
     Args:
         result: Graph result dict with action and data
         identity: Session identity
@@ -158,6 +237,7 @@ async def _dispatch_result(
     """
     from src.skills.dispatcher import SkillDispatcher
     from src.graph.nodes.decision import DecisionResult
+    from src.slack.single_task_status import SingleTaskStatus
 
     # Import domain-specific handlers
     from src.slack.handlers.dispatch.draft import (
@@ -170,6 +250,64 @@ async def _dispatch_result(
 
     action = result.get("action", "continue")
     logger.info(f"_dispatch_result received action={action}, result_keys={list(result.keys())}")
+
+    # Phase 43: Post single-task status card for non-TaskPlan actions
+    single_task_status: Optional[SingleTaskStatus] = None
+    if action not in SKIP_SINGLE_TASK_STATUS:
+        action_description = _get_action_description(action, result)
+        single_task_status = SingleTaskStatus(
+            client=client,
+            channel_id=identity.channel_id,
+            thread_ts=identity.thread_ts,
+        )
+        await single_task_status.start(action_description)
+
+    try:
+        await _execute_dispatch_action(
+            action, result, identity, client, runner, tracker
+        )
+    except Exception as e:
+        # Update status to error if dispatch fails
+        if single_task_status:
+            await single_task_status.error(str(e)[:50])
+        raise
+    finally:
+        # Complete status card (will update to done or delete if fast)
+        if single_task_status:
+            await single_task_status.complete()
+
+
+async def _execute_dispatch_action(
+    action: str,
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+    runner,
+    tracker: "ProgressTracker | None" = None,
+):
+    """Execute the dispatch action for a given result.
+
+    Factored out from _dispatch_result to support status card wrapping.
+
+    Args:
+        action: The action type from the graph result.
+        result: Graph result dict with action and data.
+        identity: Session identity.
+        client: Slack WebClient.
+        runner: Graph runner instance.
+        tracker: Optional ProgressTracker for status updates.
+    """
+    from src.skills.dispatcher import SkillDispatcher
+    from src.graph.nodes.decision import DecisionResult
+
+    # Import domain-specific handlers
+    from src.slack.handlers.dispatch.draft import (
+        _handle_draft_conflict,
+        _handle_transform_applied,
+    )
+    from src.slack.handlers.dispatch.decision import (
+        _handle_decision_approval,
+    )
 
     if action == "intro" or action == "nudge" or action == "hint":
         # Empty draft - send contextual hint message
