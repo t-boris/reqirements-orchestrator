@@ -161,18 +161,43 @@ def render_managed_section(
 ) -> str:
     """Render decisions into managed section format.
 
-    Format:
+    Format (Phase 40 - with rich context):
     ## Decisions (managed by MARO)
-    * DEC-abc123 v4 - Use ISO 8601 dates
-    * DEC-def456 v2 - PostgreSQL for persistence
+
+    {type_emoji} *Decision Title*
+
+    Decision description...
+
+    *Rationale:*
+    ▸ Primary reason
+    • Secondary reason
+
+    *Context:*
+    Status quo before this decision.
+
+    *Alternatives Considered:*
+    • Option A
+      _Rejected: Why not chosen_
+
+    *Consequences:*
+    ● *Area:* Impact description
+
+    ---
+    _DEC-a1b2c3d4 v1 | APPROVED_
+
     ---
     """
     if not decisions:
         return f"{SECTION_START}\n_No decisions linked_\n{SECTION_END}"
 
-    lines = [SECTION_START]
-    for decision in decisions:
-        lines.append(f"* DEC-{decision.id[:8]} v{decision.version} - {decision.title}")
+    lines = [SECTION_START, ""]
+
+    for i, decision in enumerate(decisions):
+        lines.append(build_decision_section(decision))
+        # Add separator between decisions (not after the last one)
+        if i < len(decisions) - 1:
+            lines.append("")
+
     lines.append(SECTION_END)
 
     return "\n".join(lines)
