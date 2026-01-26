@@ -1039,11 +1039,33 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
                 # Post rich decision card to channel with edit/deprecate buttons
                 decision_blocks = build_approved_card(decision)
 
-                client.chat_postMessage(
+                response = client.chat_postMessage(
                     channel=channel_id,
                     blocks=decision_blocks,
                     text=f"Architecture Decision: {title}",
                 )
+
+                # Create anchor linking this message to the decision
+                # So replies like "tell me more" can find the decision
+                posted_ts = response.get("ts")
+                if posted_ts:
+                    try:
+                        from src.db import get_connection
+                        from src.db.anchor_store import AnchorStore
+                        from src.schemas.anchor import AnchorType
+
+                        async with get_connection() as conn:
+                            anchor_store = AnchorStore(conn)
+                            await anchor_store.create_anchor(
+                                anchor_type=AnchorType.DECISION,
+                                object_id=str(decision.id),
+                                channel_id=channel_id,
+                                message_ts=posted_ts,
+                                created_by=user_id,
+                            )
+                            logger.debug(f"Created anchor for decision {decision.id} at {posted_ts}")
+                    except Exception as e:
+                        logger.warning(f"Could not create anchor for decision: {e}")
 
             # Update original message to show completion
             if created_decisions:

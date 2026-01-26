@@ -368,7 +368,7 @@ async def _find_decision_in_context(state: AgentState) -> Optional[str]:
             logger.debug(f"Found decision from review_artifact: {decision_id}")
             return str(decision_id)
 
-    # 3. Check thread binding
+    # 3. Check thread binding (legacy)
     channel_id = state.get("channel_id")
     thread_ts = state.get("thread_ts")
     if channel_id and thread_ts:
@@ -381,6 +381,23 @@ async def _find_decision_in_context(state: AgentState) -> Optional[str]:
                 return str(binding.decision_id)
         except Exception as e:
             logger.debug(f"Could not check thread binding: {e}")
+
+    # 4. Check anchor store - user might be replying to a decision card
+    # thread_ts is the parent message_ts of the reply
+    if channel_id and thread_ts:
+        try:
+            from src.db import get_connection
+            from src.db.anchor_store import AnchorStore
+            from src.schemas.anchor import AnchorType
+
+            async with get_connection() as conn:
+                anchor_store = AnchorStore(conn)
+                anchor = await anchor_store.get_by_message(channel_id, thread_ts)
+                if anchor and anchor.anchor_type == AnchorType.DECISION:
+                    logger.debug(f"Found decision from anchor store: {anchor.object_id}")
+                    return str(anchor.object_id)
+        except Exception as e:
+            logger.debug(f"Could not check anchor store: {e}")
 
     return None
 
