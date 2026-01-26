@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 39-intent-classification-v2
-Plan: 0 of ? in current phase
-Status: Not planned yet
-Last activity: 2026-01-25 — Phase 38 complete
+Plan: 2 of 7 in current phase
+Status: In progress
+Last activity: 2026-01-25 — Completed 39-02-PLAN.md
 
-Progress: ░░░░░░░░░░░░░░░░░░░░░░░░░ 0/? plans
+Progress: ██░░░░░░░░░░░░░░░░░░░░░░░ 2/7 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,15 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Phase 38 complete (Context Architecture)
+Stopped at: Completed 39-02-PLAN.md (Stage 0 Pre-Gates)
 Resume file: None
-Next action: Plan Phase 39
+Next action: Execute 39-03-PLAN.md
+
+Phase 39-02 decisions:
+- Pre-gates are state-based invariants, NOT keyword pattern matching
+- 4 gate types: terminal, taskplan continuation, draft priority, risk guard
+- Gate 4 (risk guard) runs AFTER LLM classification, not in pre-gate phase
+- run_pre_gates() applies gates in priority order, returns first triggered
 
 Phase 38-01 decisions:
 - ReviewArtifact stored in review_artifacts table (not checkpoint-only)
