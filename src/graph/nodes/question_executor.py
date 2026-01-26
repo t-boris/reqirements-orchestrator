@@ -182,7 +182,6 @@ async def handle_question_answer(
         task.status = TaskStatus.DONE
         task.requires_user_input = False
         task_plan.status = TaskPlanStatus.PENDING
-        task_plan.increment_version()
 
         await store.update(task_plan)
 

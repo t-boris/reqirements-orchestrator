@@ -481,7 +481,6 @@ async def _resume_plan_with_gaps(plan_id: str, channel_id: str, thread_ts: str) 
                 task.question_task.status = QuestionStatus.SKIPPED
 
         task_plan.status = TaskPlanStatus.PENDING
-        task_plan.increment_version()
         await store.update(task_plan)
 
 
@@ -501,5 +500,4 @@ async def _cancel_plan(plan_id: str) -> None:
                 task.status = TaskStatus.CANCELED
 
         task_plan.status = TaskPlanStatus.CANCELED
-        task_plan.increment_version()
         await store.update(task_plan)
