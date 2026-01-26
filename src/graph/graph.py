@@ -65,6 +65,7 @@ from src.graph.nodes.ops import ops_node
 from src.graph.nodes.task_decomposer import task_decomposer_node
 from src.graph.nodes.task_executor import task_executor_node
 from src.graph.nodes.terminal import terminal_response_node, is_terminal_response
+from src.graph.intent_gates import GateResult
 
 logger = logging.getLogger(__name__)
 
@@ -130,16 +131,17 @@ def route_after_decomposer(state: AgentState) -> Literal["task_executor", "end"]
     return "end"
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow", "terminal_response_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow", "terminal_response_flow", "triage_questions_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
     1. WorkflowEvent - handled before graph (event_router)
     2. PendingAction - handled before graph (event_router)
-    3. Phase 39: Terminal intent via envelope (DISCUSSION/META)
-    4. Multi-intent detection - route to task_decomposer (Phase 35)
-    5. Thread default intent - check and use for AMBIGUOUS
-    6. Classified intent - route to flow
+    3. Phase 44: Triage gate (incomplete context) - ask clarifying questions
+    4. Phase 39: Terminal intent via envelope (DISCUSSION/META)
+    5. Multi-intent detection - route to task_decomposer (Phase 35)
+    6. Thread default intent - check and use for AMBIGUOUS
+    7. Classified intent - route to flow
 
     Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
     are now PendingAction values, handled before this router runs.
@@ -151,9 +153,18 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     Phase 39: When envelope indicates terminal intent (DISCUSSION/META),
     route to terminal_response_flow for single response then END.
 
+    Phase 44: When stage0_gate returns GateResult.TRIAGE, route to
+    triage_questions_flow to post clarifying questions.
+
     Used as conditional edge from intent_router node.
     Routes to appropriate flow based on intent classification.
     """
+    # Phase 44: Check for triage gate first (incomplete context)
+    stage0_gate = state.get("stage0_gate")
+    if stage0_gate and stage0_gate.result == GateResult.TRIAGE:
+        logger.info("Intent router: triage needed, routing to triage_questions")
+        return "triage_questions_flow"
+
     intent_result = state.get("intent_result", {})
 
     # Phase 39: Check for terminal intent via envelope
@@ -240,6 +251,60 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
         return "ticket_flow"
 
 
+async def triage_questions_node(state: AgentState) -> dict:
+    """Generate and return triage question for posting.
+
+    Phase 44: Questions-First Collection Stage
+
+    Does NOT post to Slack - dispatch handler does that.
+    Returns decision_result with action="triage_question" so dispatch
+    can post the question blocks.
+
+    Args:
+        state: Current AgentState with stage0_gate containing triage context.
+
+    Returns:
+        Dict with decision_result containing action, question, and triage_context.
+    """
+    from src.questions.triage_provider import TriageProvider
+
+    gate_output = state.get("stage0_gate")
+    if not gate_output or not gate_output.triage_context:
+        logger.warning("triage_questions_node: no triage context found")
+        return {"decision_result": {"action": "error", "message": "No triage context"}}
+
+    triage_context = gate_output.triage_context
+    provider = TriageProvider()
+
+    question = provider.get_next_question(
+        triage_context.gaps,
+        {"message": state.get("user_message", "")},
+    )
+
+    if not question:
+        logger.warning("triage_questions_node: no question generated from gaps")
+        return {"decision_result": {"action": "error", "message": "No triage question generated"}}
+
+    logger.info(
+        f"triage_questions_node: generated question for gap",
+        extra={
+            "question_id": question.question_id,
+            "question_type": question.question_type.value,
+            "target_field": question.target_field,
+            "gaps_count": len(triage_context.gaps),
+            "completeness_score": triage_context.completeness_score,
+        }
+    )
+
+    return {
+        "decision_result": {
+            "action": "triage_question",
+            "question": question,
+            "triage_context": triage_context,
+        }
+    }
+
+
 def create_graph() -> StateGraph:
     """Create the PM-machine workflow graph.
 
@@ -286,6 +351,8 @@ def create_graph() -> StateGraph:
     workflow.add_node("task_executor", task_executor_node)
     # Terminal response node (Phase 39)
     workflow.add_node("terminal_response", terminal_response_node)
+    # Triage questions node (Phase 44)
+    workflow.add_node("triage_questions", triage_questions_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -310,11 +377,15 @@ def create_graph() -> StateGraph:
             "draft_transform_flow": "draft_transform",  # Structural mutations (Phase 28)
             "task_decomposer_flow": "task_decomposer",  # Multi-intent decomposition (Phase 35)
             "terminal_response_flow": "terminal_response",  # Terminal intents (Phase 39)
+            "triage_questions_flow": "triage_questions",  # Triage questions (Phase 44)
         }
     )
 
     # Terminal response goes directly to END (Phase 39 - single response then done)
     workflow.add_edge("terminal_response", END)
+
+    # Triage questions goes directly to END (Phase 44 - dispatch posts question)
+    workflow.add_edge("triage_questions", END)
 
     # Discussion goes directly to END after generating response
     workflow.add_edge("discussion", END)
