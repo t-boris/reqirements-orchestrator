@@ -183,6 +183,84 @@ class ImpactSummary(BaseModel):
     )
 
 
+# =============================================================================
+# Apply Result Models (Phase 41-04)
+# =============================================================================
+
+
+class ApplyTicketResult(BaseModel):
+    """Result of applying change to a single ticket.
+
+    Tracks per-ticket outcome during decision change application.
+    Used by DecisionChangeExecutor to report granular results.
+    """
+
+    jira_key: str = Field(description="Jira issue key (e.g., SCRUM-123)")
+    success: bool = Field(description="Whether the update succeeded")
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if update failed",
+    )
+    action: Literal["updated", "skipped", "failed"] = Field(
+        default="updated",
+        description="What action was taken on this ticket",
+    )
+
+
+class ApplyResult(BaseModel):
+    """Result of applying a decision change operation.
+
+    Tracks the outcome of executing a DecisionChangeOp through
+    truth-first ordering: DB → Slack → Jira.
+    """
+
+    op_id: str = Field(description="UUID of the change operation")
+    decision_id: str = Field(description="UUID of the decision")
+    success: bool = Field(description="Overall success (all phases succeeded)")
+
+    # Phase results
+    db_updated: bool = Field(
+        default=False,
+        description="Whether DB (truth) was updated",
+    )
+    slack_updated: bool = Field(
+        default=False,
+        description="Whether Slack (presentation) was updated",
+    )
+    jira_updated: bool = Field(
+        default=False,
+        description="Whether all Jira tickets were updated",
+    )
+
+    # Ticket details
+    total_tickets: int = Field(
+        default=0,
+        description="Total Jira tickets to update",
+    )
+    updated_count: int = Field(
+        default=0,
+        description="Number of tickets successfully updated",
+    )
+    skipped_count: int = Field(
+        default=0,
+        description="Number of tickets skipped (idempotent)",
+    )
+    failed_count: int = Field(
+        default=0,
+        description="Number of tickets that failed to update",
+    )
+    ticket_results: list[ApplyTicketResult] = Field(
+        default_factory=list,
+        description="Per-ticket results",
+    )
+
+    # Error
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if overall operation failed",
+    )
+
+
 class DecisionChangeOp(BaseModel):
     """A tracked operation for changing a decision.
 
