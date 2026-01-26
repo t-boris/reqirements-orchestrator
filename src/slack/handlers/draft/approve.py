@@ -1,19 +1,14 @@
-"""Draft approval, rejection, and editing handlers.
+"""Draft approval handlers.
 
-Handles the ticket draft lifecycle: approval, rejection, and editing.
+Handles the ticket draft lifecycle: approval to Jira.
 
 Phase 28.4: Lifecycle transition enforcement for StructuredDraft.
 - Reject approvals if lifecycle is COMMITTED (terminal state)
 - Advance lifecycle to APPROVED/COMMITTED on successful operations
-
-Phase 29.4: Preflight Sync integration.
-- Check for duplicate tickets before creation
-- Handle IDEMPOTENT (auto-link) and REAL_CONFLICT (similar exists) scenarios
 """
 
 import json
 import logging
-from typing import TYPE_CHECKING, Optional
 
 from slack_sdk.web import WebClient
 
@@ -26,276 +21,7 @@ from src.slack.handlers.draft_blocks import (
 )
 from src.db.audit_store import AuditStore, AuditActionType
 
-if TYPE_CHECKING:
-    from src.schemas.draft import TicketDraft
-    from src.schemas.structured_draft import StructuredDraft
-    from src.jira.client import JiraService
-    from src.db.jira_registry import JiraRegistryStore
-
 logger = logging.getLogger(__name__)
-
-
-async def _check_preflight_for_create(
-    jira_service: "JiraService",
-    registry: "JiraRegistryStore",
-    channel_id: str,
-    draft_title: str,
-    draft_problem: Optional[str] = None,
-) -> dict | None:
-    """Check if similar ticket exists before create.
-
-    For creates, we check if summary matches existing tracked ticket
-    (potential duplicate scenario).
-
-    Args:
-        jira_service: JiraService instance for API calls.
-        registry: JiraRegistryStore for local state lookups.
-        channel_id: Slack channel ID.
-        draft_title: Title/summary of the draft to create.
-        draft_problem: Optional problem statement for better matching.
-
-    Returns:
-        None if no preflight needed (proceed normally).
-        Dict with conflict info if duplicate detected:
-        - conflict_type: "idempotent" or "potential_duplicate"
-        - existing_key: Jira key of existing issue
-        - existing_url: URL to existing issue
-        - existing_summary: Summary of existing issue
-        - message: Human-readable explanation
-    """
-    if not draft_title:
-        return None
-
-    # Check registry for issues with similar summary in this channel
-    # Case-insensitive partial match
-    channel_issues = await registry.get_channel_issues(channel_id, limit=100)
-
-    draft_title_lower = draft_title.lower().strip()
-
-    for issue in channel_issues:
-        if not issue.summary:
-            continue
-
-        existing_summary_lower = issue.summary.lower().strip()
-
-        # Check for exact match (idempotent)
-        if draft_title_lower == existing_summary_lower:
-            from src.config.settings import get_settings
-            settings = get_settings()
-            issue_url = f"{settings.jira_url.rstrip('/')}/browse/{issue.jira_key}"
-
-            return {
-                "conflict_type": "idempotent",
-                "existing_key": issue.jira_key,
-                "existing_url": issue_url,
-                "existing_summary": issue.summary,
-                "message": (
-                    f"A ticket with the same title already exists: "
-                    f"*{issue.jira_key}*\n\n"
-                    f"Would you like to link to this existing ticket instead of creating a new one?"
-                ),
-            }
-
-        # Check for high similarity (potential duplicate)
-        # Simple check: if one title contains the other, or >80% word overlap
-        if (draft_title_lower in existing_summary_lower or
-            existing_summary_lower in draft_title_lower):
-            # Potential duplicate
-            from src.config.settings import get_settings
-            settings = get_settings()
-            issue_url = f"{settings.jira_url.rstrip('/')}/browse/{issue.jira_key}"
-
-            return {
-                "conflict_type": "potential_duplicate",
-                "existing_key": issue.jira_key,
-                "existing_url": issue_url,
-                "existing_summary": issue.summary,
-                "message": (
-                    f"A similar ticket may already exist: "
-                    f"*<{issue_url}|{issue.jira_key}>* - {issue.summary}\n\n"
-                    f"Do you still want to create a new ticket?"
-                ),
-            }
-
-    return None
-
-
-def _build_create_preflight_blocks(
-    preflight_result: dict,
-    session_id: str,
-    draft_hash: str,
-    channel_id: str,
-    thread_ts: str,
-) -> list[dict]:
-    """Build Slack blocks for create preflight conflict.
-
-    Shows conflict message and action buttons:
-    - For idempotent: "Link to existing" / "Create anyway" / "Cancel"
-    - For potential_duplicate: "Create anyway" / "View existing" / "Cancel"
-
-    Args:
-        preflight_result: Dict from _check_preflight_for_create.
-        session_id: Session ID for button payload.
-        draft_hash: Draft hash for button payload.
-        channel_id: Channel ID for button payload.
-        thread_ts: Thread timestamp for button payload.
-
-    Returns:
-        List of Slack Block Kit blocks.
-    """
-    conflict_type = preflight_result["conflict_type"]
-    existing_key = preflight_result["existing_key"]
-    existing_url = preflight_result["existing_url"]
-    existing_summary = preflight_result["existing_summary"]
-    message = preflight_result["message"]
-
-    blocks: list[dict] = []
-
-    # Header based on conflict type
-    if conflict_type == "idempotent":
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f":information_source: *Duplicate Detected*\n\n{message}",
-            },
-        })
-    else:  # potential_duplicate
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f":warning: *Similar Ticket Found*\n\n{message}",
-            },
-        })
-
-    # Existing ticket details
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": f"*Existing:* <{existing_url}|{existing_key}> - {existing_summary}",
-        },
-    })
-
-    blocks.append({"type": "divider"})
-
-    # Build button payload
-    payload = json.dumps({
-        "session_id": session_id,
-        "draft_hash": draft_hash,
-        "channel_id": channel_id,
-        "thread_ts": thread_ts,
-        "existing_key": existing_key,
-        "conflict_type": conflict_type,
-    })
-
-    # Action buttons
-    if conflict_type == "idempotent":
-        # Exact match - offer to link instead
-        blocks.append({
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Link to existing", "emoji": True},
-                    "style": "primary",
-                    "action_id": "preflight_link_existing",
-                    "value": payload,
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Create anyway", "emoji": True},
-                    "action_id": "preflight_proceed",
-                    "value": payload,
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Cancel", "emoji": True},
-                    "action_id": "preflight_cancel",
-                    "value": payload,
-                },
-            ],
-        })
-    else:
-        # Potential duplicate - create is primary action
-        blocks.append({
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Create anyway", "emoji": True},
-                    "style": "primary",
-                    "action_id": "preflight_proceed",
-                    "value": payload,
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "View existing", "emoji": True},
-                    "action_id": "preflight_view_existing",
-                    "value": payload,
-                    "url": existing_url,  # Opens in browser
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Cancel", "emoji": True},
-                    "action_id": "preflight_cancel",
-                    "value": payload,
-                },
-            ],
-        })
-
-    return blocks
-
-
-def _build_ticket_announcement_blocks(
-    draft: "TicketDraft",
-    jira_key: str,
-    jira_url: str,
-    created_by: str,
-    thread_ts: str,
-    channel: str,
-    client: WebClient,
-) -> list[dict]:
-    """Build announcement blocks for main channel notification.
-
-    Uses status card format (Phase 27.6) for consistent channel visibility.
-    Creates a card with:
-    - Ticket key and title (linked)
-    - Who created it
-    - Link to the thread
-
-    Args:
-        draft: The ticket draft that was created
-        jira_key: Created Jira ticket key (e.g., SCRUM-113)
-        jira_url: URL to the Jira ticket
-        created_by: Slack user ID who created the ticket
-        thread_ts: Thread timestamp for permalink
-        channel: Channel ID for permalink
-        client: Slack client for getting permalink
-
-    Returns:
-        List of Slack blocks for the announcement
-    """
-    from src.slack.blocks.status_card import build_ticket_created_card
-
-    # Get thread permalink
-    thread_link = ""
-    try:
-        result = client.chat_getPermalink(channel=channel, message_ts=thread_ts)
-        thread_link = result.get("permalink", "")
-    except Exception as e:
-        logger.warning(f"Failed to get thread permalink: {e}")
-
-    # Use status card block builder for consistent format (Phase 27.6)
-    return build_ticket_created_card(
-        jira_key=jira_key,
-        jira_url=jira_url,
-        summary=draft.title or "Untitled",
-        created_by=created_by,
-        thread_link=thread_link or None,
-        issue_type=draft.issue_type or "Task",
-    )
 
 
 def handle_approve_draft(ack, body, client: WebClient, action):
@@ -320,6 +46,11 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
     7. Update preview message to show approved state
     """
     from src.slack.progress import ProgressTracker
+    from src.slack.handlers.draft.create import (
+        check_preflight_for_create,
+        build_create_preflight_blocks,
+        build_ticket_announcement_blocks,
+    )
 
     channel = body["channel"]["id"]
     thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
@@ -561,7 +292,7 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             draft_title = draft.title if draft else None
             draft_problem = draft.problem if draft and hasattr(draft, 'problem') else None
 
-            preflight_result = await _check_preflight_for_create(
+            preflight_result = await check_preflight_for_create(
                 jira_service=jira_service,
                 registry=registry,
                 channel_id=channel,
@@ -585,7 +316,7 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
                 )
 
                 # Build preflight blocks for create
-                blocks = _build_create_preflight_blocks(
+                blocks = build_create_preflight_blocks(
                     preflight_result=preflight_result,
                     session_id=session_id,
                     draft_hash=hash_to_record,
@@ -779,7 +510,7 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
             # Post announcement card in MAIN channel (not thread)
             try:
                 # Build announcement blocks
-                announcement_blocks = _build_ticket_announcement_blocks(
+                announcement_blocks = build_ticket_announcement_blocks(
                     draft=draft,
                     jira_key=create_result.jira_key,
                     jira_url=create_result.jira_url,
@@ -827,241 +558,6 @@ async def _handle_approve_draft_async(body, client: WebClient, action):
     else:
         # Creation failed after retries - show error with action buttons
         await post_error_actions(client, channel, thread_ts, session_id, button_hash, create_result.error)
-
-
-def handle_reject_draft(ack, body, client: WebClient, action):
-    """Synchronous wrapper for draft rejection.
-
-    Bolt calls handlers from a sync context. This wraps the async handler.
-    """
-    # Get trigger_id BEFORE ack (needed for modal)
-    trigger_id = body.get("trigger_id")
-    ack()
-    _run_async(_handle_reject_draft_async(body, client, action, trigger_id))
-
-
-async def _handle_reject_draft_async(body, client: WebClient, action, trigger_id):
-    """Handle 'Needs Changes' button click on draft preview.
-
-    Opens the edit modal for direct draft editing.
-    Implements idempotent rejection handling:
-    1. Check in-memory dedup (handles Slack retries)
-    2. Open edit modal with current draft values
-    """
-    channel = body["channel"]["id"]
-    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
-    message_ts = body["message"]["ts"]  # Preview message to update later
-    team_id = body["team"]["id"]
-    user_id = body["user"]["id"]
-
-    # Parse button value (session_id:draft_hash)
-    button_value = action.get("value", "")
-    action_id = action.get("action_id", "reject_draft")
-
-    # In-memory dedup for Slack retries and rage-clicks
-    from src.slack.dedup import try_process_button
-    if not try_process_button(action_id, user_id, button_value):
-        # Duplicate click - silently ignore
-        logger.debug(f"Ignoring duplicate reject click: {button_value}")
-        return
-
-    # Parse session_id and draft_hash from button value
-    if ":" in button_value:
-        session_id, draft_hash = button_value.rsplit(":", 1)
-    else:
-        session_id = button_value
-        draft_hash = ""
-
-    identity = SessionIdentity(
-        team_id=team_id,
-        channel_id=channel,
-        thread_ts=thread_ts,
-    )
-
-    logger.info(
-        "Opening edit modal for draft changes",
-        extra={
-            "session_id": identity.session_id,
-            "user_id": user_id,
-        }
-    )
-
-    # Get current draft from runner state
-    runner = get_runner(identity)
-    state = await runner._get_current_state()
-    draft = state.get("draft")
-
-    if not draft:
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text="Error: Could not find draft. Please start a new session.",
-        )
-        return
-
-    # Build and open edit modal
-    from src.slack.modals import build_edit_draft_modal
-    from src.skills.preview_ticket import compute_draft_hash
-
-    current_hash = compute_draft_hash(draft)
-    modal_view = build_edit_draft_modal(
-        draft=draft,
-        session_id=session_id,
-        draft_hash=current_hash,
-        preview_message_ts=message_ts,
-    )
-
-    try:
-        client.views_open(
-            trigger_id=trigger_id,
-            view=modal_view,
-        )
-    except Exception as e:
-        logger.error(f"Failed to open edit modal: {e}", exc_info=True)
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text="Sorry, I couldn't open the edit form. Please tell me what needs to be changed in the thread.",
-        )
-
-
-def handle_edit_draft_submit(ack, body, client: WebClient, view):
-    """Synchronous wrapper for edit modal submission.
-
-    Bolt calls handlers from a sync context. This wraps the async handler.
-    """
-    ack()
-    _run_async(_handle_edit_draft_submit_async(body, client, view))
-
-
-async def _handle_edit_draft_submit_async(body, client: WebClient, view):
-    """Handle edit modal submission.
-
-    Process modal submission flow:
-    1. Parse submitted values from view state
-    2. Parse private_metadata for session info
-    3. Update draft in runner state
-    4. Get updated draft and compute new hash
-    5. Update original preview message with new draft
-    6. Post confirmation message
-    """
-    user_id = body["user"]["id"]
-    view_state = view.get("state", {}).get("values", {})
-    private_metadata_raw = view.get("private_metadata", "{}")
-
-    # Parse private metadata
-    try:
-        private_metadata = json.loads(private_metadata_raw)
-    except json.JSONDecodeError:
-        logger.error(f"Failed to parse private_metadata: {private_metadata_raw}")
-        return
-
-    session_id = private_metadata.get("session_id", "")
-    preview_message_ts = private_metadata.get("preview_message_ts", "")
-
-    logger.info(
-        "Processing edit modal submission",
-        extra={
-            "session_id": session_id,
-            "user_id": user_id,
-        }
-    )
-
-    # Parse session_id to get identity parts
-    # Format: team:channel:thread_ts
-    parts = session_id.split(":")
-    if len(parts) != 3:
-        logger.error(f"Invalid session_id format: {session_id}")
-        return
-
-    team_id, channel, thread_ts = parts
-
-    identity = SessionIdentity(
-        team_id=team_id,
-        channel_id=channel,
-        thread_ts=thread_ts,
-    )
-
-    # Parse submitted values
-    from src.slack.modals import parse_modal_values
-    values = parse_modal_values(view_state)
-
-    # Get runner and current draft
-    runner = get_runner(identity)
-    state = await runner._get_current_state()
-    draft = state.get("draft")
-
-    if not draft:
-        logger.error(f"No draft found for session: {session_id}")
-        return
-
-    # Update draft with new values
-    from src.schemas.draft import DraftConstraint, ConstraintStatus
-
-    # Update basic fields
-    if "title" in values:
-        draft.title = values["title"]
-    if "problem" in values:
-        draft.problem = values["problem"]
-    if "proposed_solution" in values:
-        draft.proposed_solution = values["proposed_solution"]
-    if "acceptance_criteria" in values:
-        draft.acceptance_criteria = values["acceptance_criteria"]
-    if "risks" in values:
-        draft.risks = values["risks"]
-
-    # Update constraints (parse key=value pairs)
-    if "constraints_raw" in values:
-        new_constraints = []
-        for c in values["constraints_raw"]:
-            new_constraints.append(DraftConstraint(
-                key=c["key"],
-                value=c["value"],
-                status=ConstraintStatus.PROPOSED,
-            ))
-        draft.constraints = new_constraints
-
-    # Increment version
-    draft.version += 1
-
-    # Update runner state with modified draft
-    await runner._update_draft(draft)
-
-    # Compute new hash
-    from src.skills.preview_ticket import compute_draft_hash
-    new_hash = compute_draft_hash(draft)
-
-    # Get state versions for state-bound approval (Phase 27.4)
-    state = await runner._get_current_state()
-    state_version = state.get("state_version", 0)
-    ui_version = state.get("ui_version", 0)
-
-    # Update original preview message with new draft
-    from src.slack.blocks import build_draft_preview_blocks_with_hash
-    new_blocks = build_draft_preview_blocks_with_hash(
-        draft=draft,
-        session_id=session_id,
-        draft_hash=new_hash,
-        state_version=state_version,
-        ui_version=ui_version,
-    )
-
-    try:
-        client.chat_update(
-            channel=channel,
-            ts=preview_message_ts,
-            text=f"Updated ticket preview for: {draft.title or 'Untitled'}",
-            blocks=new_blocks,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to update preview message: {e}")
-
-    # Post confirmation
-    client.chat_postMessage(
-        channel=channel,
-        thread_ts=thread_ts,
-        text=f"Draft updated by <@{user_id}>. Please review the changes above.",
-    )
 
 
 def handle_approve_structure(ack, body, client: WebClient, action):
@@ -1224,65 +720,4 @@ async def _handle_approve_structure_async(body, client: WebClient, action):
             "items_approved": len(structured_draft.items),
             "user_id": user_id,
         }
-    )
-
-
-def handle_edit_structure(ack, body, client: WebClient, action):
-    """Synchronous wrapper for structure edit.
-
-    Bolt calls handlers from a sync context. This wraps the async handler.
-    """
-    ack()
-    _run_async(_handle_edit_structure_async(body, client, action))
-
-
-async def _handle_edit_structure_async(body, client: WebClient, action):
-    """Handle edit_structure button click.
-
-    Prompts user to describe desired changes to draft structure.
-
-    Phase 28.6: Structure Feedback UI
-    """
-    channel = body["channel"]["id"]
-    thread_ts = body["message"].get("thread_ts") or body["message"]["ts"]
-    user_id = body["user"]["id"]
-
-    # Parse button payload
-    button_value = action.get("value", "{}")
-    try:
-        payload = json.loads(button_value)
-        draft_id = payload.get("draft_id")
-        version = payload.get("version", 0)
-    except json.JSONDecodeError:
-        draft_id = None
-        version = 0
-
-    # In-memory dedup for Slack retries
-    from src.slack.dedup import try_process_button
-    action_id = action.get("action_id", "edit_structure")
-    if not try_process_button(action_id, user_id, button_value):
-        logger.debug(f"Ignoring duplicate edit_structure click: {button_value}")
-        return
-
-    logger.info(
-        "Edit structure requested",
-        extra={
-            "draft_id": draft_id,
-            "version": version,
-            "user_id": user_id,
-            "channel_id": channel,
-            "thread_ts": thread_ts,
-        }
-    )
-
-    # Post prompt for user to describe changes
-    client.chat_postMessage(
-        channel=channel,
-        thread_ts=thread_ts,
-        text="What changes would you like to make to the draft structure? You can say things like:\n"
-             "- \"Split this into multiple epics\"\n"
-             "- \"Add a story for authentication\"\n"
-             "- \"Merge the first two items\"\n"
-             "- \"Change scope to epics only\"\n"
-             "- \"Remove the last item\"",
     )
