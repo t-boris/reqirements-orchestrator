@@ -1025,3 +1025,43 @@ async def intent_router_node(state: dict) -> dict:
         # Non-blocking - continue without attachment context
 
     return state_update
+
+
+# === Phase 39: New Intent Router Integration ===
+
+async def classify_intent_v2(state: "AgentState") -> dict:
+    """New intent classification using Phase 39 router.
+
+    Wraps intent_router_node for gradual migration.
+    Returns both new envelope and legacy IntentResult.
+    """
+    from src.graph.intent_router import intent_router_node
+
+    result = await intent_router_node(state)
+
+    # Log migration metrics
+    envelope = result.get("envelope")
+    legacy = result.get("intent_result")
+
+    if envelope and legacy:
+        logger.info(
+            f"Intent v2: envelope={envelope.kind.value}, "
+            f"legacy={legacy.intent.value}, "
+            f"match={envelope.intent == legacy.intent if envelope.intent else 'N/A'}"
+        )
+
+    return result
+
+
+def get_intent_classifier(use_v2: bool = False):
+    """Get intent classifier function.
+
+    Args:
+        use_v2: If True, use Phase 39 router. Default False for safety.
+
+    Returns:
+        Classifier function
+    """
+    if use_v2:
+        return classify_intent_v2
+    return intent_router_node  # Original
