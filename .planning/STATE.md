@@ -480,6 +480,12 @@ Phase 41-05 decisions:
 - Wave 2: 43-03 (depends on 43-02 for combined display)
 - Wave 3: 43-04 (depends on 43-02, 43-03)
 
+Phase 43-01 decisions:
+- SKIP_SINGLE_TASK_STATUS set for actions with their own UI (TaskPlan, Question, etc.)
+- Fast response threshold 2s - delete card if complete within 2 seconds
+- Action descriptions mapped from action type and intent for user clarity
+- SingleTaskStatus lifecycle: start() -> complete() or delete() or error()
+
 Phase 43-02 decisions:
 - Active step displayed with em dash separator: "Generate stories — Parsing requirements"
 - Step text should be concise (<40 chars) for clean UI display
