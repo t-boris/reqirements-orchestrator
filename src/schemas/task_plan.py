@@ -70,6 +70,7 @@ class Task(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)  # Intent-specific params
     progress: Optional[dict[str, int]] = None  # {current, total} for batch ops
     active_step: Optional[str] = None  # Current action: "Parsing requirements", "Calling Jira API"
+    state_changed_at: Optional[datetime] = None  # When status last changed (for visual feedback)
     requires_user_input: bool = False
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
