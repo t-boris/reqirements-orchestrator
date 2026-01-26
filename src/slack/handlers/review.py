@@ -1024,6 +1024,7 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
                     status=DecisionStatus.APPROVED,  # Already approved since captured from review
                     version=1,
                     created_at=now,
+                    updated_at=now,  # Required field
                     created_by=user_id,
                     # Rich context from artifact
                     context=f"From {persona} review" if persona else "From review analysis",

@@ -268,10 +268,19 @@ async def _handle_multi_ticket_approve_async(body: dict, client: WebClient) -> N
     items = multi_state.get("items", [])
 
     if not items:
+        logger.warning(
+            "No items found in multi_ticket_state",
+            extra={
+                "channel": channel_id,
+                "thread_ts": thread_ts,
+                "multi_state_keys": list(multi_state.keys()) if multi_state else [],
+                "state_keys": list(state.keys()) if state else [],
+            }
+        )
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text="No items to create.",
+            text="No items to create. The preview may have expired - please regenerate the preview.",
         )
         return
 
