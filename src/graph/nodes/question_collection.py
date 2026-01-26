@@ -25,46 +25,48 @@ logger = logging.getLogger(__name__)
 MAX_QUESTION_ROUNDS = 20
 
 
-QUESTION_COLLECTION_PROMPT = '''You are gathering critical information before taking action.
+QUESTION_COLLECTION_PROMPT = '''You are checking if you need clarification before taking action.
 
 === USER REQUEST ===
 {user_message}
 
-=== AVAILABLE CONTEXT ===
+=== CONTEXT ===
 Intent: {intent} ({mode} mode)
-Topic: {topic}
-
 {attachment_context}
-
 {channel_context}
 
 {collected_answers}
 
-=== YOUR TASK ===
-Before proceeding with the {mode} action, check if you have any open questions.
+=== RULES ===
 
-ASK questions when:
-- You're uncertain about scope, priority, or approach
-- Multiple interpretations are possible
-- Key details are missing that would change your output
-- You need to confirm assumptions before acting
+ONLY ask a question if it is BLOCKING - you literally cannot proceed without this information.
 
-DO NOT ask about:
-- What the user literally just wrote (don't ask "what is X" if they said X)
-- Standard technical terms (use common definitions)
-- Information already in the context above
-- Where to find information - the CHANNEL/THREAD CONTEXT above IS the "latest update", "requirements", etc.
-- Asking user to provide what's already visible in the context
+DO NOT ASK about:
+- Implementation details (you decide those)
+- Technical choices you can make yourself (cloud provider, framework, etc.)
+- Things already answered in ALREADY COLLECTED section above
+- Things obvious from context
+- Things you can reasonably assume
 
-If you have any open questions that would help you do a better job, respond:
+GOOD questions (blocking):
+- "Is this for internal team or external customers?" (changes everything)
+- "Budget: enterprise or startup constraints?" (changes architecture)
+
+BAD questions (not blocking):
+- "Which cloud provider?" (you can recommend one)
+- "How to handle timeouts?" (implementation detail)
+- "How to deliver videos?" (you figure it out)
+
+After 1-2 clarifying questions, you should have enough context. Don't keep asking.
+
+=== RESPONSE ===
+
+If you have a BLOCKING question:
 QUESTION: [Your specific question]?
-- Option A: [Detailed description of what this choice means and its implications]
-- Option B: [Detailed description of what this choice means and its implications]
+- Option A: [What this means - 1-2 sentences]
+- Option B: [What this means - 1-2 sentences]
 
-IMPORTANT: Always provide AT LEAST 2 meaningful options. Questions with only 1 option are useless.
-Each option description should be detailed (1-2 sentences explaining the implications).
-
-If you truly have NO questions and understand everything needed, respond:
+If you can proceed (most cases):
 NO_QUESTIONS
 '''
 
