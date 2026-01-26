@@ -39,6 +39,7 @@ from src.graph.intent_policy import (
 
 if TYPE_CHECKING:
     from src.schemas.state import AgentState
+    from src.schemas.triage import TriageContext
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class RouterResult:
     stage1_result: Optional[Stage1Result] = None
     bypassed: bool = False
     bypass_reason: Optional[str] = None
+    triage_context: Optional["TriageContext"] = None
 
 
 async def route_intent(
@@ -107,6 +109,17 @@ async def route_intent(
             stage0_gate=gate_output,
             bypassed=True,
             bypass_reason=gate_output.bypass_reason,
+        )
+
+    # Handle triage (incomplete context)
+    if gate_output.result == GateResult.TRIAGE:
+        logger.info(f"Triage needed: completeness={gate_output.triage_context.completeness_score:.2f}")
+        return RouterResult(
+            envelope=_create_triage_envelope(gate_output),
+            stage0_gate=gate_output,
+            bypassed=True,
+            bypass_reason="Triage questions needed",
+            triage_context=gate_output.triage_context,
         )
 
     # === Stage 1: Mode classification ===
@@ -179,6 +192,37 @@ def _create_bypass_envelope(gate: PreGateOutput) -> IntentEnvelope:
         margin=1.0,
         risk_level=RiskLevel.SAFE,
         reason=gate.bypass_reason or "Stage 0 bypass",
+    )
+
+
+def _create_triage_envelope(gate: PreGateOutput) -> IntentEnvelope:
+    """Create envelope requesting triage questions.
+
+    Returns ambiguous envelope with kind=AMBIGUOUS, but with special
+    triage_context that dispatch will handle. We use AMBIGUOUS because
+    the dispatch handler already knows how to post questions for
+    ambiguous intents. The low confidence signals this needs clarification.
+
+    Args:
+        gate: PreGateOutput with triage_context containing gaps and questions.
+
+    Returns:
+        IntentEnvelope with kind=AMBIGUOUS and triage context info.
+    """
+    triage_ctx = gate.triage_context
+
+    # Build reason from gaps
+    gap_names = [g.value for g in triage_ctx.gaps] if triage_ctx.gaps else []
+    reason = f"Context incomplete (gaps: {', '.join(gap_names)}), asking clarifying questions"
+
+    return IntentEnvelope(
+        kind=EnvelopeKind.AMBIGUOUS,
+        mode=SuperMode.CHAT,  # Triage is pre-mode
+        confidence=triage_ctx.completeness_score,
+        margin=0.0,  # No margin - we need clarification
+        risk_level=RiskLevel.SAFE,  # No action until context complete
+        reason=reason,
+        alternatives=[],  # Will be filled by dispatch
     )
 
 
