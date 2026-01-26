@@ -1041,10 +1041,21 @@ def handle_decision_change_modal_submit(ack, body, client: WebClient):
 
 
 async def _handle_decision_change_modal_submit_async(body, client: WebClient):
-    """Async handler for change modal submission."""
+    """Async handler for change modal submission.
+
+    Phase 41: Now creates DecisionChangeOp and shows impact preview before applying.
+    If impact.has_jira_writes: post impact preview card for confirmation
+    If no Jira writes: proceed with approval block as before
+    """
     from src.db.connection import get_connection
     from src.db.decision_store import DecisionStore
-    from src.slack.blocks.decision_cards import build_approval_block
+    from src.db.decision_link_store import DecisionLinkStore
+    from src.db.decision_change_op_store import DecisionChangeOpStore
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+    from src.sync.impact_analysis import ImpactAnalysisService
+    from src.schemas.decision import DecisionChangeOpType
+    from src.slack.blocks.decision_cards import build_approval_block, build_impact_preview_card
 
     view = body["view"]
     private_metadata = json.loads(view.get("private_metadata", "{}"))
@@ -1058,49 +1069,107 @@ async def _handle_decision_change_modal_submit_async(body, client: WebClient):
     new_description = values["description_block"]["description_input"]["value"]
     change_reason = values["reason_block"]["reason_input"]["value"]
 
-    # =========================================================================
-    # STEP 1: Database state update (TRUTH) - must succeed first
-    # =========================================================================
-    async with get_connection() as conn:
-        store = DecisionStore(conn)
-        decision = await store.update(
-            decision_id=decision_id,
-            title=new_title,
-            description=new_description,
-            changed_by=user_id,
-            change_reason=change_reason,
-        )
+    settings = get_settings()
+    jira_service = JiraService(settings)
 
-    # =========================================================================
-    # STEP 2: Slack message (PRESENTATION) - best effort
-    # =========================================================================
     try:
-        blocks = build_approval_block(decision)
-        client.chat_postMessage(
-            channel=channel_id,
-            blocks=blocks,
-            text=f"Decision DEC-{decision_id[:8]} v{decision.version} proposed",
-        )
-    except Exception as slack_err:
-        # Slack message failed, but decision is already updated
-        logger.warning(
-            "Slack message failed, but decision change is recorded",
-            extra={
-                "decision_id": decision_id,
-                "new_version": decision.version,
-                "error": str(slack_err),
-            }
-        )
+        async with get_connection() as conn:
+            store = DecisionStore(conn)
+            link_store = DecisionLinkStore(conn)
+            op_store = DecisionChangeOpStore(conn)
 
-    logger.info(
-        "Decision change proposed",
-        extra={
-            "decision_id": decision_id,
-            "changed_by": user_id,
-            "new_version": decision.version,
-            "reason": change_reason,
-        }
-    )
+            # Get current decision before update
+            old_decision = await store.get(decision_id)
+            from_version = old_decision.version if old_decision else 1
+
+            # =====================================================================
+            # STEP 1: Update decision in DB (TRUTH)
+            # =====================================================================
+            decision = await store.update(
+                decision_id=decision_id,
+                title=new_title,
+                description=new_description,
+                changed_by=user_id,
+                change_reason=change_reason,
+            )
+
+            # =====================================================================
+            # STEP 2: Create DecisionChangeOp and run impact analysis
+            # =====================================================================
+            op = await op_store.create(
+                decision_id=decision_id,
+                operation=DecisionChangeOpType.EDIT,
+                from_version=from_version,
+                to_version=decision.version,
+                actor=user_id,
+            )
+
+            # Run impact analysis
+            impact_service = ImpactAnalysisService(jira_service, link_store, store)
+            impact = await impact_service.analyze(decision, DecisionChangeOpType.EDIT)
+
+            # Store impact on operation
+            await op_store.set_impact(op.id, impact)
+
+        # =====================================================================
+        # STEP 3: Post UI based on impact
+        # =====================================================================
+        try:
+            if impact.has_jira_writes:
+                # Show impact preview card for confirmation
+                blocks = build_impact_preview_card(decision, op, impact)
+                client.chat_postMessage(
+                    channel=channel_id,
+                    blocks=blocks,
+                    text=f"Decision DEC-{decision_id[:8]} v{decision.version} - confirm changes",
+                )
+                logger.info(
+                    "Decision change proposed with impact preview",
+                    extra={
+                        "decision_id": decision_id,
+                        "op_id": op.id,
+                        "changed_by": user_id,
+                        "new_version": decision.version,
+                        "has_jira_writes": True,
+                        "total_affected": impact.total_affected,
+                    }
+                )
+            else:
+                # No Jira writes needed - auto-confirm and show approval block
+                await op_store.confirm(op.id)
+                from src.schemas.decision import DecisionChangeOpState
+                await op_store.update_state(op.id, DecisionChangeOpState.APPLYING)
+                await op_store.complete(op.id)
+
+                blocks = build_approval_block(decision)
+                client.chat_postMessage(
+                    channel=channel_id,
+                    blocks=blocks,
+                    text=f"Decision DEC-{decision_id[:8]} v{decision.version} proposed",
+                )
+                logger.info(
+                    "Decision change proposed (no Jira impact)",
+                    extra={
+                        "decision_id": decision_id,
+                        "changed_by": user_id,
+                        "new_version": decision.version,
+                        "reason": change_reason,
+                    }
+                )
+        except Exception as slack_err:
+            logger.warning(
+                "Slack message failed, but decision change is recorded",
+                extra={
+                    "decision_id": decision_id,
+                    "new_version": decision.version,
+                    "error": str(slack_err),
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to process decision change: {e}", exc_info=True)
+    finally:
+        await jira_service.close()
 
 
 def handle_decision_deprecate_modal_submit(ack, body, client: WebClient):
@@ -1110,16 +1179,25 @@ def handle_decision_deprecate_modal_submit(ack, body, client: WebClient):
 
 
 async def _handle_decision_deprecate_modal_submit_async(body, client: WebClient):
-    """Async handler for deprecate modal submission."""
+    """Async handler for deprecate modal submission.
+
+    Phase 41: Deprecation now creates DecisionChangeOp and shows impact preview.
+    DEPRECATE always has_jira_writes=True (clears managed sections).
+    """
     from src.db.connection import get_connection
     from src.db.decision_store import DecisionStore
-    from src.slack.blocks.decision_cards import build_deprecated_decision_blocks
+    from src.db.decision_link_store import DecisionLinkStore
+    from src.db.decision_change_op_store import DecisionChangeOpStore
+    from src.jira.client import JiraService
+    from src.config.settings import get_settings
+    from src.sync.impact_analysis import ImpactAnalysisService
+    from src.schemas.decision import DecisionChangeOpType
+    from src.slack.blocks.decision_cards import build_impact_preview_card
 
     view = body["view"]
     private_metadata = json.loads(view.get("private_metadata", "{}"))
     decision_id = private_metadata.get("decision_id")
     channel_id = private_metadata.get("channel_id")
-    message_ts = private_metadata.get("message_ts")
     user_id = body["user"]["id"]
 
     # Extract values from modal
@@ -1128,66 +1206,87 @@ async def _handle_decision_deprecate_modal_submit_async(body, client: WebClient)
     replacement_input = values["replacement_block"]["replacement_input"]["value"] or ""
     replacement_id = replacement_input.strip().upper().replace("DEC-", "") if replacement_input else None
 
-    async with get_connection() as conn:
-        store = DecisionStore(conn)
+    settings = get_settings()
+    jira_service = JiraService(settings)
 
-        # Validate replacement if provided
-        replacement = None
-        if replacement_id:
-            # Try to find replacement decision
-            decisions = await store.list_by_channel(channel_id, limit=100)
-            for d in decisions:
-                if d.id.startswith(replacement_id) or d.id[:8].upper() == replacement_id:
-                    replacement = d
-                    break
-
-        # =====================================================================
-        # Database state update (TRUTH) - must succeed first
-        # =====================================================================
-        decision = await store.deprecate(
-            decision_id=decision_id,
-            deprecated_by=user_id,
-            reason=reason,
-            replaced_by=replacement.id if replacement else None,
-        )
-
-    # =========================================================================
-    # Slack message (PRESENTATION) - best effort, doesn't block state
-    # =========================================================================
     try:
-        blocks = build_deprecated_decision_blocks(decision, replacement)
-        if message_ts:
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                blocks=blocks,
-                text=f"Decision DEC-{decision_id[:8]} deprecated",
+        async with get_connection() as conn:
+            store = DecisionStore(conn)
+            link_store = DecisionLinkStore(conn)
+            op_store = DecisionChangeOpStore(conn)
+
+            # Get current decision
+            decision = await store.get(decision_id)
+            if not decision:
+                logger.error(f"Decision not found for deprecation: {decision_id}")
+                return
+
+            # Validate replacement if provided
+            replacement = None
+            if replacement_id:
+                decisions = await store.list_by_channel(channel_id, limit=100)
+                for d in decisions:
+                    if d.id.startswith(replacement_id) or d.id[:8].upper() == replacement_id:
+                        replacement = d
+                        break
+
+            # Store reason and replacement in private_metadata for the confirmation handlers
+            # Note: Plan 41-04 executor will need to retrieve this from context
+
+            # =====================================================================
+            # Create DecisionChangeOp for deprecation
+            # =====================================================================
+            op = await op_store.create(
+                decision_id=decision_id,
+                operation=DecisionChangeOpType.DEPRECATE,
+                from_version=decision.version,
+                to_version=None,  # Deprecate doesn't create new version
+                actor=user_id,
             )
-        else:
+
+            # Run impact analysis
+            impact_service = ImpactAnalysisService(jira_service, link_store, store)
+            impact = await impact_service.analyze(decision, DecisionChangeOpType.DEPRECATE)
+
+            # Store impact on operation
+            await op_store.set_impact(op.id, impact)
+
+        # =====================================================================
+        # Show impact preview card (DEPRECATE always shows confirmation)
+        # =====================================================================
+        try:
+            blocks = build_impact_preview_card(decision, op, impact)
             client.chat_postMessage(
                 channel=channel_id,
                 blocks=blocks,
-                text=f"Decision DEC-{decision_id[:8]} deprecated",
+                text=f"Decision DEC-{decision_id[:8]} - confirm deprecation",
             )
-    except Exception as slack_err:
-        # Slack message failed, but decision is already deprecated
-        logger.warning(
-            "Slack message failed, but decision is deprecated",
+        except Exception as slack_err:
+            logger.warning(
+                "Slack message failed for deprecation preview",
+                extra={
+                    "decision_id": decision_id,
+                    "op_id": op.id,
+                    "error": str(slack_err),
+                }
+            )
+
+        logger.info(
+            "Decision deprecation proposed with impact preview",
             extra={
                 "decision_id": decision_id,
-                "error": str(slack_err),
+                "op_id": op.id,
+                "deprecated_by": user_id,
+                "reason": reason,
+                "replaced_by": replacement.id if replacement else None,
+                "total_affected": impact.total_affected,
             }
         )
 
-    logger.info(
-        "Decision deprecated",
-        extra={
-            "decision_id": decision_id,
-            "deprecated_by": user_id,
-            "reason": reason,
-            "replaced_by": replacement.id if replacement else None,
-        }
-    )
+    except Exception as e:
+        logger.error(f"Failed to process deprecation: {e}", exc_info=True)
+    finally:
+        await jira_service.close()
 
 
 # =============================================================================
