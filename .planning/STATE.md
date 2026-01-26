@@ -8,16 +8,16 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 **Mental model:** Decisions are versioned, Jira is a projection. Threads propose, channels decide, Jira executes.
 
-**Current focus:** v1.2 Developer Experience — Phase 42 complete
+**Current focus:** v1.2 Developer Experience — Phase 43 planning complete
 
 ## Current Position
 
-Phase: 42-code-modularization
-Plan: 9 of 9 in current phase
-Status: Phase complete
-Last activity: 2026-01-26 — Completed 42-09-PLAN.md
+Phase: 43-task-progress-ux
+Plan: 2 of 4 in current phase
+Status: In progress
+Last activity: 2026-01-26 — Completed 43-02-PLAN.md (Specific Action Feedback)
 
-Progress: █████████ 9/9 plans
+Progress: ██░░░░░░░ 2/4 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 41-05-PLAN.md (Rollback Support)
+Stopped at: Completed 43-02-PLAN.md (Specific Action Feedback)
 Resume file: None
-Next action: Phase 41 COMPLETE, plan next phase
+Next action: Execute 43-03-PLAN.md (Elapsed Time Indicator)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -464,6 +464,29 @@ Phase 41-05 decisions:
 - Deprecation notice auto-detected from decision status
 
 ## What's Next
+
+**Phase 43: Task Progress UX** — IN PROGRESS (2/4 plans)
+
+**Objective:** Improve task progress feedback so users always know what MARO is working on.
+
+**Plans:**
+- 43-01: Single-Task Status Card Display — COMPLETE
+- 43-02: Specific Action Feedback — COMPLETE
+- 43-03: Elapsed Time Indicator — PENDING
+- 43-04: Visual State Transition Feedback — PENDING
+
+**Wave structure:**
+- Wave 1: 43-01, 43-02 (no dependencies, can run in parallel) — COMPLETE
+- Wave 2: 43-03 (depends on 43-02 for combined display)
+- Wave 3: 43-04 (depends on 43-02, 43-03)
+
+Phase 43-02 decisions:
+- Active step displayed with em dash separator: "Generate stories — Parsing requirements"
+- Step text should be concise (<40 chars) for clean UI display
+- Step changes use regular throttling (not bypassing like significant events)
+- Intent-specific step descriptions in task executor
+
+---
 
 **Phase 41: Decision Change Propagation** — COMPLETE (5/5 plans)
 
@@ -663,6 +686,8 @@ Phase 33-05 decisions:
 
 ### Roadmap Evolution
 
+- 2026-01-26: Phase 43 ADDED — Task Progress UX (always show task list, specific action feedback, elapsed time)
+- 2026-01-26: Phase 42 COMPLETE — Code Modularization (9/9 plans, 14 files split into packages)
 - 2026-01-26: Phase 42 ADDED — Code Modularization (split 23 files >600 lines into logical components)
 - 2026-01-26: Phase 41 ADDED — Decision Change Propagation (impact analysis, confirmation UI, transactional apply, rollback support)
 - 2026-01-25: Phase 40 ADDED — Decision v2: Rich Context & Versioning (rationale, context, alternatives, consequences, DecisionHead/Version split)
