@@ -64,6 +64,7 @@ from src.graph.nodes.draft_transform import draft_transform_node
 from src.graph.nodes.ops import ops_node
 from src.graph.nodes.task_decomposer import task_decomposer_node
 from src.graph.nodes.task_executor import task_executor_node
+from src.graph.nodes.terminal import terminal_response_node, is_terminal_response
 
 logger = logging.getLogger(__name__)
 
@@ -129,15 +130,16 @@ def route_after_decomposer(state: AgentState) -> Literal["task_executor", "end"]
     return "end"
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow", "terminal_response_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
     1. WorkflowEvent - handled before graph (event_router)
     2. PendingAction - handled before graph (event_router)
-    3. Multi-intent detection - route to task_decomposer (Phase 35)
-    4. Thread default intent - check and use for AMBIGUOUS
-    5. Classified intent - route to flow
+    3. Phase 39: Terminal intent via envelope (DISCUSSION/META)
+    4. Multi-intent detection - route to task_decomposer (Phase 35)
+    5. Thread default intent - check and use for AMBIGUOUS
+    6. Classified intent - route to flow
 
     Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
     are now PendingAction values, handled before this router runs.
@@ -146,10 +148,21 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     Phase 35: When multi-intent is detected (is_multi_intent=True in
     task_plan_proposal), route to task_decomposer for plan creation.
 
+    Phase 39: When envelope indicates terminal intent (DISCUSSION/META),
+    route to terminal_response_flow for single response then END.
+
     Used as conditional edge from intent_router node.
     Routes to appropriate flow based on intent classification.
     """
     intent_result = state.get("intent_result", {})
+
+    # Phase 39: Check for terminal intent via envelope
+    envelope = state.get("envelope")
+    if envelope:
+        from src.graph.intent_router import is_terminal_intent
+        if is_terminal_intent(envelope):
+            logger.info(f"Intent router: terminal intent detected ({envelope.intent.value}), routing to terminal_response")
+            return "terminal_response_flow"
 
     # Phase 35: Check for multi-intent proposal first
     proposal = intent_result.get("task_plan_proposal")
@@ -271,6 +284,8 @@ def create_graph() -> StateGraph:
     workflow.add_node("draft_transform", draft_transform_node)
     workflow.add_node("task_decomposer", task_decomposer_node)
     workflow.add_node("task_executor", task_executor_node)
+    # Terminal response node (Phase 39)
+    workflow.add_node("terminal_response", terminal_response_node)
 
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
@@ -294,8 +309,12 @@ def create_graph() -> StateGraph:
             "ops_flow": "ops",  # Debug failures or explain decisions (Phase 25.2)
             "draft_transform_flow": "draft_transform",  # Structural mutations (Phase 28)
             "task_decomposer_flow": "task_decomposer",  # Multi-intent decomposition (Phase 35)
+            "terminal_response_flow": "terminal_response",  # Terminal intents (Phase 39)
         }
     )
+
+    # Terminal response goes directly to END (Phase 39 - single response then done)
+    workflow.add_edge("terminal_response", END)
 
     # Discussion goes directly to END after generating response
     workflow.add_edge("discussion", END)
