@@ -249,10 +249,19 @@ def has_managed_section(description: str) -> bool:
     return SECTION_START in description
 
 
-def build_decision_section(decision: Decision) -> str:
+def build_decision_section(
+    decision: Decision,
+    deprecated: bool = False,
+    successor_id: Optional[str] = None,
+) -> str:
     """Build managed section content for a decision.
 
-    Format:
+    Args:
+        decision: The decision to render
+        deprecated: Whether to show deprecation notice
+        successor_id: ID of successor decision (if deprecated)
+
+    Format (normal):
     {type_emoji} {title}
     {description}
 
@@ -260,6 +269,13 @@ def build_decision_section(decision: Decision) -> str:
 
     ---
     DEC-{id} v{version} | {status}
+
+    Format (deprecated):
+    {type_emoji} *{title}* (DEC-{id})
+
+    This decision has been deprecated.
+    See replacement: DEC-{successor_id}
+    Reason: {deprecation_reason}
     """
     type_emoji = {
         "arch": "🧠",
@@ -270,6 +286,20 @@ def build_decision_section(decision: Decision) -> str:
         "process": "⚙️",
     }.get(decision.decision_type.value, "📋")
 
+    # Deprecation notice format (Phase 41-05)
+    if deprecated or decision.status.value == "deprecated":
+        parts = [
+            f"{type_emoji} *{decision.title}* (DEC-{decision.id[:8]})",
+            "",
+            "⚠️ *This decision has been deprecated.*",
+        ]
+        if successor_id:
+            parts.append(f"See replacement: DEC-{successor_id[:8]}")
+        if decision.deprecation_reason:
+            parts.append(f"Reason: {decision.deprecation_reason}")
+        return "\n".join(parts)
+
+    # Normal decision format
     parts = [
         f"{type_emoji} *{decision.title}*",
         "",
