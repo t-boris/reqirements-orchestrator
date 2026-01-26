@@ -494,6 +494,14 @@ Rules:
             # Create anchor linking this message to the decision
             posted_ts = response.get("ts")
             if posted_ts:
+                # Pin the decision card to the channel
+                try:
+                    client.pins_add(channel=channel_id, timestamp=posted_ts)
+                    logger.debug(f"Pinned decision card at {posted_ts}")
+                except Exception as e:
+                    logger.warning(f"Could not pin decision card: {e}")
+
+                # Create anchor for thread lookups
                 try:
                     from src.db.anchor_store import AnchorStore
                     from src.schemas.anchor import AnchorType
@@ -1066,10 +1074,17 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
                     text=f"Architecture Decision: {title}",
                 )
 
-                # Create anchor linking this message to the decision
-                # So replies like "tell me more" can find the decision
+                # Pin the decision card and create anchor
                 posted_ts = response.get("ts")
                 if posted_ts:
+                    # Pin the decision card to the channel
+                    try:
+                        client.pins_add(channel=channel_id, timestamp=posted_ts)
+                        logger.debug(f"Pinned decision card at {posted_ts}")
+                    except Exception as e:
+                        logger.warning(f"Could not pin decision card: {e}")
+
+                    # Create anchor so replies can find the decision
                     try:
                         from src.db import get_connection
                         from src.db.anchor_store import AnchorStore

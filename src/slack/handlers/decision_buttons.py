@@ -1308,6 +1308,7 @@ def register_decision_handlers(app):
     app.action("decision_deprecate")(handle_decision_deprecate)
     app.action("decision_history")(handle_decision_history)
     app.action("decision_view")(handle_decision_view)
+    app.action("decision_show_details")(handle_decision_view)  # Same as decision_view
     app.action("decision_cancel")(handle_decision_cancel)
 
     # Modal submissions
