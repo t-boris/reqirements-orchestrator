@@ -363,6 +363,60 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
             "updated_recommendation": response_content,
         }
 
+        # Check if LLM response contains open questions - auto-generate follow-up
+        has_open_questions = (
+            "open question" in response_content.lower() or
+            "need to clarify" in response_content.lower() or
+            "need more information" in response_content.lower() or
+            "please specify" in response_content.lower()
+        )
+
+        # Limit question rounds to prevent infinite loops
+        question_round = review_context.get("question_round", 0) + 1
+        max_question_rounds = 5
+
+        if has_open_questions and question_round <= max_question_rounds:
+            # Auto-generate next question with buttons
+            question_tasks = await _generate_review_questions(updated_context, num_questions=1)
+            if question_tasks:
+                task = question_tasks[0]
+                q_data = {
+                    "question_id": task.question_id,
+                    "question_text": task.question_text,
+                    "question_type": task.question_type.value if task.question_type else "ask_user",
+                    "target_field": task.target_field,
+                    "options": None,
+                }
+                if task.options:
+                    q_data["options"] = [
+                        {
+                            "option_id": opt.option_id,
+                            "label": opt.label,
+                            "value": opt.value,
+                            "description": opt.description,
+                            "is_recommended": opt.is_recommended,
+                        }
+                        for opt in task.options
+                    ]
+
+                # Return both the patch and the follow-up question
+                return {
+                    "decision_result": {
+                        "action": "review_continuation",
+                        "message": response_content,
+                        "persona": persona,
+                        "topic": topic,
+                        "version": current_version,
+                        "is_patch": True,
+                        "has_followup": True,
+                        "questions_data": [q_data],  # Follow-up question with buttons
+                    },
+                    "review_context": {
+                        **updated_context,
+                        "question_round": question_round,
+                    },
+                }
+
         return {
             "decision_result": {
                 "action": "review_continuation",

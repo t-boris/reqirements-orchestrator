@@ -572,6 +572,45 @@ async def _dispatch_result(
                     text=chunk[:200],
                 )
 
+            # Check if there are follow-up questions to ask
+            has_followup = result.get("has_followup", False)
+            followup_questions = result.get("questions_data", []) if has_followup else []
+
+            if followup_questions:
+                # Post follow-up question with buttons after the update
+                review_plan_id = f"review_{identity.thread_ts}"
+                review_version = result.get("version", 1)
+
+                followup_blocks = [
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": "_I need a bit more information:_"}
+                    }
+                ]
+
+                for q_data in followup_questions:
+                    question_blocks = build_question_blocks(
+                        question_data=q_data,
+                        plan_id=review_plan_id,
+                        plan_version=review_version,
+                    )
+                    followup_blocks.extend(question_blocks)
+
+                followup_blocks.append({
+                    "type": "context",
+                    "elements": [{
+                        "type": "mrkdwn",
+                        "text": "_Reply in thread to answer._",
+                    }]
+                })
+
+                client.chat_postMessage(
+                    channel=identity.channel_id,
+                    thread_ts=identity.thread_ts if identity.thread_ts else None,
+                    blocks=followup_blocks,
+                    text="Follow-up question",
+                )
+
     elif action == "review":
         # Review response - persona-based analysis without Jira operations
         # Like discussion, responds where mentioned. Longer, thoughtful analysis.
