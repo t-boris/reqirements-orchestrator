@@ -84,6 +84,11 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
         if task.progress:
             progress = f" ({task.progress.get('current', 0)}/{task.progress.get('total', 0)})"
 
+        # Add active step for running tasks (shows what MARO is doing)
+        step_info = ""
+        if task.status == TaskStatus.RUNNING and task.active_step:
+            step_info = f" — {task.active_step}"
+
         # Add status suffix
         suffix = ""
         if task.status == TaskStatus.BLOCKED and task.requires_user_input:
@@ -92,7 +97,7 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
             error_preview = task.last_error[:30]
             suffix = f" _(error: {error_preview}...)_"
 
-        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{progress}{suffix}")
+        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{progress}{step_info}{suffix}")
 
     blocks.append({
         "type": "section",
