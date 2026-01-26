@@ -829,6 +829,57 @@ Bot: "To draft stories, pick approach:"
 
 **Full context:** `.planning/phases/40-decision-v2-rich-context/40-CONTEXT.md`
 
+### Phase 41: Decision Change Propagation
+
+**Status:** COMPLETE (5/5 plans)
+
+**Objective:** When decisions change (edit/deprecate/delete), propagate changes to all linked entities with impact analysis, confirmation, and rollback support.
+
+**Mantra:** "Decision changes are visible, confirmed, and reversible. Never silent mass updates."
+
+**Key Invariant:** Decision = primary object. Jira = projection. Any decision change triggers impact analysis → user confirmation → transactional apply.
+
+**Operations:**
+
+| Operation | Behavior | Auto/Confirm |
+|-----------|----------|--------------|
+| **Edit (vN → vN+1)** | Update pinned message, sync Jira managed sections | Auto with notification |
+| **Deprecate** | Mark DEPRECATED, update pinned card, notify Jira | Auto with notification |
+| **Delete** | Only for unapproved decisions; otherwise → tombstone | Confirm required |
+
+**DecisionChangeOp Flow:**
+
+1. **Create Operation** — op_id, decision_id, from_version, to_version, actor, state (PROPOSED→CONFIRMED→APPLYING→DONE/FAILED)
+2. **Impact Analysis** — linked Jira issues, pinned artifacts, preflight conflicts
+3. **UI Confirmation** — show what will change, buttons: [Apply updates] [Apply to Slack only] [Cancel]
+4. **Transactional Apply** — DB first (truth), then Slack, then Jira (MANAGED_SECTION_ONLY)
+5. **Result + Rollback** — show updated/failed counts, offer [Retry failed] [Rollback]
+
+**Key Rules:**
+- Jira writes always require confirmation (even if confidence=1.0)
+- Delete = deprecate + tombstone (preserve audit trail)
+- Pinned messages never disappear (replaced with DEPRECATED card)
+- Jira managed sections show "Decision deprecated, see successor"
+
+**Depends on:** Phase 40 (Decision v2 Rich Context)
+
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 41-01, 41-02 | Foundation: DecisionChangeOp schema/store, Impact analysis |
+| 2 | 41-03, 41-04 | UI: Confirmation card, Transactional apply + result card |
+| 3 | 41-05 | Polish: Rollback support, error recovery |
+
+**Plans:**
+- [x] 41-01: DecisionChangeOp schema + store (2026-01-26)
+- [x] 41-02: Impact analysis service (2026-01-26)
+- [x] 41-03: Confirmation UI (impact preview card) (2026-01-26)
+- [x] 41-04: Transactional apply + result card (2026-01-26)
+- [x] 41-05: Rollback support + error recovery (2026-01-26)
+
+**Full context:** `.planning/phases/41-decision-change-propagation/41-CONTEXT.md`
+
 ## Completed Milestones
 
 <details>
@@ -945,3 +996,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
 | 39. Intent Classification v2 | v1.2 | 7/7 | Complete | 2026-01-26 |
 | 40. Decision v2 — Rich Context | v1.2 | 6/6 | Complete | 2026-01-25 |
+| 41. Decision Change Propagation | v1.2 | 5/5 | Complete | 2026-01-26 |
