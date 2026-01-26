@@ -371,6 +371,12 @@ class AgentState(TypedDict):
     # Scope gate re-routing (Phase 20)
     user_message: Optional[str]  # Preserved original message for re-routing after scope gate selection
 
+    # Question collection state (collects clarifying questions before main flow)
+    collected_answers: dict[str, str]  # question_text -> answer_label mapping
+    question_collection_round: int  # Current round number (max 20)
+    question_collection_complete: bool  # True when no more questions needed
+    question_collection_pending: bool  # True when waiting for user answer
+
     # Multi-ticket state (Phase 20)
     multi_ticket_state: Optional[MultiTicketState]  # Epic + linked stories batch
 

@@ -158,6 +158,11 @@ class GraphRunner:
             "thread_default_expires_at": None,
             # Scope gate re-routing
             "user_message": None,
+            # Question collection state
+            "collected_answers": {},
+            "question_collection_round": 0,
+            "question_collection_complete": False,
+            "question_collection_pending": False,
             # Pending update state
             "pending_update": None,
         }
