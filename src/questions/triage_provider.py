@@ -5,22 +5,10 @@ Phase 44: Questions-First Collection Stage
 Transforms triage gaps into actionable button-based questions using existing
 Question Engine patterns. No LLM dependency - deterministic template questions.
 """
-from enum import Enum
 from typing import Any
 
 from src.schemas.question import QuestionOption, QuestionTask, QuestionType
-
-
-class TriageGap(str, Enum):
-    """Gaps identified during triage - what's missing from context.
-
-    Each gap maps to a specific clarifying question.
-    """
-    UNKNOWN_MODE = "unknown_mode"      # Can't determine BUILD vs THINK vs DECIDE
-    UNKNOWN_TARGET = "unknown_target"  # No clear subject (what are we working on?)
-    UNKNOWN_SCOPE = "unknown_scope"    # Don't know if epic/story/task
-    MISSING_TOPIC = "missing_topic"    # For review, topic unclear
-    AMBIGUOUS_INTENT = "ambiguous_intent"  # Multiple interpretations possible
+from src.schemas.triage import TriageGap
 
 
 # Gap priorities - lower number = ask first

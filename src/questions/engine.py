@@ -15,9 +15,10 @@ from src.questions.budget_tracker import BudgetTracker
 from src.questions.catalog_provider import CatalogProvider
 from src.questions.freeform_provider import FreeformProvider
 from src.questions.provider import ProviderType
-from src.questions.triage_provider import TriageGap, TriageProvider
+from src.questions.triage_provider import TriageProvider
 from src.schemas.question import QuestionTask
 from src.schemas.state_patch import StatePatch
+from src.schemas.triage import TriageGap
 
 logger = logging.getLogger(__name__)
 
