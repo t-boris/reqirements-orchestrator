@@ -153,8 +153,24 @@ async def _build_conversation_context(
             else:
                 # On-demand fetch (disabled channel)
                 if thread_ts and thread_ts != message_ts:
-                    # In a thread - fetch thread history
-                    messages = fetch_thread_history(client, channel_id, thread_ts)
+                    # In a thread - fetch BOTH:
+                    # 1. Thread history (the conversation in this thread)
+                    # 2. Channel messages before the thread (context leading up to it)
+                    thread_messages = fetch_thread_history(client, channel_id, thread_ts)
+                    channel_messages = fetch_channel_history(
+                        client, channel_id, before_ts=thread_ts, limit=50
+                    )
+                    # Combine: channel context first (reversed to chronological), then thread
+                    # Channel messages come newest-first, reverse for chronological order
+                    messages = list(reversed(channel_messages)) + thread_messages
+                    logger.debug(
+                        "Built thread context with channel history",
+                        extra={
+                            "channel_id": channel_id,
+                            "thread_messages": len(thread_messages),
+                            "channel_messages": len(channel_messages),
+                        }
+                    )
                 else:
                     # Channel root - fetch recent channel messages
                     messages = fetch_channel_history(client, channel_id, before_ts=message_ts, limit=20)
