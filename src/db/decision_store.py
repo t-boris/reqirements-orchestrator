@@ -14,6 +14,8 @@ from src.schemas.decision import (
     Alternative,
     Consequence,
     Decision,
+    DecisionChangeOp,
+    DecisionChangeOpType,
     DecisionStatus,
     DecisionType,
     DecisionVersion,
@@ -861,3 +863,58 @@ class DecisionStore:
             alternatives=row[11],
             consequences=row[12],
         )
+
+    # =========================================================================
+    # Change Operation Helpers (Phase 41)
+    # =========================================================================
+
+    async def create_change_op(
+        self,
+        decision_id: str,
+        operation: DecisionChangeOpType,
+        actor: str,
+    ) -> tuple[Decision, DecisionChangeOp]:
+        """Create a change operation for a decision.
+
+        Helper method that creates a DecisionChangeOp tracking entry
+        for the specified operation. Use this when you need to track
+        decision changes through the PROPOSED → CONFIRMED → APPLYING → DONE
+        lifecycle.
+
+        Args:
+            decision_id: UUID of the decision to change
+            operation: Type of change (EDIT, DEPRECATE, DELETE)
+            actor: User ID who initiated the change
+
+        Returns:
+            Tuple of (Decision, DecisionChangeOp) - the current decision
+            and the newly created change op in PROPOSED state
+
+        Raises:
+            ValueError: If decision not found
+        """
+        # Import here to avoid circular import
+        from src.db.decision_change_op_store import DecisionChangeOpStore
+
+        decision = await self.get(decision_id)
+        if not decision:
+            raise ValueError(f"Decision not found: {decision_id}")
+
+        # Create the change op store using same connection
+        op_store = DecisionChangeOpStore(self._conn)
+        await op_store.create_tables()  # Ensure table exists
+
+        # Determine to_version based on operation
+        to_version: int | None = None
+        if operation == DecisionChangeOpType.EDIT:
+            to_version = decision.version + 1
+
+        change_op = await op_store.create(
+            decision_id=decision_id,
+            operation=operation,
+            from_version=decision.version,
+            to_version=to_version,
+            actor=actor,
+        )
+
+        return decision, change_op
