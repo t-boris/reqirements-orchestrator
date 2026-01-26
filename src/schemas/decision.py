@@ -140,6 +140,24 @@ class Decision(BaseModel):
         description="Thread timestamp under the canonical message",
     )
 
+    # Rich context fields (Phase 40)
+    rationale: Optional[list[RationaleItem]] = Field(
+        default=None,
+        description="WHY - 2-6 bullets explaining the reasoning",
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description="Status quo / what was before this decision",
+    )
+    alternatives: Optional[list[Alternative]] = Field(
+        default=None,
+        description="What was considered and why rejected",
+    )
+    consequences: Optional[list[Consequence]] = Field(
+        default=None,
+        description="Impact and constraints introduced by this decision",
+    )
+
 
 class DecisionVersion(BaseModel):
     """Historical version of a decision.
@@ -159,6 +177,24 @@ class DecisionVersion(BaseModel):
     change_reason: Optional[str] = Field(
         default=None,
         description="Why this change was made",
+    )
+
+    # Rich context (Phase 40) - stored as dict for JSON serialization
+    rationale: Optional[list[dict]] = Field(
+        default=None,
+        description="Rationale at this version",
+    )
+    context: Optional[str] = Field(
+        default=None,
+        description="Context at this version",
+    )
+    alternatives: Optional[list[dict]] = Field(
+        default=None,
+        description="Alternatives at this version",
+    )
+    consequences: Optional[list[dict]] = Field(
+        default=None,
+        description="Consequences at this version",
     )
 
 
