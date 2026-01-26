@@ -159,6 +159,8 @@ def build_approval_block(
     This is the "commit screen" — must feel heavy and formal.
     Shows what will happen when approved.
 
+    Updated for Phase 40: Includes rich context sections when available.
+
     Format:
     ━━━━━━━━━━━━━━━━━━━━━━
     {type_emoji} Decision DEC-{id} ({type}) — Ready for approval
@@ -168,6 +170,8 @@ def build_approval_block(
 
     Description:
     {description}
+
+    [Rich context sections if available]
 
     Will update Jira:
     - SCRUM-123
@@ -181,12 +185,6 @@ def build_approval_block(
     """
     type_emoji = _get_type_emoji(decision.decision_type)
     type_label = decision.decision_type.value.upper()
-
-    # Build Jira tickets section
-    jira_section = ""
-    if linked_tickets:
-        jira_list = "\n".join(f"• {key}" for key in linked_tickets)
-        jira_section = f"\n\n*Will update Jira:*\n{jira_list}"
 
     blocks = [
         {"type": "divider"},
@@ -213,13 +211,20 @@ def build_approval_block(
         },
     ]
 
+    # Add rich context sections (Phase 40)
+    rich_context_blocks = build_rich_context_blocks(decision)
+    if rich_context_blocks:
+        blocks.append({"type": "divider"})
+        blocks.extend(rich_context_blocks)
+
     # Add Jira section if tickets linked
-    if jira_section:
+    if linked_tickets:
+        jira_list = "\n".join(f"• {key}" for key in linked_tickets)
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": jira_section,
+                "text": f"*Will update Jira:*\n{jira_list}",
             },
         })
 
