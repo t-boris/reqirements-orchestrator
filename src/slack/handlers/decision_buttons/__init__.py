@@ -35,6 +35,13 @@ from src.slack.handlers.decision_buttons.deprecate import (
     handle_decision_deprecate,
     handle_decision_deprecate_modal_submit,
 )
+from src.slack.handlers.decision_buttons.view import (
+    handle_decision_history,
+    handle_decision_view,
+    handle_decision_cancel,
+    handle_decision_show_details,
+    handle_decision_hide_details,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,12 @@ __all__ = [
     "handle_decision_discard",
     "handle_decision_deprecate",
     "handle_decision_deprecate_modal_submit",
+    # View/History
+    "handle_decision_history",
+    "handle_decision_view",
+    "handle_decision_cancel",
+    "handle_decision_show_details",
+    "handle_decision_hide_details",
     # Registration
     "register_decision_handlers",
 ]
@@ -71,6 +84,13 @@ def register_decision_handlers(app):
     # Button actions - Discard/Deprecate
     app.action("decision_discard")(handle_decision_discard)
     app.action("decision_deprecate")(handle_decision_deprecate)
+
+    # Button actions - View/History
+    app.action("decision_history")(handle_decision_history)
+    app.action("decision_view")(handle_decision_view)
+    app.action("decision_show_details")(handle_decision_show_details)
+    app.action("decision_hide_details")(handle_decision_hide_details)
+    app.action("decision_cancel")(handle_decision_cancel)
 
     # Modal submissions
     app.view("decision_edit_modal")(handle_decision_edit_modal_submit)
