@@ -238,17 +238,14 @@ def _extract_questions(text: str) -> list[str]:
 
 
 def _extract_questions_with_options(text: str) -> list[dict]:
-    """Extract questions WITH their options from LLM response.
+    """Extract questions from the 'Open Questions' section of review.
+
+    Only extracts from section 5 (Open Questions) to avoid picking up
+    parenthetical clarifications like "(where is the student?)".
 
     Parses patterns like:
-    - What do you think about X?
-      - Option A: Description
-      - Option B: Description
-
-    Or:
-    1. Question text?
-    * Option A
-    * Option B
+    - Scale: How many students? (This affects architecture)
+    - Auth: Are we using OAuth or Slack ID?
 
     Returns:
         List of dicts with question_text and options list
@@ -256,71 +253,69 @@ def _extract_questions_with_options(text: str) -> list[dict]:
     import re
 
     results = []
-    lines = text.split("\n")
-    i = 0
 
-    while i < len(lines):
-        line = lines[i].strip()
+    # Find the "Open Questions" section (section 5)
+    # Look for patterns like "5. Open Questions", "5. *Open Questions*", "Open Questions"
+    open_questions_patterns = [
+        r'5\.\s*\*?Open Questions\*?',
+        r'\*?Open Questions\*?\s*[-:]?',
+    ]
 
-        # Look for question line (ends with ?)
-        if "?" in line and len(line) > 10:
-            # Clean the question text
-            question_text = re.sub(r'^[\d\.\)\-\*\s]+', '', line).strip()
-            question_text = re.sub(r'^\*+|\*+$', '', question_text).strip()
+    section_start = -1
+    for pattern in open_questions_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            section_start = match.end()
+            break
 
-            # Collect options from following lines
-            options = []
-            i += 1
+    if section_start == -1:
+        # No "Open Questions" section found
+        return []
 
-            while i < len(lines):
-                opt_line = lines[i].strip()
+    # Extract text from Open Questions section until next section or end
+    section_text = text[section_start:]
 
-                # Stop if we hit empty line, new question, or non-option line
-                if not opt_line:
-                    break
-                if "?" in opt_line and len(opt_line) > 20:
-                    # New question, don't advance i
-                    break
+    # Stop at next numbered section (like "6.") or end of text
+    next_section = re.search(r'\n\d+\.\s+\*?[A-Z]', section_text)
+    if next_section:
+        section_text = section_text[:next_section.start()]
 
-                # Check if line is an option (starts with -, *, •, or number)
-                opt_match = re.match(r'^[\-\*\•]\s*(.+)$|^\d+[\.\)]\s*(.+)$', opt_line)
-                if opt_match:
-                    opt_text = (opt_match.group(1) or opt_match.group(2) or "").strip()
-                    # Remove trailing asterisks from markdown
-                    opt_text = re.sub(r'\*+$', '', opt_text).strip()
+    # Now extract questions from this section
+    lines = section_text.split("\n")
 
-                    if opt_text and len(opt_text) > 3:
-                        # Split label and description if colon present
-                        if ": " in opt_text:
-                            parts = opt_text.split(": ", 1)
-                            label = parts[0].strip()[:40]
-                            description = parts[1].strip() if len(parts) > 1 else ""
-                        else:
-                            label = opt_text[:40]
-                            description = ""
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
 
-                        options.append({
-                            "option_id": f"opt_{len(options)}",
-                            "label": label,
-                            "value": label.lower().replace(" ", "_")[:30],
-                            "description": description,
-                            "is_recommended": len(options) == 0,  # First option is recommended
-                        })
-                    i += 1
-                else:
-                    # Not an option line, stop collecting
-                    break
+        # Question must END with ? (not just contain ? in parentheses)
+        # Skip lines where ? is inside parentheses like "(where is X?)"
+        if not line.rstrip().endswith('?'):
+            # Check if it ends with ?) which is parenthetical
+            if line.rstrip().endswith('?)'):
+                continue
+            # No question mark at end, skip
+            continue
 
-            if question_text:
-                results.append({
-                    "question_text": question_text,
-                    "options": options if options else None,
-                })
+        # Must be reasonably long to be a real question
+        if len(line) < 15:
+            continue
 
-            if len(results) >= 4:  # Max 4 questions
-                break
-        else:
-            i += 1
+        # Clean the question text - remove leading bullets/numbers
+        question_text = re.sub(r'^[\d\.\)\-\*\•\s]+', '', line).strip()
+        question_text = re.sub(r'^\*+|\*+$', '', question_text).strip()
+
+        # Skip if it's just a fragment
+        if len(question_text) < 10:
+            continue
+
+        results.append({
+            "question_text": question_text,
+            "options": None,  # Open questions typically don't have predefined options
+        })
+
+        if len(results) >= 4:  # Max 4 questions
+            break
 
     return results
 
