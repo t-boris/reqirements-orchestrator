@@ -342,6 +342,11 @@ Stopped at: Completed 39-02-PLAN.md (Stage 0 Pre-Gates)
 Resume file: None
 Next action: Execute 39-03-PLAN.md
 
+Phase 39-01 decisions:
+- IntentEnvelope unified output format with kind: single/plan/ambiguous
+- RiskLevel enum ordering for max calculation in plan factory
+- to_legacy_intent_result() enables gradual migration from IntentResult
+
 Phase 39-02 decisions:
 - Pre-gates are state-based invariants, NOT keyword pattern matching
 - 4 gate types: terminal, taskplan continuation, draft priority, risk guard
