@@ -109,6 +109,21 @@ async def _handle_question_button_async(
             _handle_other_selected(client, channel_id, thread_ts, question_id)
             return
 
+        # Check if this is a review question (plan_id starts with "review_")
+        if plan_id.startswith("review_"):
+            # Handle review question answer without TaskPlan
+            await _handle_review_question_answer(
+                client,
+                channel_id,
+                thread_ts,
+                user_id,
+                plan_id,  # Use plan_id as context identifier
+                option_id,
+                encoded_value,
+                message_ts,
+            )
+            return
+
         # Process the button answer for TaskPlan
         result = await _process_button_answer(
             plan_id,
@@ -216,15 +231,16 @@ async def _handle_review_question_answer(
     encoded_value: str,
     message_ts: str = None,
 ) -> None:
-    """Handle review question button answer (Phase 37).
+    """Handle review question button answer (Phase 37, fixed Phase 43).
 
-    For review questions, we inject the selected answer as a simulated
-    message to continue the review conversation flow.
+    Flow:
+    1. Record answer in review_context.answers (NO LLM call)
+    2. If more questions remain, show next question
+    3. Only when ALL questions answered, trigger LLM synthesis
     """
     from src.slack.session import SessionIdentity
     from src.graph.runner import get_runner
-    from src.slack.handlers.dispatch import _dispatch_result
-    from src.slack.progress import ProgressTracker
+    from src.slack.blocks.question import build_question_blocks
     from src.config.settings import get_settings
 
     settings = get_settings()
@@ -256,58 +272,140 @@ async def _handle_review_question_answer(
             )
         except Exception as e:
             logger.warning(f"Could not update question message: {e}")
-            # Fallback: post acknowledgment as new message
-            client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=f"Selected: *{encoded_value}*",
-            )
-    else:
-        # No message_ts, post acknowledgment as new message
+
+    # Get runner and current state
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+    review_context = state.get("review_context", {})
+
+    if not review_context:
+        logger.warning("No review_context found for question answer")
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text=f"Selected: *{encoded_value}*",
+            text="Session expired. Please start a new review.",
+        )
+        return
+
+    # Record the answer (NO LLM call here!)
+    answers = review_context.get("answers", {})
+    answers[question_id] = encoded_value
+    review_context["answers"] = answers
+
+    # Find remaining unanswered questions
+    pending_questions = review_context.get("pending_questions", [])
+    unanswered = [
+        q for q in pending_questions
+        if q.get("question_id") not in answers
+    ]
+
+    logger.info(
+        f"Review answer recorded: {question_id}={encoded_value}, "
+        f"answered={len(answers)}, remaining={len(unanswered)}"
+    )
+
+    if unanswered:
+        # More questions remain - show next question (NO LLM)
+        next_question = unanswered[0]
+        review_plan_id = f"review_{thread_ts}"
+
+        question_blocks = build_question_blocks(
+            question_data=next_question,
+            plan_id=review_plan_id,
+            plan_version=1,
         )
 
-    # Create progress tracker
+        # Add progress indicator
+        progress_text = f"_Question {len(answers) + 1} of {len(pending_questions)}_"
+        question_blocks.insert(0, {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": progress_text}]
+        })
+
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            blocks=question_blocks,
+            text=next_question.get("question_text", "Next question"),
+        )
+
+        # Update state with new answers
+        await runner._update_state({"review_context": review_context})
+
+    else:
+        # All questions answered - trigger LLM synthesis
+        await _trigger_review_synthesis(
+            client, channel_id, thread_ts, user_id,
+            runner, review_context, identity
+        )
+
+
+async def _trigger_review_synthesis(
+    client,
+    channel_id: str,
+    thread_ts: str,
+    user_id: str,
+    runner,
+    review_context: dict,
+    identity,
+) -> None:
+    """Trigger LLM synthesis after all questions are answered.
+
+    This is the ONLY place where LLM is called for question flow.
+    """
+    from src.slack.progress import ProgressTracker
+    from src.slack.handlers.dispatch import _dispatch_result
+
     tracker = ProgressTracker(client, channel_id, thread_ts)
 
     try:
-        await tracker.start("Processing answer...")
+        await tracker.start("Synthesizing answers...")
 
-        # Get runner and force REVIEW intent to ensure continuity
-        # Without this, the intent classifier might route the answer text
-        # to ticket creation or another flow
-        runner = get_runner(identity)
+        # Format answers for LLM context
+        answers = review_context.get("answers", {})
+        pending_questions = review_context.get("pending_questions", [])
 
-        # Force REVIEW intent for question answers to maintain context
-        from src.schemas.intent import Intent, SuperMode
+        # Build Q&A summary for synthesis
+        qa_pairs = []
+        for q in pending_questions:
+            qid = q.get("question_id")
+            question_text = q.get("question_text", "")
+            answer_text = answers.get(qid, "Not answered")
+            qa_pairs.append(f"Q: {question_text}\nA: {answer_text}")
+
+        qa_summary = "\n\n".join(qa_pairs)
+
+        # Update review_context with collected answers for synthesis
+        review_context["qa_summary"] = qa_summary
+        review_context["all_questions_answered"] = True
+        await runner._update_state({"review_context": review_context})
+
+        # Force REVIEW_CONTINUATION intent for synthesis
+        from src.schemas.intent import Intent
 
         state = await runner._get_current_state()
         state["intent_result"] = {
-            "intent": Intent.REVIEW.value,
+            "intent": Intent.REVIEW_CONTINUATION.value,
             "confidence": 1.0,
-            "super_mode": SuperMode.THINK.value,
-            "reasons": ["review_question_answer: forcing REVIEW intent for question answer continuity"],
+            "reasons": ["all questions answered, triggering synthesis"],
         }
         await runner._update_state(state)
 
-        # Run graph with selected answer as message
+        # Run graph with synthesis trigger message
         result = await runner.run_with_message(
-            message_text=encoded_value,
+            message_text=f"[SYNTHESIS] User answered all questions:\n{qa_summary}",
             user_id=user_id,
         )
 
-        # Dispatch result
+        # Dispatch result (will show buttons after synthesis)
         await _dispatch_result(result, identity, client, runner, tracker)
 
     except Exception as e:
-        logger.error(f"Review question answer error: {e}")
+        logger.error(f"Review synthesis error: {e}")
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text=f"Error processing answer: {e}",
+            text=f"Error synthesizing answers: {e}",
         )
     finally:
         await tracker.complete()

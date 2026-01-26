@@ -183,14 +183,34 @@ def _persona_to_kind(persona: str) -> ArtifactKind:
 
 
 def _extract_decisions(text: str) -> list[str]:
-    """Extract decisions from review text."""
+    """Extract decisions from review text.
+
+    Looks for declarative statements, not questions.
+    """
     decisions = []
     for line in text.split("\n"):
         line_lower = line.lower()
-        if any(kw in line_lower for kw in ["decided", "decision:", "we should", "recommend", "conclusion"]):
-            cleaned = line.strip()
-            if cleaned and len(cleaned) > 10:
-                decisions.append(cleaned)
+        cleaned = line.strip()
+
+        # Skip if it's a question (contains ?)
+        if "?" in cleaned:
+            continue
+
+        # Skip empty or very short lines
+        if not cleaned or len(cleaned) <= 10:
+            continue
+
+        # Look for decision keywords in declarative statements
+        decision_keywords = ["decided", "decision:", "we will", "the approach", "chosen", "selected", "using", "opted for"]
+        # Avoid question-like patterns even without "?"
+        question_patterns = ["how should", "what if", "should we", "could we", "would it"]
+
+        has_decision = any(kw in line_lower for kw in decision_keywords)
+        is_question = any(qp in line_lower for qp in question_patterns)
+
+        if has_decision and not is_question:
+            decisions.append(cleaned)
+
     return decisions[:5]  # Limit to 5
 
 
@@ -215,109 +235,6 @@ def _extract_questions(text: str) -> list[str]:
             if cleaned and len(cleaned) > 10:
                 questions.append(cleaned)
     return questions[:5]  # Limit to 5
-
-
-async def _generate_structured_question(
-    topic: str,
-    questions: list[str],
-    context: str,
-) -> dict | None:
-    """Generate structured question with options from extracted questions.
-
-    Converts plain-text questions into structured QuestionTask with
-    meaningful button options based on the question content.
-
-    Args:
-        topic: Review topic
-        questions: Plain text questions extracted from review
-        context: Review context for generating options
-
-    Returns:
-        Serialized QuestionTask dict or None
-    """
-    if not questions:
-        return None
-
-    from src.llm import get_llm
-    from src.schemas.question import QuestionTask, QuestionType, QuestionOption
-    import re
-
-    # Use LLM to generate structured options for the first question
-    first_question = questions[0]
-
-    try:
-        llm = get_llm()
-        options_prompt = f'''Generate button options for this architecture question.
-
-Topic: {topic}
-
-Question: {first_question}
-
-Return JSON with 2-4 options that directly answer this question:
-{{
-  "options": [
-    {{"id": "opt_1", "label": "Short button label (max 20 chars)", "value": "Description of this choice"}},
-    {{"id": "opt_2", "label": "Another option", "value": "Description"}}
-  ]
-}}
-
-Rules:
-- Each option should be a distinct, meaningful answer choice
-- Labels should be concise for buttons (max 20 chars)
-- Values should explain what this choice means
-- Options should cover the main alternatives mentioned or implied in the question
-
-JSON:'''
-
-        response = await llm.chat(options_prompt)
-
-        # Parse JSON from response
-        json_match = re.search(r'\{[^{}]*"options"\s*:\s*\[[^\]]+\][^{}]*\}', response, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            option_list = data.get("options", [])
-
-            if option_list:
-                options = [
-                    QuestionOption(
-                        option_id=opt.get("id", f"opt_{i}"),
-                        label=opt.get("label", "Option")[:20],
-                        value=opt.get("value", opt.get("label", "")),
-                    )
-                    for i, opt in enumerate(option_list)
-                ]
-
-                question_task = QuestionTask(
-                    question_type=QuestionType.ASK_USER,
-                    question_text=first_question,
-                    options=options,
-                )
-                return question_task.model_dump()
-
-    except Exception as e:
-        logger.warning(f"Failed to generate structured question options: {e}")
-
-    # Fallback: convert first question to simple QuestionTask
-    if questions:
-        from src.schemas.question import QuestionTask, QuestionType, QuestionOption
-
-        first_q = questions[0]
-
-        # Generate generic options for yes/no or common responses
-        options = [
-            QuestionOption(option_id="opt_yes", label="Yes", value="yes"),
-            QuestionOption(option_id="opt_no", label="No", value="no"),
-            QuestionOption(option_id="opt_depends", label="It depends...", value="depends"),
-        ]
-
-        fallback_task = QuestionTask(
-            question_type=QuestionType.ASK_USER,
-            question_text=first_q,
-            options=options,
-        )
-        return fallback_task.model_dump()
-
-    return None
 
 
 def _summarize_review(text: str) -> str:
@@ -403,10 +320,12 @@ async def review_node(state: AgentState) -> dict[str, Any]:
     from src.schemas.state import ReviewState
 
     # BEFORE generating new review, check if one already exists
+    # This is a safety check - should not happen since intent_router_node now forces
+    # REVIEW_CONTINUATION when active review exists. If we get here, log warning.
     existing_review = state.get("review_context")
     if existing_review and existing_review.get("state") in [ReviewState.ACTIVE, ReviewState.CONTINUATION]:
         logger.warning(
-            "Active review already exists, not overwriting",
+            "Active review exists but review_node was called - routing should have gone to review_continuation",
             extra={
                 "existing_topic": existing_review.get("topic"),
                 "existing_state": existing_review.get("state"),
@@ -517,13 +436,21 @@ Provide your analysis:"""
             user_id=user_id,
         )
 
-        # Phase 39: Generate structured question from open questions
+        # Phase 39: Generate structured questions with options for ALL extracted questions
         extracted_questions = _extract_questions(analysis)
-        structured_question = await _generate_structured_question(
-            topic=topic or latest_human_message[:100],
-            questions=extracted_questions,
-            context=context,
-        )
+        questions_data = []
+        if extracted_questions:
+            from src.graph.nodes.review_continuation import _generate_options_for_question
+            for i, question_text in enumerate(extracted_questions[:4]):  # Max 4 questions
+                options = await _generate_options_for_question(question_text, topic or latest_human_message[:50])
+                q_data = {
+                    "question_id": f"review_q_{i}",
+                    "question_text": question_text,
+                    "question_type": "ask_user",
+                    "target_field": f"answer_{i}",
+                    "options": options if options else None,
+                }
+                questions_data.append(q_data)
 
         logger.info(
             f"Review node generated analysis: {len(analysis)} chars",
@@ -534,7 +461,7 @@ Provide your analysis:"""
                 "message_length": len(latest_human_message),
                 "analysis_length": len(analysis),
                 "artifact_id": artifact_id,
-                "has_structured_question": structured_question is not None,
+                "questions_count": len(questions_data),
             },
         )
 
@@ -548,6 +475,9 @@ Provide your analysis:"""
             "channel_id": channel_id,
             "created_at": time.time(),
             "artifact_id": artifact_id,  # Link to persistent artifact
+            # Phase 43 fix: track questions and answers for multi-step flow
+            "pending_questions": questions_data,  # All questions from review
+            "answers": {},  # Accumulated answers: {question_id: answer_text}
         }
 
         return {
@@ -558,7 +488,8 @@ Provide your analysis:"""
                 "topic": topic,
                 "artifact_id": artifact_id,  # Pass artifact_id for UI buttons
                 "super_mode": super_mode.value if super_mode else "think",  # For conditional buttons
-                "question_task": structured_question,  # Phase 39: structured question with options
+                "is_questions": bool(questions_data),  # Phase 39: flag for question buttons
+                "questions_data": questions_data,  # Phase 39: all questions with options
             },
             "review_context": review_context,
         }

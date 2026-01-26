@@ -33,6 +33,7 @@ async def _handle_review_continuation(
     persona = result.get("persona", "")
     topic = result.get("topic", "")
     is_questions = result.get("is_questions", False)
+    is_synthesis = result.get("is_synthesis", False)  # Phase 43: final synthesis with buttons
     questions_data = result.get("questions_data", [])
 
     if persona:
@@ -273,7 +274,9 @@ async def _handle_review(
             ]
 
             # Add action buttons only to the last message
-            if is_last_message:
+            # BUT skip buttons if we have questions - questions will be posted separately
+            is_questions = result.get("is_questions", False)
+            if is_last_message and not is_questions:
                 ticket_button_value = json.dumps({
                     "review_text": review_msg[:1500],
                     "topic": (topic or "")[:100],

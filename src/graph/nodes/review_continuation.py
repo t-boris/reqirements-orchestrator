@@ -13,6 +13,7 @@ Phase 37: Unified Question Engine integration
 - Generates structured questions via Question Engine
 """
 import logging
+import re
 from typing import Any
 
 from src.questions.freeform_provider import FreeformProvider
@@ -22,18 +23,87 @@ from src.schemas.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-def _wants_questions_asked(user_message: str) -> bool:
-    """Detect if user wants bot to ask them questions."""
-    signals = [
-        "continue with questions",
-        "ask me",
-        "what questions",
-        "your open questions",
-        "ask the open questions",
-        "ask your questions",
-    ]
-    message_lower = user_message.lower()
-    return any(signal in message_lower for signal in signals)
+def _extract_questions_from_response(response: str) -> list[str]:
+    """Extract numbered questions from LLM response.
+
+    Looks for patterns like "1. Question?" or "1) Question?" or "**1. Question**"
+    and extracts the question text.
+
+    Returns:
+        List of question strings (empty if no questions found)
+    """
+    import re
+    questions = []
+    # Match numbered question patterns - with or without markdown bold
+    # Patterns: "1. Question?", "1) Question?", "**1. Question?**", "1. **Question?**"
+    numbered_pattern = r'^\s*\**\d+[\.\)]\**\s*\**(.+?\?)\**\s*$'
+
+    for line in response.split('\n'):
+        line = line.strip()
+        match = re.match(numbered_pattern, line)
+        if match:
+            question_text = match.group(1).strip()
+            # Clean up any remaining markdown
+            question_text = re.sub(r'\*+', '', question_text).strip()
+            if question_text:
+                questions.append(question_text)
+
+    return questions
+
+
+async def _generate_options_for_question(
+    question_text: str,
+    topic: str,
+) -> list[dict]:
+    """Generate answer options for a specific question using LLM.
+
+    Args:
+        question_text: The question to generate options for
+        topic: The discussion topic for context
+
+    Returns:
+        List of option dicts with option_id, label, value, description
+    """
+    from src.llm import get_llm
+
+    prompt = f'''Generate 2-4 answer options for this question about {topic}.
+
+Question: {question_text}
+
+Return a JSON array of options. Each option should have:
+- "label": Short button text (max 30 chars)
+- "value": The answer value to record
+- "description": Brief explanation (optional)
+- "is_recommended": true for the most common/recommended choice (only one)
+
+Example format:
+[
+  {{"label": "Option A", "value": "option_a_detail", "description": "Why this choice", "is_recommended": true}},
+  {{"label": "Option B", "value": "option_b_detail", "description": "Why this choice", "is_recommended": false}}
+]
+
+Return ONLY the JSON array, no other text.'''
+
+    llm = get_llm(max_tokens=1024)
+    try:
+        response = await llm.chat(prompt)
+        # Parse JSON from response
+        import json
+        # Try to extract JSON array from response
+        response = response.strip()
+        if response.startswith('```'):
+            # Remove markdown code block
+            response = re.sub(r'^```(?:json)?\n?', '', response)
+            response = re.sub(r'\n?```$', '', response)
+
+        options = json.loads(response)
+        # Add option_id to each
+        for i, opt in enumerate(options):
+            opt["option_id"] = f"opt_{i}"
+        return options
+    except Exception as e:
+        logger.warning(f"Failed to generate options for question: {e}")
+        return []
 
 
 async def _generate_review_questions(
@@ -256,6 +326,10 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
 
     review_artifact = state.get("review_artifact", {})
 
+    # Phase 43 fix: Check if this is a synthesis trigger (all questions answered)
+    all_questions_answered = review_context.get("all_questions_answered", False)
+    qa_summary = review_context.get("qa_summary", "")
+
     # Get latest human message as user's answers
     messages = state.get("messages", [])
     user_answers = ""
@@ -263,6 +337,11 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         if isinstance(msg, HumanMessage):
             user_answers = msg.content
             break
+
+    # If synthesis trigger, use the accumulated Q&A summary instead of raw message
+    if all_questions_answered and qa_summary:
+        user_answers = f"All questions have been answered:\n\n{qa_summary}"
+        logger.info("Review synthesis triggered with accumulated Q&A")
 
     # Get review context fields
     topic = review_context.get("topic", "Architecture discussion")
@@ -282,57 +361,7 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         review_context.get("review_summary", "")
     )
 
-    # Check if user wants to be asked questions - use FreeformProvider instead of LLM
-    if _wants_questions_asked(user_answers):
-        question_tasks = await _generate_review_questions(review_context)
-        if question_tasks:
-            # Build questions data for dispatch (include options for buttons)
-            questions_data = []
-            for task in question_tasks:
-                q_data = {
-                    "question_id": task.question_id,
-                    "question_text": task.question_text,
-                    "question_type": task.question_type.value if task.question_type else "ask_user",
-                    "target_field": task.target_field,
-                    "options": None,
-                }
-                if task.options:
-                    q_data["options"] = [
-                        {
-                            "option_id": opt.option_id,
-                            "label": opt.label,
-                            "value": opt.value,
-                            "description": opt.description,
-                            "is_recommended": opt.is_recommended,
-                        }
-                        for opt in task.options
-                    ]
-                questions_data.append(q_data)
-
-            # Also build fallback text for plain display
-            response_content = "Great, here are the key questions we need to resolve:\n\n"
-            for i, task in enumerate(question_tasks, 1):
-                response_content += f"{i}. {task.question_text}\n"
-            response_content += "\nPlease answer any or all of these, or click buttons below."
-
-            return {
-                "decision_result": {
-                    "action": "review_continuation",
-                    "message": response_content,
-                    "persona": persona,
-                    "topic": topic,
-                    "version": current_version,
-                    "is_questions": True,
-                    "questions_data": questions_data,  # Include full QuestionTask data
-                },
-                "review_context": {
-                    **review_context,
-                    "version": current_version,
-                    "awaiting_answers": True,
-                },
-            }
-
-    # Single smart prompt - LLM decides if user wants full synthesis or patch
+    # LLM decides what to do based on user message (no pattern matching)
     prompt = SMART_CONTINUATION_PROMPT.format(
         persona=persona,
         topic=topic,
@@ -363,43 +392,49 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
             "updated_recommendation": response_content,
         }
 
-        # Check if LLM response contains open questions - auto-generate follow-up
-        has_open_questions = (
-            "open question" in response_content.lower() or
-            "need to clarify" in response_content.lower() or
-            "need more information" in response_content.lower() or
-            "please specify" in response_content.lower()
-        )
-
         # Limit question rounds to prevent infinite loops
         question_round = review_context.get("question_round", 0) + 1
         max_question_rounds = 5
 
-        if has_open_questions and question_round <= max_question_rounds:
-            # Auto-generate next question with buttons
-            question_tasks = await _generate_review_questions(updated_context, num_questions=1)
-            if question_tasks:
-                task = question_tasks[0]
-                q_data = {
-                    "question_id": task.question_id,
-                    "question_text": task.question_text,
-                    "question_type": task.question_type.value if task.question_type else "ask_user",
-                    "target_field": task.target_field,
-                    "options": None,
-                }
-                if task.options:
-                    q_data["options"] = [
-                        {
-                            "option_id": opt.option_id,
-                            "label": opt.label,
-                            "value": opt.value,
-                            "description": opt.description,
-                            "is_recommended": opt.is_recommended,
-                        }
-                        for opt in task.options
-                    ]
+        # Phase 43 fix: If this is a synthesis (all questions answered),
+        # do NOT extract more questions - this is the final response with buttons
+        if all_questions_answered:
+            logger.info("Synthesis complete - returning final response with buttons")
+            # Clear the synthesis flags so next interaction works normally
+            updated_context["all_questions_answered"] = False
+            updated_context["qa_summary"] = None
+            updated_context["pending_questions"] = []
+            updated_context["answers"] = {}
 
-                # Return both the patch and the follow-up question
+            return {
+                "decision_result": {
+                    "action": "review_continuation",
+                    "message": response_content,
+                    "persona": persona,
+                    "topic": topic,
+                    "version": current_version,
+                    "is_synthesis": True,  # Tells dispatch to show buttons
+                },
+                "review_context": updated_context,
+            }
+
+        # Extract questions from LLM response and generate buttons for them
+        extracted_questions = _extract_questions_from_response(response_content)
+        if extracted_questions and question_round <= max_question_rounds:
+            # Generate options for each question
+            questions_data = []
+            for i, question_text in enumerate(extracted_questions[:4]):  # Max 4 questions
+                options = await _generate_options_for_question(question_text, topic)
+                q_data = {
+                    "question_id": f"review_q_{i}",
+                    "question_text": question_text,
+                    "question_type": "ask_user",
+                    "target_field": f"answer_{i}",
+                    "options": options if options else None,
+                }
+                questions_data.append(q_data)
+
+            if questions_data:
                 return {
                     "decision_result": {
                         "action": "review_continuation",
@@ -407,13 +442,13 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                         "persona": persona,
                         "topic": topic,
                         "version": current_version,
-                        "is_patch": True,
-                        "has_followup": True,
-                        "questions_data": [q_data],  # Follow-up question with buttons
+                        "is_questions": True,
+                        "questions_data": questions_data,
                     },
                     "review_context": {
                         **updated_context,
                         "question_round": question_round,
+                        "awaiting_answers": True,
                     },
                 }
 
