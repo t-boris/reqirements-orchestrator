@@ -224,6 +224,47 @@ def has_managed_section(description: str) -> bool:
     return SECTION_START in description
 
 
+def build_decision_section(decision: Decision) -> str:
+    """Build managed section content for a decision.
+
+    Format:
+    {type_emoji} {title}
+    {description}
+
+    [Rich context if available]
+
+    ---
+    DEC-{id} v{version} | {status}
+    """
+    type_emoji = {
+        "arch": "🧠",
+        "scope": "📐",
+        "constraint": "🔒",
+        "priority": "⚡",
+        "structure": "🏗️",
+        "process": "⚙️",
+    }.get(decision.decision_type.value, "📋")
+
+    parts = [
+        f"{type_emoji} *{decision.title}*",
+        "",
+        decision.description,
+    ]
+
+    # Add rich context if available (Phase 40)
+    rich_context = format_decision_rich_context(decision)
+    if rich_context:
+        parts.append("")
+        parts.append(rich_context)
+
+    # Footer with metadata
+    parts.append("")
+    parts.append("---")
+    parts.append(f"_DEC-{decision.id[:8]} v{decision.version} | {decision.status.value.upper()}_")
+
+    return "\n".join(parts)
+
+
 def format_decision_rich_context(decision: Decision) -> str:
     """Format decision rich context for Jira managed section.
 
