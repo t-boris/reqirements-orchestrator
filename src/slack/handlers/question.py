@@ -255,30 +255,22 @@ async def _handle_review_question_answer(
         thread_ts=thread_ts,
     )
 
-    # Disable buttons in original message by updating it
-    if message_ts:
-        try:
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                text=f"✓ Selected: *{encoded_value}*",
-                blocks=[
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"✓ Selected: *{encoded_value}*",
-                        },
-                    }
-                ],
-            )
-        except Exception as e:
-            logger.warning(f"Could not update question message: {e}")
-
-    # Get runner and current state
+    # Get runner and current state FIRST to look up the option label
     runner = get_runner(identity)
     state = await runner._get_current_state()
     review_context = state.get("review_context", {})
+
+    # Find the display label from the question's options
+    display_value = encoded_value  # fallback
+    pending_questions = review_context.get("pending_questions", [])
+    for q in pending_questions:
+        if q.get("question_id") == question_id:
+            options = q.get("options", []) or []
+            for opt in options:
+                if opt.get("option_id") == option_id or opt.get("value") == encoded_value:
+                    display_value = opt.get("label", encoded_value)
+                    break
+            break
 
     if not review_context:
         logger.warning("No review_context found for question answer")
@@ -288,6 +280,17 @@ async def _handle_review_question_answer(
             text="Session expired. Please start a new review.",
         )
         return
+
+    # Post confirmation as ephemeral message
+    try:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            thread_ts=thread_ts,
+            text=f"✓ Recorded: {display_value}",
+        )
+    except Exception as e:
+        logger.warning(f"Could not post ephemeral confirmation: {e}")
 
     # Record the answer (NO LLM call here!)
     answers = review_context.get("answers", {})

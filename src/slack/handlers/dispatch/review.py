@@ -279,49 +279,36 @@ async def _handle_review(
             )
 
         # Phase 39: Post structured questions if available
+        # Post ONE question at a time - subsequent questions shown after each answer
         is_questions = result.get("is_questions", False)
         questions_data = result.get("questions_data", [])
         if is_questions and questions_data:
-            # Build question blocks for ALL questions
             review_plan_id = f"review_{identity.thread_ts}"
             review_version = 1
 
-            question_blocks = [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": "*To proceed, I need your input on these questions:*"}
+            # Only post the FIRST question - others will be posted after answers
+            first_question = questions_data[0]
+            logger.info(
+                f"Posting first question (1/{len(questions_data)})",
+                extra={
+                    "question_id": first_question.get("question_id"),
+                    "has_options": bool(first_question.get("options")),
+                    "options_count": len(first_question.get("options", []) or []),
+                    "question_text_preview": first_question.get("question_text", "")[:100],
                 }
-            ]
+            )
 
-            for i, q_data in enumerate(questions_data):
-                logger.info(
-                    f"Building question block {i+1}/{len(questions_data)}",
-                    extra={
-                        "question_id": q_data.get("question_id"),
-                        "has_options": bool(q_data.get("options")),
-                        "options_count": len(q_data.get("options", []) or []),
-                        "question_text_preview": q_data.get("question_text", "")[:100],
-                    }
-                )
-                q_blocks = build_question_blocks(
-                    question_data=q_data,
-                    plan_id=review_plan_id,
-                    plan_version=review_version,
-                )
-                question_blocks.extend(q_blocks)
-                question_blocks.append({"type": "divider"})
+            question_blocks = build_question_blocks(
+                question_data=first_question,
+                plan_id=review_plan_id,
+                plan_version=review_version,
+            )
 
-            # Remove last divider
-            if question_blocks and question_blocks[-1].get("type") == "divider":
-                question_blocks.pop()
-
-            # Add context
-            question_blocks.append({
+            # Add progress indicator
+            progress_text = f"_Question 1 of {len(questions_data)}_"
+            question_blocks.insert(0, {
                 "type": "context",
-                "elements": [{
-                    "type": "mrkdwn",
-                    "text": "_Click buttons above or reply in thread to answer._",
-                }]
+                "elements": [{"type": "mrkdwn", "text": progress_text}]
             })
 
             try:
@@ -329,8 +316,8 @@ async def _handle_review(
                     channel=identity.channel_id,
                     thread_ts=identity.thread_ts if identity.thread_ts else None,
                     blocks=question_blocks,
-                    text="Questions for you",
+                    text=first_question.get("question_text", "Question for you"),
                 )
-                logger.info(f"Posted {len(questions_data)} structured review questions")
+                logger.info(f"Posted first of {len(questions_data)} review questions")
             except Exception as e:
-                logger.error(f"Failed to post review questions: {e}")
+                logger.error(f"Failed to post review question: {e}")
