@@ -739,7 +739,23 @@ Bot: "To draft stories, pick approach:"
 
 **Full spec:** `.planning/phases/39-intent-classification-v2/39-CONTEXT.md`
 
-**Plans:** TBD (run `/gsd:plan-phase 39` to break down)
+**Implementation Waves:**
+
+| Wave | Plans | Focus |
+|------|-------|-------|
+| 1 | 39-01, 39-02 | Foundation: IntentEnvelope schema, Stage 0 pre-gates |
+| 2 | 39-03, 39-04 | Classification: Stage 1 mode, Stage 2 intent |
+| 3 | 39-05, 39-06 | Policy: Ambiguity policy, Unified router |
+| 4 | 39-07 | Integration: Graph routing, terminal handling |
+
+**Plans:**
+- [ ] 39-01: IntentEnvelope schema (unified output format)
+- [ ] 39-02: Stage 0 pre-gates (deterministic state-based gates)
+- [ ] 39-03: Stage 1 mode classification (lightweight LLM)
+- [ ] 39-04: Stage 2 intent extraction (full LLM)
+- [ ] 39-05: Ambiguity policy + risk guards
+- [ ] 39-06: Unified intent router
+- [ ] 39-07: Graph integration + terminal handling
 
 ## Completed Milestones
 
@@ -855,4 +871,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
-| 39. Intent Classification v2 | v1.2 | 0/? | Not Started | - |
+| 39. Intent Classification v2 | v1.2 | 0/7 | Planned | - |
