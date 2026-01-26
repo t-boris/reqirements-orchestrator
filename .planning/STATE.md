@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 41-decision-change-propagation
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-01-26 — Completed 41-04-PLAN.md
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-01-26 — Completed 41-05-PLAN.md
 
-Progress: ████░ 4/5 plans
+Progress: █████ 5/5 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-26
-Stopped at: Completed 41-03-PLAN.md (Confirmation UI)
+Stopped at: Completed 41-05-PLAN.md (Rollback Support)
 Resume file: None
-Next action: Execute 41-04-PLAN.md (Transactional Apply)
+Next action: Phase 41 COMPLETE, plan next phase
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -457,9 +457,15 @@ Phase 41-04 decisions:
 - Result card shows three phases: db_updated, slack_updated, jira_updated
 - Retry handler (decision_change_retry) for failed ticket recovery
 
+Phase 41-05 decisions:
+- Rollback only affects Jira, database state preserved
+- Rollback button requires confirmation dialog
+- Retry handler validates FAILED state before executing
+- Deprecation notice auto-detected from decision status
+
 ## What's Next
 
-**Phase 41: Decision Change Propagation** — IN PROGRESS (4/5 plans)
+**Phase 41: Decision Change Propagation** — COMPLETE (5/5 plans)
 
 **Objective:** Track decision changes through impact analysis, confirmation UI, transactional apply, and rollback support.
 
@@ -468,9 +474,9 @@ Phase 41-04 decisions:
 - 41-02: Impact Analysis - COMPLETE
 - 41-03: Confirmation UI - COMPLETE
 - 41-04: Transactional Apply - COMPLETE
-- 41-05: Rollback Support - PENDING
+- 41-05: Rollback Support - COMPLETE
 
-**What shipped so far:**
+**What shipped:**
 - DecisionChangeOp model with 6 lifecycle states
 - DecisionChangeOpStore with CRUD and state machine validation
 - ImpactSummary model for tracking affected entities
@@ -485,8 +491,11 @@ Phase 41-04 decisions:
 - DecisionChangeExecutor with truth-first ordering
 - Result card UI (build_change_result_card) with retry button
 - Handler integration connecting confirmation to executor
+- DecisionRollbackService for reverting Jira managed sections
+- Rollback button with confirmation dialog
+- Deprecation notice format in managed sections
 
-**Next action:** Execute 41-05-PLAN.md
+**Next action:** Plan next phase or add new phase
 
 ---
 
