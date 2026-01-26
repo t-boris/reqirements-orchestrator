@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 39-intent-classification-v2
-Plan: 6 of 7 in current phase
-Status: In progress
-Last activity: 2026-01-25 — Completed 39-06-PLAN.md
+Plan: 7 of 7 in current phase
+Status: Complete
+Last activity: 2026-01-25 — Completed 39-07-PLAN.md (Graph Integration)
 
-Progress: ██████░░░░░░░░░░░░░░░░░░░ 6/7 plans
+Progress: ███████████████████████████ 7/7 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 39-06-PLAN.md (Unified Intent Router)
+Stopped at: Completed 39-07-PLAN.md (Graph Integration)
 Resume file: None
-Next action: Execute 39-07-PLAN.md
+Next action: Phase 39 complete - next phase TBD
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -379,6 +379,12 @@ Phase 39-06 decisions:
 - Context built using ContextSpec.for_extraction() when channel+thread available
 - route_after_intent routes by envelope kind then by mode/intent
 - Terminal intents are DISCUSSION and META (CHAT mode)
+
+Phase 39-07 decisions:
+- Terminal intents (DISCUSSION, META) route to terminal_response_node then END
+- classify_intent_v2 wraps intent_router_node and returns both envelope and legacy intent_result
+- get_intent_classifier(use_v2=False) factory defaults to legacy for safe gradual migration
+- Documentation updated with Phase 39 architecture in architecture.md and HOW_THE_BOT_THINKS.md
 
 Phase 38-01 decisions:
 - ReviewArtifact stored in review_artifacts table (not checkpoint-only)
