@@ -27,6 +27,15 @@ from src.schemas.review_state import (
     ReviewState,
     Risk,
 )
+from src.schemas.intent_envelope import (
+    IntentEnvelope,
+    EnvelopeKind,
+    RiskLevel,
+    TargetReference,
+    IntentCandidate,
+    TaskEnvelope,
+    AmbiguousChoice,
+)
 from src.schemas.draft import (
     ConstraintStatus,
     DraftConstraint,
@@ -104,4 +113,12 @@ __all__ = [
     "Risk",
     "OpenQuestion",
     "ProposedDecision",
+    # IntentEnvelope schemas (Phase 39)
+    "IntentEnvelope",
+    "EnvelopeKind",
+    "RiskLevel",
+    "TargetReference",
+    "IntentCandidate",
+    "TaskEnvelope",
+    "AmbiguousChoice",
 ]
