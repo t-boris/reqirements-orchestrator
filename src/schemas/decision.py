@@ -158,6 +158,34 @@ class Decision(BaseModel):
         description="Impact and constraints introduced by this decision",
     )
 
+    def has_rich_context(self) -> bool:
+        """Check if decision has any rich context fields populated."""
+        return any([
+            self.rationale,
+            self.context,
+            self.alternatives,
+            self.consequences,
+        ])
+
+    def rationale_summary(self, max_items: int = 3) -> str:
+        """Get summary of rationale for compact display."""
+        if not self.rationale:
+            return ""
+        items = self.rationale[:max_items]
+        bullets = [f"• {r.text}" for r in items]
+        if len(self.rationale) > max_items:
+            bullets.append(f"• (+{len(self.rationale) - max_items} more)")
+        return "\n".join(bullets)
+
+    def to_rich_context_dict(self) -> dict:
+        """Export rich context as dict for storage/serialization."""
+        return {
+            "rationale": [r.model_dump() for r in self.rationale] if self.rationale else None,
+            "context": self.context,
+            "alternatives": [a.model_dump() for a in self.alternatives] if self.alternatives else None,
+            "consequences": [c.model_dump() for c in self.consequences] if self.consequences else None,
+        }
+
 
 class DecisionVersion(BaseModel):
     """Historical version of a decision.
