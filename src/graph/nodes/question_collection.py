@@ -53,6 +53,8 @@ DO NOT ask about:
 - What the user literally just wrote (don't ask "what is X" if they said X)
 - Standard technical terms (use common definitions)
 - Information already in the context above
+- Where to find information - the CHANNEL/THREAD CONTEXT above IS the "latest update", "requirements", etc.
+- Asking user to provide what's already visible in the context
 
 If you have any open questions that would help you do a better job, respond:
 QUESTION: [Your specific question]?
