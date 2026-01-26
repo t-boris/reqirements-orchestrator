@@ -5,6 +5,7 @@ They are NOT keyword pattern matching - they use state to:
 1. Short-circuit to known intent (bypass LLM)
 2. Constrain LLM to prioritize certain modes
 3. Guard against risky operations
+4. Triage incomplete contexts before classification
 
 This is safety policy, not classification.
 """
@@ -12,6 +13,8 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
+
+from src.graph.triage_gate import check_triage_needed
 
 if TYPE_CHECKING:
     from src.schemas.anchor import ThreadContext
@@ -181,6 +184,60 @@ def check_risk_guard(
     return None
 
 
+def check_triage_gate(
+    state: "AgentState",
+    message: str,
+    is_command: bool = False,
+) -> Optional[PreGateOutput]:
+    """Gate 0: Triage (completeness check).
+
+    Check if context is complete enough for classification, or if we
+    should ask clarifying questions first.
+
+    Bypasses triage when:
+    - is_command is True (slash commands bypass triage)
+    - State already has triage_answers (prevent loops)
+    - Message is short greeting (<5 words with no signals)
+
+    Args:
+        state: Current AgentState
+        message: User's message text
+        is_command: Whether message is a slash command
+
+    Returns:
+        PreGateOutput with TRIAGE result if incomplete, None to proceed.
+    """
+    # Slash commands bypass triage
+    if is_command:
+        logger.debug("Triage gate: skipped (slash command)")
+        return None
+
+    # Already has triage answers - prevent re-asking loops
+    if state.get("triage_answers"):
+        logger.debug("Triage gate: skipped (triage_answers already present)")
+        return None
+
+    # Check context completeness
+    triage_context = check_triage_needed(state, message)
+
+    # Fast path: context is complete enough
+    if triage_context.fast_path:
+        logger.debug(f"Triage gate: fast path (completeness={triage_context.completeness_score:.2f})")
+        return None
+
+    # Short greetings without signals should not trigger triage
+    word_count = len(message.split())
+    if word_count < 5 and not triage_context.signals:
+        logger.debug("Triage gate: skipped (short greeting with no signals)")
+        return None
+
+    # Context incomplete - need triage questions
+    return PreGateOutput(
+        result=GateResult.TRIAGE,
+        triage_context=triage_context,
+    )
+
+
 def run_pre_gates(
     message: str,
     state: "AgentState",
@@ -191,12 +248,12 @@ def run_pre_gates(
     """Run all Stage 0 pre-gates in order.
 
     Gates are applied in priority order:
+    0. Triage (completeness check - may need questions first)
     1. Terminal handling (commands, greetings)
     2. TaskPlan continuation (BLOCKED answer)
     3. Draft priority (constrain to BUILD)
 
-    Note: Gate 4 (risk guard) runs AFTER LLM classification,
-    not in this pre-gate phase.
+    Note: Risk guard runs AFTER LLM classification, not in this pre-gate phase.
 
     Args:
         message: User's message text
@@ -208,6 +265,12 @@ def run_pre_gates(
     Returns:
         PreGateOutput with gate result
     """
+    # Gate 0: Triage (completeness check)
+    result = check_triage_gate(state, message, is_command)
+    if result:
+        logger.info(f"Pre-gate: triage needed - completeness={result.triage_context.completeness_score:.2f}")
+        return result
+
     # Gate 1: Terminal handling
     result = check_terminal_intent(message, is_command, command_name)
     if result:
