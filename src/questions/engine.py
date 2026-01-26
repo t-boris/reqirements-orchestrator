@@ -1,10 +1,11 @@
 """QuestionEngine - Unified interface for question-driven conversations.
 
-One engine, two providers:
+One engine, three providers:
 - CatalogProvider for WorkItemDraft (tickets)
 - FreeformProvider for ReviewState (architecture review)
+- TriageProvider for context gap clarification (triage)
 
-Same UX (buttons, budget, throttle) for both paths.
+Same UX (buttons, budget, throttle) for all paths.
 """
 import logging
 from typing import Any, Literal, Optional
@@ -14,6 +15,7 @@ from src.questions.budget_tracker import BudgetTracker
 from src.questions.catalog_provider import CatalogProvider
 from src.questions.freeform_provider import FreeformProvider
 from src.questions.provider import ProviderType
+from src.questions.triage_provider import TriageGap, TriageProvider
 from src.schemas.question import QuestionTask
 from src.schemas.state_patch import StatePatch
 
@@ -45,6 +47,7 @@ class QuestionEngine:
         self._budget_tracker = budget_tracker
         self._catalog_provider = CatalogProvider(llm)
         self._freeform_provider = FreeformProvider(llm)
+        self._triage_provider = TriageProvider()
         self._llm = llm
 
     async def should_ask(
@@ -175,3 +178,19 @@ class QuestionEngine:
         Useful for generate_from_open_questions.
         """
         return self._freeform_provider
+
+    async def generate_triage_question(
+        self,
+        gaps: set[TriageGap],
+        context: dict[str, Any],
+    ) -> QuestionTask | None:
+        """Generate triage question for context gaps.
+
+        Args:
+            gaps: Set of TriageGap from triage gate
+            context: Current state context
+
+        Returns:
+            QuestionTask for highest priority gap, or None if no gaps
+        """
+        return self._triage_provider.get_next_question(gaps, context)
