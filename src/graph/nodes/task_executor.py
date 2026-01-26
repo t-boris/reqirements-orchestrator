@@ -105,6 +105,7 @@ async def _execute_task(
     """
     task.status = TaskStatus.RUNNING
     task.started_at = datetime.now(timezone.utc)
+    task.set_active_step("Starting...")
     task_plan.status = TaskPlanStatus.RUNNING
     await _persist_plan(task_plan)
 
@@ -139,6 +140,7 @@ async def _execute_task(
         task.status = TaskStatus.DONE
         task.completed_at = datetime.now(timezone.utc)
         task.last_error = None
+        task.clear_active_step()
 
         # Check if more tasks to run
         task_plan.increment_version()
@@ -154,6 +156,7 @@ async def _execute_task(
         logger.error(f"Task {task.task_id} failed: {e}")
         task.status = TaskStatus.BLOCKED
         task.last_error = str(e)
+        task.clear_active_step()
         task_plan.status = TaskPlanStatus.BLOCKED
         task_plan.increment_version()
         await _persist_plan(task_plan)
@@ -177,6 +180,8 @@ async def _dispatch_task(
 
     Maps task.intent to existing graph node logic or handlers.
     For question tasks, routes to question_executor_node.
+
+    Sets active_step to indicate what MARO is currently doing.
     """
     from src.schemas.intent import Intent
 
@@ -184,6 +189,7 @@ async def _dispatch_task(
     if task.is_question:
         from src.graph.nodes.question_executor import question_executor_node
 
+        task.set_active_step("Preparing question")
         return await question_executor_node(state, task, task_plan)
 
     intent = task.intent
@@ -191,19 +197,30 @@ async def _dispatch_task(
     # Map intents to handlers (simplified - expand as needed)
     if intent == Intent.JIRA_SEARCH:
         from src.graph.nodes.jira_search import jira_search_node
+
+        task.set_active_step("Searching Jira")
+        await _persist_plan(task_plan)
         return await jira_search_node({**state, "intent_result": task.params})
 
     elif intent == Intent.REVIEW:
         from src.graph.nodes.review import review_node
+
+        task.set_active_step("Analyzing request")
+        await _persist_plan(task_plan)
         return await review_node({**state, "intent_result": task.params})
 
     elif intent == Intent.DISCUSSION:
         from src.graph.nodes.discussion import discussion_node
+
+        task.set_active_step("Processing discussion")
+        await _persist_plan(task_plan)
         return await discussion_node({**state, "intent_result": task.params})
 
     # For intents that don't have direct node mapping,
     # return empty (they'll be handled by normal graph flow after approval)
     else:
+        task.set_active_step("Processing request")
+        await _persist_plan(task_plan)
         logger.debug(f"Task {task.task_id} intent {intent} delegated to graph flow")
         return {}
 
