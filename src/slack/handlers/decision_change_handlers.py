@@ -493,9 +493,10 @@ def handle_decision_change_retry(ack, body, client: WebClient):
 
 
 async def _handle_decision_change_retry_async(body, client: WebClient):
-    """Async handler for retrying failed ticket syncs.
+    """Async handler for retrying failed Jira updates.
 
-    Uses DecisionChangeExecutor.retry_failed_tickets() to retry.
+    Retries failed Jira updates for a decision change operation.
+    Must be in FAILED state to retry.
     """
     from src.config.settings import get_settings
     from src.db.connection import get_connection
@@ -503,6 +504,7 @@ async def _handle_decision_change_retry_async(body, client: WebClient):
     from src.db.decision_link_store import DecisionLinkStore
     from src.db.decision_store import DecisionStore
     from src.jira.client import JiraService
+    from src.schemas.decision import DecisionChangeOpState
     from src.slack.blocks.decision_cards import build_change_result_card
     from src.sync.decision_change_executor import DecisionChangeExecutor
 
@@ -535,6 +537,25 @@ async def _handle_decision_change_retry_async(body, client: WebClient):
             op_store = DecisionChangeOpStore(conn)
             decision_store = DecisionStore(conn)
             link_store = DecisionLinkStore(conn)
+
+            # Get operation and verify state
+            op = await op_store.get(op_id)
+            if not op:
+                client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=user_id,
+                    text="Operation not found.",
+                )
+                return
+
+            # Must be in FAILED state to retry
+            if op.state != DecisionChangeOpState.FAILED:
+                client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=user_id,
+                    text=f"Cannot retry operation in {op.state.value} state.",
+                )
+                return
 
             # Execute retry
             executor = DecisionChangeExecutor(
