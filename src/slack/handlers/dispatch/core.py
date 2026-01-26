@@ -74,6 +74,9 @@ from src.slack.handlers.dispatch.review import (
     _handle_review,
 )
 
+# Phase 44: Triage blocks
+from src.slack.blocks.triage import build_triage_question_blocks
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +96,7 @@ ACTION_DESCRIPTIONS = {
     "ops": "Running diagnostics",
     "draft_refine": "Refining draft",
     "transform_applied": "Applying changes",
+    "triage_question": "Asking clarifying question",  # Phase 44
 }
 
 # Actions that skip single-task status (already have their own UI)
@@ -105,6 +109,7 @@ SKIP_SINGLE_TASK_STATUS = {
     "task_rejected",
     "question_posted",  # Uses Question UI
     "budget_exhausted",
+    "triage_question",  # Uses Triage UI (Phase 44)
     "intro",  # Quick hint messages
     "nudge",
     "hint",
@@ -566,6 +571,10 @@ async def _execute_dispatch_action(
     elif action == "budget_exhausted":
         await _handle_budget_exhausted(client, result, identity)
 
+    # Phase 44: Triage question handler
+    elif action == "triage_question":
+        await _handle_triage_question(result, identity, client)
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -582,3 +591,57 @@ async def _execute_dispatch_action(
         )
 
 
+async def _handle_triage_question(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Post triage question to Slack.
+
+    Phase 44: Questions-First Collection Stage
+
+    Posts a clarifying question with button options when the triage gate
+    detects incomplete context. The user can click a button or reply with
+    text to provide the missing information.
+
+    Args:
+        result: Decision result with question and triage_context
+        identity: Session identity (channel, thread)
+        client: Slack client
+    """
+    question = result.get("question")
+    triage_context = result.get("triage_context")
+
+    if not question:
+        logger.warning(
+            "Triage action but no question to post",
+            extra={"session_id": identity.session_id},
+        )
+        return
+
+    # Build blocks for the triage question
+    blocks = build_triage_question_blocks(
+        question=question,
+        thread_ts=identity.thread_ts or "",
+    )
+
+    # Post to thread
+    client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        blocks=blocks,
+        text=question.question_text,  # Fallback for notifications
+    )
+
+    # Log triage metrics for observability
+    logger.info(
+        f"Posted triage question: {question.question_id}",
+        extra={
+            "session_id": identity.session_id,
+            "question_id": question.question_id,
+            "question_type": question.question_type.value,
+            "target_field": question.target_field,
+            "completeness_score": triage_context.completeness_score if triage_context else None,
+            "gaps_count": len(triage_context.gaps) if triage_context else 0,
+        }
+    )
