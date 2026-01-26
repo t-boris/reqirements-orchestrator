@@ -171,8 +171,9 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
     When user states a decision:
     1. Extract title and description from message
     2. Determine DecisionType (from hint or default)
-    3. Create Decision in PROPOSED status
-    4. Return action for handler to show decision card
+    3. Extract rich context from conversation (Phase 40)
+    4. Create Decision in PROPOSED status with rich context
+    5. Return action for handler to show decision card
 
     Returns:
         dict with:
@@ -197,6 +198,9 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
         else str(last_message)
     )
 
+    # Build conversation context from recent messages (Phase 40)
+    conversation_context = _build_conversation_context(messages)
+
     channel_id = state.get("channel_id", "")
     user_id = state.get("user_id", "")
     thread_ts = state.get("thread_ts")
@@ -213,7 +217,15 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
         title_hint=title_hint,
     )
 
-    # Create decision in PROPOSED status
+    # Extract rich context from conversation (Phase 40)
+    # This is best-effort - errors don't block decision creation
+    rich_context = await extract_rich_context(
+        title=title,
+        description=description,
+        conversation_context=conversation_context,
+    )
+
+    # Create decision in PROPOSED status with rich context
     try:
         async with get_connection() as conn:
             store = DecisionStore(conn)
@@ -227,8 +239,20 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
                 description=description,
                 created_by=user_id,
                 discussion_thread_ts=thread_ts,
+                # Rich context (Phase 40)
+                rationale=rich_context.get("rationale"),
+                context_before=rich_context.get("context_before"),
+                alternatives=rich_context.get("alternatives"),
+                consequences=rich_context.get("consequences"),
             )
 
+        # Log with rich context presence indicator
+        has_rich_context = any([
+            rich_context.get("rationale"),
+            rich_context.get("context_before"),
+            rich_context.get("alternatives"),
+            rich_context.get("consequences"),
+        ])
         logger.info(
             "Decision extracted and created",
             extra={
@@ -237,6 +261,7 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
                 "title": title[:50] if len(title) > 50 else title,
                 "channel_id": channel_id,
                 "created_by": user_id,
+                "has_rich_context": has_rich_context,
             }
         )
 
@@ -254,6 +279,8 @@ async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
                     "version": decision.version,
                     "created_by": decision.created_by,
                     "created_at": decision.created_at.isoformat(),
+                    # Include rich context in result (Phase 40)
+                    "has_rich_context": decision.has_rich_context(),
                 },
             }
         }
