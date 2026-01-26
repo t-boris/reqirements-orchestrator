@@ -759,7 +759,7 @@ Bot: "To draft stories, pick approach:"
 
 ### Phase 40: Decision v2 — Rich Context & Versioning
 
-**Status:** Not started
+**Status:** COMPLETE (6/6 plans)
 
 **Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning. Make the WHY as important as the WHAT.
 
@@ -820,13 +820,12 @@ Bot: "To draft stories, pick approach:"
 | 4 | 40-07 | Migration: Backfill command, existing decision handling |
 
 **Plans:**
-- [ ] 40-01: DecisionHead + DecisionVersion schema split
-- [ ] 40-02: Rich decision fields (rationale, context, alternatives, consequences)
-- [ ] 40-03: LLM extraction for rich fields
-- [ ] 40-04: Jira projection with rich context
-- [ ] 40-05: Approval card UI with collapsible sections
-- [ ] 40-06: Decision show/list with rationale preview
-- [ ] 40-07: Migration + backfill command
+- [x] 40-01: Rich context field models (RationaleItem, Alternative, Consequence) (2026-01-25)
+- [x] 40-02: DecisionStore persistence for rich context fields (2026-01-25)
+- [x] 40-03: LLM extraction for rich fields (2026-01-25)
+- [x] 40-04: Jira projection with rich context (2026-01-25)
+- [x] 40-05: Approval card UI with rich context sections (2026-01-25)
+- [x] 40-06: Migration + backfill commands (/maro decision enrich, needs-context) (2026-01-25)
 
 **Full context:** `.planning/phases/40-decision-v2-rich-context/40-CONTEXT.md`
 
@@ -945,4 +944,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
 | 39. Intent Classification v2 | v1.2 | 7/7 | Complete | 2026-01-26 |
-| 40. Decision v2 — Rich Context | v1.2 | 0/7 | Not started | - |
+| 40. Decision v2 — Rich Context | v1.2 | 6/6 | Complete | 2026-01-25 |
