@@ -238,3 +238,44 @@ def build_task_summary_line(task: Task, include_status: bool = True) -> str:
         emoji = TASK_STATUS_EMOJI.get(task.status, ":question:")
         return f"{emoji} {task.title}"
     return task.title
+
+
+# Single-task status emoji mapping
+SINGLE_TASK_STATUS_EMOJI = {
+    "running": ":arrows_counterclockwise:",
+    "done": ":white_check_mark:",
+    "error": ":x:",
+}
+
+
+def build_single_task_blocks(action_text: str, status: str = "running") -> list[dict]:
+    """Build Slack blocks for single-task status display.
+
+    Phase 43: Task Progress UX - ensures users see what MARO is working on
+    even for single-intent requests that don't create a full TaskPlan.
+
+    Args:
+        action_text: Description of the action being performed.
+        status: Status string - "running", "done", or "error".
+
+    Returns:
+        List of Slack Block Kit blocks for the status card.
+    """
+    emoji = SINGLE_TASK_STATUS_EMOJI.get(status, ":arrows_counterclockwise:")
+
+    # Format text based on status
+    if status == "done":
+        text = f"{emoji} Done: {action_text}"
+    elif status == "error":
+        text = f"{emoji} Failed: {action_text}"
+    else:
+        text = f"{emoji} Working on: {action_text}"
+
+    return [
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": text},
+            ],
+        }
+    ]
