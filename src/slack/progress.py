@@ -17,7 +17,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 logger = logging.getLogger(__name__)
 
 # Timing thresholds (seconds)
-STATUS_THRESHOLD = 4  # Post status message after this
+STATUS_THRESHOLD = 1  # Post status message after this (Phase 43: lowered from 4s)
 UPDATE_INTERVAL = 5  # Update status every N seconds
 LONG_OPERATION_THRESHOLD = 15  # Show bottleneck info after this
 VERY_LONG_OPERATION_THRESHOLD = 30  # Additional update at this threshold
@@ -70,12 +70,13 @@ class ProgressTracker:
         self._current_status: str = ""
         self._delayed_post_task: Optional[asyncio.Task] = None
         self._long_operation_task: Optional[asyncio.Task] = None
+        self._elapsed_update_task: Optional[asyncio.Task] = None  # Phase 43
         self._completed: bool = False
 
     async def start(self, initial_status: str = "Processing...") -> None:
-        """Start tracking. Posts status if >4s threshold exceeded.
+        """Start tracking. Posts status after threshold exceeded.
 
-        Does not post immediately - schedules delayed posting.
+        Phase 43: Lowered threshold to 1s for faster feedback.
         Call update() to change status text during operation.
 
         Args:
@@ -85,9 +86,14 @@ class ProgressTracker:
         self._current_status = initial_status
         self._completed = False
 
-        # Schedule delayed status posting
+        # Schedule delayed status posting (Phase 43: now 1s instead of 4s)
         self._delayed_post_task = asyncio.create_task(
             self._delayed_post(STATUS_THRESHOLD)
+        )
+
+        # Phase 43: Schedule periodic elapsed time updates (every 2s)
+        self._elapsed_update_task = asyncio.create_task(
+            self._schedule_elapsed_updates()
         )
 
         # Schedule long operation updates (15s and 30s)
@@ -259,6 +265,15 @@ class ProgressTracker:
                 pass
             self._long_operation_task = None
 
+        # Phase 43: Cancel elapsed time updates
+        if self._elapsed_update_task:
+            self._elapsed_update_task.cancel()
+            try:
+                await self._elapsed_update_task
+            except asyncio.CancelledError:
+                pass
+            self._elapsed_update_task = None
+
         # If status message was posted, clean it up
         if self._status_ts:
             if show_done:
@@ -287,9 +302,8 @@ class ProgressTracker:
             return  # Already posted or completed
 
         elapsed = self._get_elapsed()
-        message = f":hourglass_flowing_sand: {self._current_status}"
-        if elapsed >= STATUS_THRESHOLD:
-            message += f" ({elapsed}s)"
+        # Phase 43: Always show elapsed time for transparency
+        message = f":hourglass_flowing_sand: {self._current_status} ({elapsed}s)"
 
         try:
             # Handle both sync and async clients
@@ -323,20 +337,14 @@ class ProgressTracker:
     async def _update_status(self) -> None:
         """Update existing status message with elapsed time.
 
-        Shows elapsed time in 5-second increments after 10s.
-        Format: "Searching Jira... (5s)" or "Searching Jira... (15s)"
+        Phase 43: Always shows elapsed time for transparency.
         """
         if not self._status_ts or self._completed:
             return
 
         elapsed = self._get_elapsed()
-        # Show elapsed in 5-second increments after 10s
-        if elapsed >= 10:
-            # Round to nearest 5 seconds
-            rounded_elapsed = (elapsed // 5) * 5
-            message = f":hourglass_flowing_sand: {self._current_status} ({rounded_elapsed}s)"
-        else:
-            message = f":hourglass_flowing_sand: {self._current_status}"
+        # Phase 43: Always show elapsed time (not just after 10s)
+        message = f":hourglass_flowing_sand: {self._current_status} ({elapsed}s)"
 
         try:
             # Handle both sync and async clients
@@ -458,6 +466,24 @@ class ProgressTracker:
 
         except asyncio.CancelledError:
             # Expected when operation completes before thresholds
+            pass
+
+    async def _schedule_elapsed_updates(self) -> None:
+        """Phase 43: Update elapsed time every 2 seconds for responsiveness."""
+        try:
+            # Wait for initial post
+            await asyncio.sleep(STATUS_THRESHOLD + 1)
+
+            while not self._completed:
+                # Only update if status was posted
+                if self._status_ts:
+                    await self._update_status()
+
+                # Wait 2 seconds before next update
+                await asyncio.sleep(2)
+
+        except asyncio.CancelledError:
+            # Expected when operation completes
             pass
 
     def _identify_bottleneck(self) -> str:

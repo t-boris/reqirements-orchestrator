@@ -310,6 +310,47 @@ def _is_processing_request(state: dict) -> bool:
     return pending in blocking_actions
 
 
+def _get_initial_status(message_text: str) -> str:
+    """Determine initial status message based on message content.
+
+    Phase 43: Show specific action instead of generic "Processing..."
+
+    Args:
+        message_text: User's message text
+
+    Returns:
+        Descriptive status string for the progress indicator
+    """
+    text_lower = message_text.lower()
+
+    # Review/architecture keywords
+    if any(kw in text_lower for kw in ["review", "architect", "design", "analyze"]):
+        return "Analyzing architecture..."
+
+    # Question/clarification keywords
+    if any(kw in text_lower for kw in ["question", "clarif", "explain", "what", "how", "why"]):
+        return "Thinking..."
+
+    # Jira/ticket keywords
+    if any(kw in text_lower for kw in ["jira", "ticket", "issue", "story", "epic", "task"]):
+        return "Working with Jira..."
+
+    # Create/build keywords
+    if any(kw in text_lower for kw in ["create", "build", "make", "add", "new"]):
+        return "Preparing to create..."
+
+    # Update/change keywords
+    if any(kw in text_lower for kw in ["update", "change", "modify", "edit"]):
+        return "Processing update..."
+
+    # Search keywords
+    if any(kw in text_lower for kw in ["search", "find", "look", "check"]):
+        return "Searching..."
+
+    # Default
+    return "Analyzing request..."
+
+
 async def _queue_request(
     runner,
     user_id: str,
@@ -488,7 +529,9 @@ async def _process_mention(
         logger.debug(f"Could not ensure channel context: {e}")
 
     try:
-        await tracker.start("Processing...")
+        # Phase 43: Determine initial status based on message content
+        initial_status = _get_initial_status(text)
+        await tracker.start(initial_status)
 
         runner = get_runner(identity)
 
