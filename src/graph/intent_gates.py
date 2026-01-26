@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from src.schemas.anchor import ThreadContext
     from src.schemas.state import AgentState
     from src.schemas.task_plan import TaskPlan
+    from src.schemas.triage import TriageContext
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class GateResult(str, Enum):
     BYPASS = "bypass"      # Short-circuit: known intent, skip LLM
     CONSTRAIN = "constrain"  # Hint to LLM: prioritize certain modes
     GUARD = "guard"        # Risk guard: require confirmation
+    TRIAGE = "triage"      # Needs triage questions before classification
     PASS = "pass"          # No gate triggered, proceed to LLM
 
 
@@ -42,6 +44,8 @@ class PreGateOutput:
     constraint_reason: Optional[str] = None
     # For GUARD: what to guard against
     guard_reason: Optional[str] = None
+    # For TRIAGE: context too incomplete
+    triage_context: Optional["TriageContext"] = None
 
     def __post_init__(self):
         if self.priority_modes is None:
