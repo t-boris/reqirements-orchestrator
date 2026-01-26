@@ -81,6 +81,68 @@ PLAN_STATUS_EMOJI = {
     TaskPlanStatus.CANCELED: ":x:",
 }
 
+# State transition visual feedback window (seconds)
+STATE_CHANGE_WINDOW_SECONDS = 3.0
+
+
+def is_recently_changed(task: Task, window_seconds: float = STATE_CHANGE_WINDOW_SECONDS) -> bool:
+    """Check if task state changed within the given window.
+
+    Phase 43: Task Progress UX - visual feedback for state transitions.
+
+    Args:
+        task: The task to check.
+        window_seconds: Time window in seconds (default 3s).
+
+    Returns:
+        True if state_changed_at is within window_seconds of now.
+    """
+    if not task.state_changed_at:
+        return False
+
+    now = datetime.now(timezone.utc)
+
+    # Ensure state_changed_at is timezone-aware
+    changed_at = task.state_changed_at
+    if changed_at.tzinfo is None:
+        changed_at = changed_at.replace(tzinfo=timezone.utc)
+
+    elapsed = (now - changed_at).total_seconds()
+    return elapsed <= window_seconds
+
+
+def get_recently_completed_tasks(task_plan: TaskPlan) -> list[Task]:
+    """Get tasks that were recently completed (within 3s).
+
+    Args:
+        task_plan: The TaskPlan to check.
+
+    Returns:
+        List of recently completed tasks.
+    """
+    return [
+        task for task in task_plan.tasks
+        if task.status == TaskStatus.DONE and is_recently_changed(task)
+    ]
+
+
+def format_time_ago(changed_at: datetime) -> str:
+    """Format time elapsed since state change.
+
+    Args:
+        changed_at: When the state changed.
+
+    Returns:
+        Human-readable time ago string (e.g., "2s ago").
+    """
+    now = datetime.now(timezone.utc)
+
+    if changed_at.tzinfo is None:
+        changed_at = changed_at.replace(tzinfo=timezone.utc)
+
+    elapsed = (now - changed_at).total_seconds()
+    return f"{int(elapsed)}s ago"
+
 
 def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
     """Build Slack blocks for TaskPlan status card.
@@ -116,6 +178,14 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
         mode_label = task.mode.value.upper()
         title = task.title
 
+        # Add visual state change indicator for recently changed tasks
+        state_indicator = ""
+        if is_recently_changed(task):
+            if task.status == TaskStatus.RUNNING:
+                state_indicator = " :new:"  # Recently started
+            elif task.status == TaskStatus.DONE:
+                state_indicator = " :sparkles:"  # Recently completed
+
         # Add progress if available
         progress = ""
         if task.progress:
@@ -142,7 +212,7 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
             error_preview = task.last_error[:30]
             suffix = f" _(error: {error_preview}...)_"
 
-        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{progress}{elapsed}{step_info}{suffix}")
+        task_lines.append(f"{idx}) {emoji} *{mode_label}*: {title}{state_indicator}{progress}{elapsed}{step_info}{suffix}")
 
     blocks.append({
         "type": "section",
@@ -192,12 +262,29 @@ def build_task_plan_blocks(task_plan: TaskPlan) -> list[dict]:
                 "elements": control_elements[5:10],
             })
 
-    # Footer with version for debugging
+    # Footer with version and recently completed task info
+    footer_elements = []
+
+    # Add "Just completed" info for recently finished tasks
+    recently_completed = get_recently_completed_tasks(task_plan)
+    if recently_completed:
+        # Show the most recently completed task
+        latest = recently_completed[0]
+        time_ago = format_time_ago(latest.state_changed_at) if latest.state_changed_at else ""
+        footer_elements.append({
+            "type": "mrkdwn",
+            "text": f":sparkles: Just completed: {latest.title} ({time_ago})",
+        })
+
+    # Always show version for debugging
+    footer_elements.append({
+        "type": "mrkdwn",
+        "text": f"Plan v{task_plan.version}",
+    })
+
     blocks.append({
         "type": "context",
-        "elements": [
-            {"type": "mrkdwn", "text": f"Plan v{task_plan.version}"},
-        ],
+        "elements": footer_elements,
     })
 
     return blocks
