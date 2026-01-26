@@ -22,9 +22,46 @@ Controls:
 ```
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from src.schemas.task_plan import TaskPlan, Task, TaskStatus, TaskPlanStatus
+
+
+def format_elapsed_time(started_at: datetime) -> str:
+    """Format elapsed time as human-readable string.
+
+    Phase 43: Task Progress UX - shows how long operations have been running.
+
+    Args:
+        started_at: When the task started (must be timezone-aware or UTC assumed).
+
+    Returns:
+        "<5s" for very short durations
+        "15s" for seconds
+        "1m 30s" for longer durations
+    """
+    now = datetime.now(timezone.utc)
+
+    # Ensure started_at is timezone-aware
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+
+    elapsed = now - started_at
+    total_seconds = int(elapsed.total_seconds())
+
+    if total_seconds < 5:
+        return "<5s"
+
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+
+    if seconds == 0:
+        return f"{minutes}m"
+    return f"{minutes}m {seconds}s"
 
 
 # Status emoji mapping
