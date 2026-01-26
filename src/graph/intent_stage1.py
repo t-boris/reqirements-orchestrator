@@ -147,19 +147,48 @@ def build_context_hint(
     has_draft: bool = False,
     has_taskplan: bool = False,
     anchor_type: Optional[str] = None,
+    triage_hints: Optional[dict] = None,
 ) -> Optional[str]:
     """Build context hint for Stage 1 classifier.
 
     These hints help Stage 1 prioritize correctly without
     full context injection (that's Stage 2's job).
+
+    Args:
+        has_draft: Whether an active draft exists
+        has_taskplan: Whether a TaskPlan is in progress
+        anchor_type: Type of anchor (e.g., "decision", "workitem")
+        triage_hints: Triage answers from user questioning (Phase 44)
+            Contains mode_hint, target_hint, scope_hint, topic
     """
     hints = []
+
+    # Existing context hints
     if has_draft:
         hints.append("Active draft exists")
     if has_taskplan:
         hints.append("Active TaskPlan in progress")
     if anchor_type:
         hints.append(f"In {anchor_type} thread")
+
+    # Triage hints from user questioning (Phase 44)
+    if triage_hints:
+        if triage_hints.get("mode_hint"):
+            mode_map = {
+                "build": "User indicated BUILD mode (create work items)",
+                "think": "User indicated THINK mode (analysis/review)",
+                "decide": "User indicated DECIDE mode (record decision)",
+                "chat": "User indicated CHAT mode (casual conversation)",
+            }
+            hint = mode_map.get(triage_hints["mode_hint"], "")
+            if hint:
+                hints.append(hint)
+
+        if triage_hints.get("scope_hint"):
+            hints.append(f"User specified scope: {triage_hints['scope_hint']}")
+
+        if triage_hints.get("topic"):
+            hints.append(f"Topic: {triage_hints['topic']}")
 
     return ". ".join(hints) if hints else None
 

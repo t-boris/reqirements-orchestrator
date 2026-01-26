@@ -123,10 +123,15 @@ async def route_intent(
         )
 
     # === Stage 1: Mode classification ===
+    # Extract triage answers from state (Phase 44)
+    triage_answers = state.get("triage_answers")
+    triage_hints = triage_answers.to_context_hints() if triage_answers else None
+
     context_hint = build_context_hint(
         has_draft=bool(state.get("draft") or state.get("structured_draft")),
         has_taskplan=bool(state.get("task_plan")),
         anchor_type=_get_anchor_type(state),
+        triage_hints=triage_hints,
     )
 
     stage1 = await classify_mode(input.message, context_hint)
@@ -138,6 +143,19 @@ async def route_intent(
     # Apply Stage 0 constraints
     if gate_output.result == GateResult.CONSTRAIN:
         stage1 = _apply_constraint(stage1, gate_output)
+
+    # Apply triage mode boost (Phase 44)
+    # Triage hints are explicit user choices, so they deserve stronger boost than constraints
+    if triage_hints and triage_hints.get("mode_hint"):
+        mode_boost_map = {
+            "build": SuperMode.BUILD,
+            "think": SuperMode.THINK,
+            "decide": SuperMode.DECIDE,
+            "chat": SuperMode.CHAT,
+        }
+        mode_value = triage_hints["mode_hint"]
+        if mode_value in mode_boost_map:
+            stage1 = _apply_triage_boost(stage1, mode_boost_map[mode_value])
 
     # === Stage 2: Intent extraction ===
     anchor_type = _get_anchor_type(state)
@@ -255,6 +273,37 @@ def _apply_constraint(
     return stage1
 
 
+def _apply_triage_boost(
+    stage1: Stage1Result,
+    mode: SuperMode,
+) -> Stage1Result:
+    """Apply triage mode boost to Stage 1 result (Phase 44).
+
+    Triage hints are explicit user choices collected during questioning,
+    so they deserve a stronger boost (+0.3) than implicit constraints (+0.2).
+
+    Args:
+        stage1: Stage 1 classification result
+        mode: SuperMode indicated by triage answers
+
+    Returns:
+        Updated Stage1Result with boosted mode score
+    """
+    for candidate in stage1.mode_candidates:
+        if candidate.mode == mode:
+            candidate.score = min(1.0, candidate.score + 0.3)
+
+    # Re-sort by score
+    stage1.mode_candidates.sort(key=lambda c: c.score, reverse=True)
+
+    logger.info(
+        f"Applied triage boost: +0.3 to {mode.value}, "
+        f"top mode now {stage1.top_mode.value}"
+    )
+
+    return stage1
+
+
 def _get_anchor_type(state: dict) -> Optional[str]:
     """Extract anchor type from state."""
     anchor = state.get("anchor")
@@ -285,21 +334,44 @@ async def intent_router_node(state: "AgentState") -> dict[str, Any]:
     # Build input from state
     event = state.get("event", {})
     message = event.get("text", "")
+    channel_id = event.get("channel_id", "")
+    thread_ts = event.get("thread_ts")
+
+    # Load triage answers from store if not in state (Phase 44)
+    triage_answers = state.get("triage_answers")
+    if not triage_answers and thread_ts:
+        try:
+            from src.db import get_connection, TriageStore
+            async with get_connection() as conn:
+                store = TriageStore(conn)
+                triage_answers = await store.get(
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                )
+            if triage_answers:
+                logger.debug(
+                    f"Loaded triage answers from store: mode_hint={triage_answers.mode_hint}"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load triage answers: {e}")
+
+    # Build state dict with triage answers included
+    state_with_triage = dict(state)
+    if triage_answers:
+        state_with_triage["triage_answers"] = triage_answers
 
     router_input = RouterInput(
         message=message,
-        channel_id=event.get("channel_id", ""),
-        thread_ts=event.get("thread_ts"),
+        channel_id=channel_id,
+        thread_ts=thread_ts,
         user_id=event.get("user_id"),
         is_command=event.get("is_command", False),
         command_name=event.get("command_name"),
-        state=state,
+        state=state_with_triage,
     )
 
     # Build context using spec
     context_str = ""
-    channel_id = event.get("channel_id", "")
-    thread_ts = event.get("thread_ts")
 
     if channel_id and thread_ts:
         try:
@@ -320,6 +392,7 @@ async def intent_router_node(state: "AgentState") -> dict[str, Any]:
         "intent_result": result.envelope.to_legacy_intent_result(),  # Backward compat
         "stage1_mode": result.stage1_result.top_mode if result.stage1_result else None,
         "bypassed": result.bypassed,
+        "triage_answers": triage_answers,  # Pass through for downstream use
     }
 
 
