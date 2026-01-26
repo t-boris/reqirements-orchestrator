@@ -933,7 +933,7 @@ Bot: "To draft stories, pick approach:"
 
 ### Phase 44: Questions-First Collection Stage
 
-**Status:** PLANNED (7 plans in 4 waves)
+**Status:** COMPLETE (7/7 plans)
 
 **Objective:** Add smart triage before intent classification. Bot reads context, identifies actual gaps, asks targeted questions, then routes with higher confidence.
 
@@ -953,6 +953,15 @@ Bot: "To draft stories, pick approach:"
 - TriageStore persists answers for re-classification
 - Triage answers boost mode classification confidence
 
+**What shipped:**
+- TriageContext schema with signals, gaps, completeness_score
+- Triage gate (Stage 0) with deterministic gap detection
+- TriageProvider for button-based clarifying questions
+- TriageStore for persistent answer collection
+- Slack UI handlers for triage question buttons
+- Classification enrichment (+0.3 mode boost from triage hints)
+- End-to-end graph routing with triage_questions node
+
 **Implementation Waves:**
 
 | Wave | Plans | Focus |
@@ -963,13 +972,13 @@ Bot: "To draft stories, pick approach:"
 | 4 | 44-07 | End-to-end: Dispatch + graph integration |
 
 **Plans:**
-- [ ] 44-01: TriageContext Schema + Triage Gate (Wave 1)
-- [ ] 44-02: TriageProvider Questions (Wave 1)
-- [ ] 44-03: Gate Integration into Intent Router (Wave 2)
-- [ ] 44-04: TriageAnswers Schema + TriageStore (Wave 2)
-- [ ] 44-05: Slack UI Handlers (Wave 3)
-- [ ] 44-06: Classification Enrichment (Wave 3)
-- [ ] 44-07: Dispatch + Graph Integration (Wave 4)
+- [x] 44-01: TriageContext Schema + Triage Gate (Wave 1) (2026-01-26)
+- [x] 44-02: TriageProvider Questions (Wave 1) (2026-01-26)
+- [x] 44-03: Gate Integration into Intent Router (Wave 2) (2026-01-26)
+- [x] 44-04: TriageAnswers Schema + TriageStore (Wave 2) (2026-01-26)
+- [x] 44-05: Slack UI Handlers (Wave 3) (2026-01-26)
+- [x] 44-06: Classification Enrichment (Wave 3) (2026-01-26)
+- [x] 44-07: Dispatch + Graph Integration (Wave 4) (2026-01-26)
 
 **Depends on:** Phase 43
 **Full context:** `.planning/phases/44-questions-first-collection-stage/44-CONTEXT.md`
@@ -1092,3 +1101,5 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 40. Decision v2 — Rich Context | v1.2 | 6/6 | Complete | 2026-01-25 |
 | 41. Decision Change Propagation | v1.2 | 5/5 | Complete | 2026-01-26 |
 | 42. Code Modularization | v1.2 | 9/9 | Complete | 2026-01-26 |
+| 43. Task Progress UX | v1.2 | 4/4 | Complete | 2026-01-26 |
+| 44. Questions-First Collection | v1.2 | 7/7 | Complete | 2026-01-26 |
