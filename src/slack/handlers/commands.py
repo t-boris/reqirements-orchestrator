@@ -1461,10 +1461,16 @@ async def _handle_decision_subcommand(
             decision_id=args[1],
             client=client,
         )
+    elif subcommand == "needs-context":
+        await _handle_decision_needs_context(
+            channel_id=channel_id,
+            user_id=command.get("user_id"),
+            client=client,
+        )
     else:
         say(
             text=f"Unknown decision subcommand: `{subcommand}`\n\n"
-                 "Available: show, change, deprecate, enrich",
+                 "Available: show, change, deprecate, enrich, needs-context",
             channel=channel_id,
         )
 
@@ -1596,3 +1602,49 @@ async def _handle_decision_enrich(
                 user=user_id,
                 text=f"Could not extract rich context for DEC-{decision.id[:8]}. Try adding more context to the discussion thread.",
             )
+
+
+async def _handle_decision_needs_context(
+    channel_id: str,
+    user_id: str,
+    client: WebClient,
+) -> None:
+    """Handle /maro decision needs-context command.
+
+    Lists decisions in channel that lack rich context.
+    """
+    from src.db.connection import get_connection
+    from src.db.decision_store import DecisionStore
+
+    async with get_connection() as conn:
+        store = DecisionStore(conn)
+        decisions = await store.list_without_rich_context(channel_id, limit=10)
+
+    if not decisions:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text="All decisions in this channel have rich context!",
+        )
+        return
+
+    # Build list
+    lines = ["*Decisions needing rich context:*\n"]
+    for d in decisions:
+        type_emoji = {
+            "arch": "brain",
+            "scope": "triangular_ruler",
+            "constraint": "lock",
+            "priority": "zap",
+            "structure": "building_construction",
+            "process": "gear",
+        }.get(d.decision_type.value, "clipboard")
+        lines.append(f":{type_emoji}: `DEC-{d.id[:8]}` {d.title[:50]}")
+
+    lines.append(f"\nUse `/maro decision enrich DEC-xxx` to add context.")
+
+    client.chat_postEphemeral(
+        channel=channel_id,
+        user=user_id,
+        text="\n".join(lines),
+    )
