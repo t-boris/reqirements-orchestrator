@@ -374,7 +374,16 @@ async def _handle_review(
                 }
             ]
 
-            for q_data in questions_data:
+            for i, q_data in enumerate(questions_data):
+                logger.info(
+                    f"Building question block {i+1}/{len(questions_data)}",
+                    extra={
+                        "question_id": q_data.get("question_id"),
+                        "has_options": bool(q_data.get("options")),
+                        "options_count": len(q_data.get("options", []) or []),
+                        "question_text_preview": q_data.get("question_text", "")[:100],
+                    }
+                )
                 q_blocks = build_question_blocks(
                     question_data=q_data,
                     plan_id=review_plan_id,

@@ -314,7 +314,8 @@ class GraphRunner:
                 "topic": decision_result.get("topic", ""),
                 "artifact_id": decision_result.get("artifact_id"),
                 "super_mode": decision_result.get("super_mode"),
-                "question_task": decision_result.get("question_task"),  # Phase 37: structured questions
+                "is_questions": decision_result.get("is_questions", False),
+                "questions_data": decision_result.get("questions_data", []),
             }
         elif action == "discussion":
             return {

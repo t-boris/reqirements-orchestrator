@@ -100,9 +100,13 @@ Return ONLY the JSON array, no other text.'''
         # Add option_id to each
         for i, opt in enumerate(options):
             opt["option_id"] = f"opt_{i}"
+        logger.info(
+            f"Generated {len(options)} options for question",
+            extra={"question_preview": question_text[:50], "options_count": len(options)}
+        )
         return options
     except Exception as e:
-        logger.warning(f"Failed to generate options for question: {e}")
+        logger.warning(f"Failed to generate options for question: {e}", extra={"raw_response": response[:200] if response else "empty"})
         return []
 
 
@@ -418,21 +422,27 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                 "review_context": updated_context,
             }
 
-        # Extract questions from LLM response and generate buttons for them
-        extracted_questions = _extract_questions_from_response(response_content)
-        if extracted_questions and question_round <= max_question_rounds:
-            # Generate options for each question
+        # Extract questions WITH options directly from LLM response
+        # This avoids a second LLM call and preserves the options the LLM already generated
+        from src.graph.nodes.review import _extract_questions_with_options
+        extracted_qna = _extract_questions_with_options(response_content)
+
+        if extracted_qna and question_round <= max_question_rounds:
             questions_data = []
-            for i, question_text in enumerate(extracted_questions[:4]):  # Max 4 questions
-                options = await _generate_options_for_question(question_text, topic)
+            for i, qna in enumerate(extracted_qna):
                 q_data = {
                     "question_id": f"review_q_{i}",
-                    "question_text": question_text,
+                    "question_text": qna["question_text"],
                     "question_type": "ask_user",
                     "target_field": f"answer_{i}",
-                    "options": options if options else None,
+                    "options": qna.get("options"),
                 }
                 questions_data.append(q_data)
+
+            logger.info(
+                f"Extracted {len(questions_data)} questions from continuation",
+                extra={"questions_with_options": sum(1 for q in questions_data if q.get("options"))}
+            )
 
             if questions_data:
                 return {

@@ -314,13 +314,15 @@ def build_approved_card(
     if linked_tickets:
         applies_to = f"\n_Applies to: {', '.join(linked_tickets)}_"
 
-    # Add description if available (the actual decision content)
+    # Add description if available and different from title
     description_text = ""
     if decision.description:
         desc = decision.description
-        if len(desc) > 200:
-            desc = desc[:200] + "..."
-        description_text = f"\n{desc}"
+        # Skip if description is same as title (or starts with same text)
+        if not desc.lower().startswith(decision.title.lower()[:50]):
+            if len(desc) > 200:
+                desc = desc[:200] + "..."
+            description_text = f"\n{desc}"
 
     # Add rationale preview if available (Phase 40)
     rationale_preview = ""
@@ -333,6 +335,11 @@ def build_approved_card(
         more_text = f" (+{more_count} more)" if more_count > 0 else ""
         rationale_preview = f"\n_▸ {first_rationale}{more_text}_"
 
+    # Truncate title for display (should already be short, but safety check)
+    display_title = decision.title
+    if len(display_title) > 100:
+        display_title = display_title[:97] + "..."
+
     blocks = [
         {
             "type": "section",
@@ -340,7 +347,7 @@ def build_approved_card(
                 "type": "mrkdwn",
                 "text": (
                     f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version} ({type_label}) — *Approved*\n"
-                    f"*{decision.title}*{description_text}{rationale_preview}{applies_to}"
+                    f"*{display_title}*{description_text}{rationale_preview}{applies_to}"
                 ),
             },
         },
@@ -376,6 +383,119 @@ def build_approved_card(
             ],
         },
     ]
+
+    return blocks
+
+
+def build_expanded_approved_card(
+    decision: Decision,
+    linked_tickets: list[str] | None = None,
+) -> list[dict]:
+    """Build expanded view of approved decision card (in-place toggle).
+
+    Shows full details with [Hide details] button to collapse back.
+    Used when user clicks "Show details" - updates card in place.
+
+    Format:
+    {type_emoji} DEC-{id} v{version} ({type}) — Approved
+    {title}
+
+    Description:
+    {full description}
+
+    [Rich context sections if available]
+
+    Applies to: SCRUM-123, SCRUM-456
+    Approved by @user on date
+
+    [Change] [Deprecate] [Hide details]
+    """
+    type_emoji = _get_type_emoji(decision.decision_type)
+    type_label = decision.decision_type.value.upper()
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{type_emoji} *DEC-{decision.id[:8]}* v{decision.version} ({type_label}) — *Approved*\n"
+                    f"*{decision.title}*"
+                ),
+            },
+        },
+    ]
+
+    # Full description
+    if decision.description:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Description:*\n{decision.description}",
+            },
+        })
+
+    # Rich context sections
+    rich_context_blocks = build_rich_context_blocks(decision)
+    if rich_context_blocks:
+        blocks.append({"type": "divider"})
+        blocks.extend(rich_context_blocks)
+
+    # Linked tickets
+    if linked_tickets:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"_Applies to: {', '.join(linked_tickets)}_",
+            },
+        })
+
+    # Approval info
+    if decision.approved_by and decision.approved_at:
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Approved by <@{decision.approved_by}> on {decision.approved_at.strftime('%Y-%m-%d %H:%M')}",
+                },
+            ],
+        })
+
+    # Action buttons with Hide details
+    blocks.append({
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Change"},
+                "action_id": "decision_change",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                    "version": decision.version,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Deprecate"},
+                "action_id": "decision_deprecate",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                    "version": decision.version,
+                }),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Hide details"},
+                "action_id": "decision_hide_details",
+                "value": json.dumps({
+                    "decision_id": decision.id,
+                }),
+            },
+        ],
+    })
 
     return blocks
 

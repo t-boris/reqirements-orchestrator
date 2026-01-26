@@ -237,6 +237,94 @@ def _extract_questions(text: str) -> list[str]:
     return questions[:5]  # Limit to 5
 
 
+def _extract_questions_with_options(text: str) -> list[dict]:
+    """Extract questions WITH their options from LLM response.
+
+    Parses patterns like:
+    - What do you think about X?
+      - Option A: Description
+      - Option B: Description
+
+    Or:
+    1. Question text?
+    * Option A
+    * Option B
+
+    Returns:
+        List of dicts with question_text and options list
+    """
+    import re
+
+    results = []
+    lines = text.split("\n")
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Look for question line (ends with ?)
+        if "?" in line and len(line) > 10:
+            # Clean the question text
+            question_text = re.sub(r'^[\d\.\)\-\*\s]+', '', line).strip()
+            question_text = re.sub(r'^\*+|\*+$', '', question_text).strip()
+
+            # Collect options from following lines
+            options = []
+            i += 1
+
+            while i < len(lines):
+                opt_line = lines[i].strip()
+
+                # Stop if we hit empty line, new question, or non-option line
+                if not opt_line:
+                    break
+                if "?" in opt_line and len(opt_line) > 20:
+                    # New question, don't advance i
+                    break
+
+                # Check if line is an option (starts with -, *, •, or number)
+                opt_match = re.match(r'^[\-\*\•]\s*(.+)$|^\d+[\.\)]\s*(.+)$', opt_line)
+                if opt_match:
+                    opt_text = (opt_match.group(1) or opt_match.group(2) or "").strip()
+                    # Remove trailing asterisks from markdown
+                    opt_text = re.sub(r'\*+$', '', opt_text).strip()
+
+                    if opt_text and len(opt_text) > 3:
+                        # Split label and description if colon present
+                        if ": " in opt_text:
+                            parts = opt_text.split(": ", 1)
+                            label = parts[0].strip()[:40]
+                            description = parts[1].strip() if len(parts) > 1 else ""
+                        else:
+                            label = opt_text[:40]
+                            description = ""
+
+                        options.append({
+                            "option_id": f"opt_{len(options)}",
+                            "label": label,
+                            "value": label.lower().replace(" ", "_")[:30],
+                            "description": description,
+                            "is_recommended": len(options) == 0,  # First option is recommended
+                        })
+                    i += 1
+                else:
+                    # Not an option line, stop collecting
+                    break
+
+            if question_text:
+                results.append({
+                    "question_text": question_text,
+                    "options": options if options else None,
+                })
+
+            if len(results) >= 4:  # Max 4 questions
+                break
+        else:
+            i += 1
+
+    return results
+
+
 def _summarize_review(text: str) -> str:
     """Generate short summary of review."""
     # Take first non-empty line or first 100 chars
@@ -436,21 +524,26 @@ Provide your analysis:"""
             user_id=user_id,
         )
 
-        # Phase 39: Generate structured questions with options for ALL extracted questions
-        extracted_questions = _extract_questions(analysis)
+        # Phase 39: Extract questions WITH options directly from LLM response
+        # This avoids a second LLM call and preserves the options the LLM already generated
+        extracted_qna = _extract_questions_with_options(analysis)
         questions_data = []
-        if extracted_questions:
-            from src.graph.nodes.review_continuation import _generate_options_for_question
-            for i, question_text in enumerate(extracted_questions[:4]):  # Max 4 questions
-                options = await _generate_options_for_question(question_text, topic or latest_human_message[:50])
-                q_data = {
-                    "question_id": f"review_q_{i}",
-                    "question_text": question_text,
-                    "question_type": "ask_user",
-                    "target_field": f"answer_{i}",
-                    "options": options if options else None,
-                }
-                questions_data.append(q_data)
+        for i, qna in enumerate(extracted_qna):
+            q_data = {
+                "question_id": f"review_q_{i}",
+                "question_text": qna["question_text"],
+                "question_type": "ask_user",
+                "target_field": f"answer_{i}",
+                "options": qna.get("options"),  # Already extracted from text
+            }
+            questions_data.append(q_data)
+
+        logger.info(
+            f"Extracted {len(questions_data)} questions from review",
+            extra={
+                "questions_with_options": sum(1 for q in questions_data if q.get("options")),
+            }
+        )
 
         logger.info(
             f"Review node generated analysis: {len(analysis)} chars",

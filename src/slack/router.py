@@ -273,4 +273,12 @@ def register_handlers(app: App) -> None:
     # Decision change confirmation handlers (Phase 41)
     register_decision_change_handlers(app)
 
-    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, file_shared, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons, attachment_pin_unpin, task_plan, question, decision_change")
+    # Triage button handlers (Phase 44)
+    from src.slack.handlers import register_triage_handlers
+    register_triage_handlers(app)
+
+    # Question collection button handlers
+    from src.slack.handlers import register_question_collection_handlers
+    register_question_collection_handlers(app)
+
+    logger.info("Slack handlers registered: app_mention, message, member_joined_channel, file_shared, /jira, /help, /maro, select_epic_*, dedup, contradiction, draft_approval, edit_modal, duplicate_actions, hint_select, help_example, review_to_ticket, approve_architecture, scope_gate_buttons, create_stories, jira_commands, decision_link, sync, multi_ticket, update_preview, change_request, draft_conflict, preflight, decision_buttons, attachment_pin_unpin, task_plan, question, decision_change, triage, question_collection")

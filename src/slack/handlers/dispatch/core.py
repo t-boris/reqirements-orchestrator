@@ -575,6 +575,14 @@ async def _execute_dispatch_action(
     elif action == "triage_question":
         await _handle_triage_question(result, identity, client)
 
+    # Question Collection: LLM asking clarifying questions
+    elif action == "collect_question":
+        await _handle_collect_question(result, identity, client)
+
+    elif action == "proceed":
+        # Question collection complete - re-run graph to proceed to actual flow
+        await _handle_proceed_after_questions(result, identity, client)
+
     elif action == "error":
         client.chat_postMessage(
             channel=identity.channel_id,
@@ -645,3 +653,197 @@ async def _handle_triage_question(
             "gaps_count": len(triage_context.gaps) if triage_context else 0,
         }
     )
+
+
+async def _handle_collect_question(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Post LLM's clarifying question with button options.
+
+    Question Collection: After intent classification, LLM can ask
+    clarifying questions before proceeding to the actual flow.
+
+    Args:
+        result: Decision result with question dict
+        identity: Session identity (channel, thread)
+        client: Slack client
+    """
+    import json
+
+    question_data = result.get("question", {})
+    question_text = question_data.get("question_text", "")
+    options = question_data.get("options", [])
+    intent = result.get("intent", "unknown")
+    mode = result.get("mode", "unknown")
+
+    if not question_text:
+        logger.warning("collect_question action but no question text")
+        return
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{question_text}*",
+            },
+        }
+    ]
+
+    # Add buttons if options provided
+    if options:
+        button_elements = []
+        for opt in options:
+            option_id = opt.get("option_id", "")
+            label = opt.get("label", "")[:40]
+            value = opt.get("value", option_id)
+            is_recommended = opt.get("is_recommended", False)
+
+            button_value = json.dumps({
+                "question_text": question_text[:100],
+                "value": value,
+                "label": label,
+                "thread_ts": identity.thread_ts or "",
+            })
+
+            button = {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": label,
+                    "emoji": True,
+                },
+                "action_id": f"collect_answer_{option_id}",
+                "value": button_value,
+            }
+
+            if is_recommended:
+                button["style"] = "primary"
+
+            button_elements.append(button)
+
+        blocks.append({
+            "type": "actions",
+            "elements": button_elements[:5],  # Slack limit
+        })
+
+        # Add descriptions if available
+        descriptions = [
+            f"• *{opt['label']}*: {opt['description']}"
+            for opt in options
+            if opt.get("description")
+        ]
+        if descriptions:
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "\n".join(descriptions[:4]),
+                }],
+            })
+
+    # Help text
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": "_Click a button or reply with your answer._",
+        }],
+    })
+
+    client.chat_postMessage(
+        channel=identity.channel_id,
+        thread_ts=identity.thread_ts,
+        blocks=blocks,
+        text=question_text,
+    )
+
+    logger.info(
+        f"Posted collection question",
+        extra={
+            "session_id": identity.session_id,
+            "question_preview": question_text[:50],
+            "options_count": len(options),
+            "intent": intent,
+            "mode": mode,
+        }
+    )
+
+    # Update state to mark question_collection_pending
+    from src.graph.runner import get_runner
+    runner = get_runner(identity)
+    await runner._update_state({
+        "question_collection_pending": True,
+        "pending_collection_question": question_text,
+    })
+
+
+async def _handle_proceed_after_questions(
+    result: dict,
+    identity: SessionIdentity,
+    client: WebClient,
+) -> None:
+    """Question collection complete - proceed to actual flow.
+
+    Re-runs the graph with question_collection_complete=True so it routes
+    to the actual flow (ticket creation, review, etc.).
+
+    Args:
+        result: Decision result with collected_answers
+        identity: Session identity (channel, thread)
+        client: Slack client
+    """
+    from src.graph.runner import get_runner
+    from src.slack.progress import ProgressTracker
+
+    collected_answers = result.get("collected_answers", {})
+
+    logger.info(
+        f"Question collection complete, proceeding to flow",
+        extra={
+            "session_id": identity.session_id,
+            "collected_answers_count": len(collected_answers),
+        }
+    )
+
+    # Update state and re-run graph
+    runner = get_runner(identity)
+    state = await runner._get_current_state()
+
+    # Get the original user message to re-process
+    user_message = state.get("user_message", "")
+    user_id = state.get("user_id", "")
+
+    # Mark collection complete and store answers
+    await runner._update_state({
+        "question_collection_complete": True,
+        "question_collection_pending": False,
+        "collected_answers": collected_answers,
+    })
+
+    tracker = ProgressTracker(client, identity.channel_id, identity.thread_ts)
+
+    try:
+        await tracker.start("Processing...")
+
+        # Re-run the graph - now it will skip question_collection and go to actual flow
+        result = await runner.run_with_message(
+            message_text=user_message or "[Processing after questions]",
+            user_id=user_id,
+        )
+
+        # Dispatch the actual flow result
+        from src.slack.handlers.dispatch import _dispatch_result
+        await _dispatch_result(result, identity, client, runner, tracker)
+
+    except Exception as e:
+        logger.error(f"Failed to proceed after question collection: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Sorry, something went wrong: {e}",
+        )
+    finally:
+        await tracker.complete()

@@ -187,6 +187,42 @@ async def ops_node(state: AgentState) -> dict:
                     for i, dec in enumerate(decisions, 1):
                         context_str += f"\n{i}. {dec.get('topic', '')}: {dec.get('decision', '')}"
 
+    # Add thread_context info for EXPAND mode (the resolved anchor context)
+    thread_context = state.get("thread_context")
+    if thread_context and ops_subtype == OpsSubtype.EXPAND:
+        # Handle both object and dict forms (state may be serialized)
+        if hasattr(thread_context, "anchor_type"):
+            anchor_type = thread_context.anchor_type.value if hasattr(thread_context.anchor_type, "value") else str(thread_context.anchor_type)
+            object_id = thread_context.object_id
+            decision = getattr(thread_context, "decision", None)
+        elif isinstance(thread_context, dict):
+            anchor_type = thread_context.get("anchor_type", "")
+            if isinstance(anchor_type, dict):
+                anchor_type = anchor_type.get("value", str(anchor_type))
+            elif hasattr(anchor_type, "value"):
+                anchor_type = anchor_type.value
+            object_id = thread_context.get("object_id")
+            decision = thread_context.get("decision")
+        else:
+            anchor_type = None
+            object_id = None
+            decision = None
+
+        if anchor_type == "decision" and object_id:
+            context_str += f"\n\n=== CURRENT THREAD CONTEXT ==="
+            context_str += f"\nThis thread is anchored to Decision: DEC-{object_id[:8]}"
+            if decision:
+                if isinstance(decision, dict):
+                    title = decision.get("title", "")
+                    desc = decision.get("description", "")
+                else:
+                    title = getattr(decision, "title", "")
+                    desc = getattr(decision, "description", "")
+                if title:
+                    context_str += f"\nTitle: {title}"
+                if desc:
+                    context_str += f"\nDescription: {desc[:500]}"
+
     # Load recent decisions from database for this channel
     channel_id = state.get("channel_id")
     thread_ts = state.get("thread_ts")
@@ -343,19 +379,41 @@ async def _find_decision_in_context(state: AgentState) -> Optional[str]:
         Decision ID (UUID string) if found, None otherwise
     """
     # 1. Check thread_context for decision anchor
+    # Handle both object and dict forms (state may be serialized through checkpointer)
     thread_context = state.get("thread_context")
     if thread_context:
-        anchor_type = getattr(thread_context, "anchor_type", None)
-        if anchor_type and hasattr(anchor_type, "value") and anchor_type.value == "decision":
+        # Get anchor_type - handle object or dict form
+        if hasattr(thread_context, "anchor_type"):
+            anchor_type = thread_context.anchor_type
+            anchor_type_value = anchor_type.value if hasattr(anchor_type, "value") else str(anchor_type)
             object_id = getattr(thread_context, "object_id", None)
-            if object_id:
-                logger.debug(f"Found decision from thread_context: {object_id}")
-                return str(object_id)
+            decision = getattr(thread_context, "decision", None)
+        elif isinstance(thread_context, dict):
+            anchor_type = thread_context.get("anchor_type")
+            if isinstance(anchor_type, dict):
+                anchor_type_value = anchor_type.get("value", str(anchor_type))
+            elif hasattr(anchor_type, "value"):
+                anchor_type_value = anchor_type.value
+            else:
+                anchor_type_value = str(anchor_type) if anchor_type else None
+            object_id = thread_context.get("object_id")
+            decision = thread_context.get("decision")
+        else:
+            anchor_type_value = None
+            object_id = None
+            decision = None
+
+        # Check if this is a decision anchor
+        if anchor_type_value == "decision" and object_id:
+            logger.debug(f"Found decision from thread_context: {object_id}")
+            return str(object_id)
 
         # Check decision attribute directly
-        decision = getattr(thread_context, "decision", None)
         if decision:
-            decision_id = getattr(decision, "id", None)
+            if isinstance(decision, dict):
+                decision_id = decision.get("id")
+            else:
+                decision_id = getattr(decision, "id", None)
             if decision_id:
                 logger.debug(f"Found decision from thread_context.decision: {decision_id}")
                 return str(decision_id)

@@ -131,17 +131,18 @@ def route_after_decomposer(state: AgentState) -> Literal["task_executor", "end"]
     return "end"
 
 
-def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow", "terminal_response_flow", "triage_questions_flow"]:
+def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow", "discussion_flow", "ticket_action_flow", "decision_approval_flow", "review_continuation_flow", "scope_gate_flow", "jira_command_flow", "sync_flow", "change_request_flow", "ops_flow", "jira_search_flow", "draft_transform_flow", "task_decomposer_flow", "terminal_response_flow", "triage_questions_flow", "question_collection_flow"]:
     """Route based on classified intent.
 
     Priority (from 20-CONTEXT.md):
     1. WorkflowEvent - handled before graph (event_router)
     2. PendingAction - handled before graph (event_router)
     3. Phase 44: Triage gate (incomplete context) - ask clarifying questions
-    4. Phase 39: Terminal intent via envelope (DISCUSSION/META)
-    5. Multi-intent detection - route to task_decomposer (Phase 35)
-    6. Thread default intent - check and use for AMBIGUOUS
-    7. Classified intent - route to flow
+    4. Question collection gate - ask LLM if it has open questions
+    5. Phase 39: Terminal intent via envelope (DISCUSSION/META)
+    6. Multi-intent detection - route to task_decomposer (Phase 35)
+    7. Thread default intent - check and use for AMBIGUOUS
+    8. Classified intent - route to flow
 
     Note: TICKET_ACTION, DECISION_APPROVAL, REVIEW_CONTINUATION
     are now PendingAction values, handled before this router runs.
@@ -156,6 +157,9 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     Phase 44: When stage0_gate returns GateResult.TRIAGE, route to
     triage_questions_flow to post clarifying questions.
 
+    Question Collection: After classification, route to question_collection
+    to ask LLM for open questions before proceeding to actual flow.
+
     Used as conditional edge from intent_router node.
     Routes to appropriate flow based on intent classification.
     """
@@ -164,6 +168,26 @@ def route_after_intent(state: AgentState) -> Literal["ticket_flow", "review_flow
     if stage0_gate and stage0_gate.result == GateResult.TRIAGE:
         logger.info("Intent router: triage needed, routing to triage_questions")
         return "triage_questions_flow"
+
+    # Question Collection Gate: Route to question_collection if not complete
+    # Skip for terminal intents, ticket_action, decision_approval (they don't need questions)
+    question_collection_complete = state.get("question_collection_complete", False)
+    envelope = state.get("envelope")
+    skip_question_collection = False
+
+    if envelope:
+        from src.graph.intent_router import is_terminal_intent
+        # Skip for terminal intents (greetings, meta questions)
+        if is_terminal_intent(envelope):
+            skip_question_collection = True
+        # Skip for action intents that work on existing items
+        from src.schemas.intent import IntentKind
+        if envelope.intent in (IntentKind.TICKET_ACTION, IntentKind.DECISION_APPROVAL, IntentKind.REVIEW_CONTINUATION):
+            skip_question_collection = True
+
+    if not question_collection_complete and not skip_question_collection:
+        logger.info("Intent router: routing to question_collection gate")
+        return "question_collection_flow"
 
     intent_result = state.get("intent_result", {})
 
@@ -354,6 +378,10 @@ def create_graph() -> StateGraph:
     # Triage questions node (Phase 44)
     workflow.add_node("triage_questions", triage_questions_node)
 
+    # Question collection node - asks LLM for open questions before proceeding
+    from src.graph.nodes.question_collection import question_collection_node
+    workflow.add_node("question_collection", question_collection_node)
+
     # Set entry point to intent_router
     workflow.set_entry_point("intent_router")
 
@@ -378,6 +406,7 @@ def create_graph() -> StateGraph:
             "task_decomposer_flow": "task_decomposer",  # Multi-intent decomposition (Phase 35)
             "terminal_response_flow": "terminal_response",  # Terminal intents (Phase 39)
             "triage_questions_flow": "triage_questions",  # Triage questions (Phase 44)
+            "question_collection_flow": "question_collection",  # Question collection gate
         }
     )
 
@@ -386,6 +415,9 @@ def create_graph() -> StateGraph:
 
     # Triage questions goes directly to END (Phase 44 - dispatch posts question)
     workflow.add_edge("triage_questions", END)
+
+    # Question collection goes to END - dispatch handles posting question or proceeding
+    workflow.add_edge("question_collection", END)
 
     # Discussion goes directly to END after generating response
     workflow.add_edge("discussion", END)

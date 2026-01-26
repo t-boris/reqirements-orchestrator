@@ -13,8 +13,6 @@ Message failures NEVER block state updates.
 
 import json
 import logging
-from datetime import datetime, timezone
-import uuid
 
 from slack_sdk.web import WebClient
 
@@ -299,8 +297,13 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
     from src.db import get_connection
     from src.db.artifact_store import ArtifactStore
     from src.db.decision_store import DecisionStore
-    from src.schemas.decision import Decision, DecisionStatus, DecisionType
+    from src.db.anchor_store import AnchorStore
+    from src.schemas.anchor import AnchorType
     from src.slack.blocks.decision_cards import build_approved_card
+    from src.slack.handlers.review.decision_core import (
+        extract_decisions_from_text,
+        create_and_post_decisions,
+    )
 
     # Extract context from button value
     button_value = body["actions"][0].get("value", "{}")
@@ -361,6 +364,7 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
         async with get_connection() as conn:
             artifact_store = ArtifactStore(conn)
             decision_store = DecisionStore(conn)
+            anchor_store = AnchorStore(conn)
 
             # Load artifact
             artifact = await artifact_store.get(artifact_id)
@@ -374,10 +378,6 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
 
             # Check if thread is anchored to an existing decision
             # If so, this should UPDATE that decision, not create a new one
-            from src.db.anchor_store import AnchorStore
-            from src.schemas.anchor import AnchorType
-
-            anchor_store = AnchorStore(conn)
             existing_anchor = await anchor_store.get_by_message(channel_id, thread_ts)
 
             if existing_anchor and existing_anchor.anchor_type == AnchorType.DECISION:
@@ -389,15 +389,15 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
                         extra={"existing_version": existing_decision.version}
                     )
 
-                    # Use artifact summary as the new description (it's about the conversation topic)
-                    new_description = artifact.summary or topic or f"Updated based on review discussion"
+                    # Use artifact summary as the new description
+                    new_description = artifact.summary or topic or "Updated based on review discussion"
 
                     # Update existing decision (creates new version automatically)
                     updated_decision = await decision_store.update(
                         decision_id=str(existing_decision.id),
                         description=new_description,
                         changed_by=user_id,
-                        change_reason=f"Updated based on review in thread",
+                        change_reason="Updated based on review in thread",
                     )
 
                     # Update the original decision card in channel
@@ -450,125 +450,69 @@ async def _handle_capture_as_decision_async(body, client: WebClient):
                     )
                     return
 
-            # No existing decision anchor - create new decision(s)
-            # Extract decisions from artifact
-            decisions_to_create = artifact.decisions or []
-            if not decisions_to_create:
-                # Fallback: use artifact summary as the decision
-                decisions_to_create = [artifact.summary or topic or "Review conclusion"]
+        # No existing decision anchor - create new decision(s)
+        # Use shared LLM extraction
+        review_text = artifact.summary or artifact.content or ""
 
-            now = datetime.now(timezone.utc)
-            created_decisions = []
+        # Extract decisions using shared logic
+        decisions = await extract_decisions_from_text(review_text)
 
-            for i, decision_text in enumerate(decisions_to_create):
-                # Determine title from decision text
-                if isinstance(decision_text, dict):
-                    title = decision_text.get("topic", decision_text.get("title", f"Decision {i+1}"))
-                    description = decision_text.get("decision", decision_text.get("description", str(decision_text)))
-                else:
-                    # String decision - use first line as title
-                    lines = str(decision_text).strip().split("\n")
-                    title = lines[0][:100] if lines else f"Decision {i+1}"
-                    description = str(decision_text)
+        # Map to expected format (topic/decision instead of title/description)
+        if decisions:
+            decisions = [{"topic": d.get("topic", d.get("title", "")), "decision": d.get("decision", d.get("description", ""))} for d in decisions]
 
-                # Create Decision record using store's create method
-                decision = await decision_store.create(
-                    channel_id=channel_id,
-                    decision_type=DecisionType.ARCH,  # Default to architecture
-                    title=title,
-                    description=description,
-                    created_by=user_id,
-                    context_before=f"From {persona} review" if persona else "From review analysis",
-                    rationale=[],
-                    alternatives=[],
-                    consequences=[],
-                )
+        # Create and post using shared logic
+        result = await create_and_post_decisions(
+            client=client,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            user_id=user_id,
+            decisions=decisions,
+            persona=persona,
+            check_conflicts=False,  # capture_as_decision doesn't check conflicts
+            fallback_topic=topic or "Architecture Decision",
+            fallback_text=review_text,
+        )
 
-                # Approve immediately since it's captured from approved review
-                decision = await decision_store.approve(
-                    decision_id=str(decision.id),
-                    approved_by=user_id,
-                )
-                created_decisions.append(decision)
-
-                # Post rich decision card to channel with edit/deprecate buttons
-                decision_blocks = build_approved_card(decision)
-
-                response = client.chat_postMessage(
+        # Update original message to show completion
+        if result.decisions_created > 0:
+            completion_text = (
+                "Captured as decision" if result.decisions_created == 1
+                else f"Captured {result.decisions_created} decisions"
+            )
+            try:
+                client.chat_update(
                     channel=channel_id,
-                    blocks=decision_blocks,
-                    text=f"Architecture Decision: {title}",
+                    ts=message_ts,
+                    text=completion_text,
+                    blocks=[
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": completion_text,
+                            },
+                        }
+                    ],
                 )
+            except Exception as e:
+                logger.warning(f"Could not update completion message: {e}")
 
-                # Pin the decision card and create anchor
-                posted_ts = response.get("ts")
-                if posted_ts:
-                    # Pin the decision card to the channel
-                    try:
-                        client.pins_add(channel=channel_id, timestamp=posted_ts)
-                        logger.debug(f"Pinned decision card at {posted_ts}")
-                    except Exception as e:
-                        logger.warning(f"Could not pin decision card: {e}")
+        # Confirm in thread
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":white_check_mark: {result.decisions_created} decision(s) captured and posted to channel.",
+        )
 
-                    # Create anchor so replies can find the decision
-                    try:
-                        from src.db import get_connection
-                        from src.db.anchor_store import AnchorStore
-                        from src.schemas.anchor import AnchorType
-
-                        async with get_connection() as conn:
-                            anchor_store = AnchorStore(conn)
-                            await anchor_store.create_anchor(
-                                anchor_type=AnchorType.DECISION,
-                                object_id=str(decision.id),
-                                channel_id=channel_id,
-                                message_ts=posted_ts,
-                                created_by=user_id,
-                            )
-                            logger.debug(f"Created anchor for decision {decision.id} at {posted_ts}")
-                    except Exception as e:
-                        logger.warning(f"Could not create anchor for decision: {e}")
-
-            # Update original message to show completion
-            if created_decisions:
-                decision_count = len(created_decisions)
-                completion_text = (
-                    "Captured as decision" if decision_count == 1
-                    else f"Captured {decision_count} decisions"
-                )
-                try:
-                    client.chat_update(
-                        channel=channel_id,
-                        ts=message_ts,
-                        text=completion_text,
-                        blocks=[
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": completion_text,
-                                },
-                            }
-                        ],
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not update completion message: {e}")
-
-            # Confirm in thread
-            client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=f":white_check_mark: {len(created_decisions)} decision(s) captured and posted to channel.",
-            )
-
-            logger.info(
-                "Captured decisions from artifact",
-                extra={
-                    "artifact_id": artifact_id,
-                    "decision_count": len(created_decisions),
-                    "user_id": user_id,
-                }
-            )
+        logger.info(
+            "Captured decisions from artifact",
+            extra={
+                "artifact_id": artifact_id,
+                "decision_count": result.decisions_created,
+                "user_id": user_id,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Failed to capture as decision: {e}", exc_info=True)

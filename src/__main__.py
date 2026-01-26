@@ -123,6 +123,26 @@ async def init_database() -> None:
         conversation_mode_store = ConversationModeStore(conn)
         await conversation_mode_store.create_tables()
 
+        # Phase 40-41: Decision management
+        from src.db.decision_store import DecisionStore
+        from src.db.decision_link_store import DecisionLinkStore
+        from src.db.decision_change_op_store import DecisionChangeOpStore
+
+        decision_store = DecisionStore(conn)
+        await decision_store.create_tables()
+
+        decision_link_store = DecisionLinkStore(conn)
+        await decision_link_store.create_tables()
+
+        decision_change_op_store = DecisionChangeOpStore(conn)
+        await decision_change_op_store.create_tables()
+
+        # Channel issue tracking
+        from src.slack.channel_tracker import ChannelIssueTracker
+
+        channel_tracker = ChannelIssueTracker(conn)
+        await channel_tracker.create_tables()
+
     logger.info("Database initialized")
 
 
