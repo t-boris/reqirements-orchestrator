@@ -472,6 +472,7 @@ Rules:
                     status=DecisionStatus.APPROVED,
                     version=1,
                     created_at=now,
+                    updated_at=now,  # Required field
                     created_by=user_id,
                     context=f"From {persona} review" if persona else None,
                     rationale=[],
@@ -484,11 +485,31 @@ Rules:
             # Build and post rich decision card to CHANNEL
             decision_blocks = build_approved_card(decision_record)
 
-            client.chat_postMessage(
+            response = client.chat_postMessage(
                 channel=channel_id,
                 blocks=decision_blocks,
                 text=f"Architecture Decision: {extracted_topic}",
             )
+
+            # Create anchor linking this message to the decision
+            posted_ts = response.get("ts")
+            if posted_ts:
+                try:
+                    from src.db.anchor_store import AnchorStore
+                    from src.schemas.anchor import AnchorType
+
+                    async with get_connection() as conn:
+                        anchor_store = AnchorStore(conn)
+                        await anchor_store.create_anchor(
+                            anchor_type=AnchorType.DECISION,
+                            object_id=str(decision_record.id),
+                            channel_id=channel_id,
+                            message_ts=posted_ts,
+                            created_by=user_id,
+                        )
+                        logger.debug(f"Created anchor for decision {decision_record.id} at {posted_ts}")
+                except Exception as e:
+                    logger.warning(f"Could not create anchor for decision: {e}")
 
         # Warn about all conflicts in thread (after posting decisions)
         if all_conflicts:
