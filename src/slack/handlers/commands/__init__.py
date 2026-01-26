@@ -15,8 +15,16 @@ Usage:
 
 from src.slack.handlers.commands.debug import handle_debug_command
 from src.slack.handlers.commands.sync import handle_sync_command
+from src.slack.handlers.commands.decisions import (
+    handle_decisions_command,
+    handle_decision_subcommand,
+)
+from src.slack.handlers.commands.explain import handle_explain_command
 
 __all__ = [
     "handle_debug_command",
     "handle_sync_command",
+    "handle_decisions_command",
+    "handle_decision_subcommand",
+    "handle_explain_command",
 ]
