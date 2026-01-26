@@ -2,16 +2,66 @@
 
 Extracts decision details from user message and creates Decision entity.
 Part of Phase 30: Decision as First-Class Entity.
+
+Phase 40: Added LLM extraction for rich context fields (rationale, context,
+alternatives, consequences) from conversation history.
 """
+import json
 import logging
 from typing import Any, Optional
 
 from src.db.connection import get_connection
 from src.db.decision_store import DecisionStore
+from src.llm.client import get_llm
 from src.schemas.decision import Decision, DecisionType, DecisionStatus
 from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Rich Context Extraction (Phase 40)
+# =============================================================================
+
+RICH_CONTEXT_EXTRACTION_PROMPT = """
+Extract rich context for this decision from the conversation.
+
+Decision:
+Title: {title}
+Description: {description}
+
+Conversation context:
+{conversation}
+
+Extract the following (respond with JSON):
+
+1. rationale: 2-6 bullet points explaining WHY this decision was made
+   - Each item: {{"text": "...", "weight": "primary" or "secondary"}}
+   - Primary = core reasons, Secondary = supporting points
+   - If not mentioned, infer from context
+
+2. context_before: What was the status quo / situation before this decision?
+   - A brief paragraph describing what existed before
+   - If not mentioned, return null
+
+3. alternatives: What other options were considered?
+   - Each item: {{"option": "...", "rejected_reason": "..."}}
+   - Only include if explicitly mentioned in conversation
+   - If not mentioned, return empty list
+
+4. consequences: What impact does this decision have?
+   - Each item: {{"area": "...", "impact": "...", "severity": "minor" or "moderate" or "major"}}
+   - Areas: Performance, Security, Complexity, Cost, Timeline, etc.
+   - If not mentioned, infer obvious implications
+
+Respond ONLY with valid JSON:
+{{
+  "rationale": [...],
+  "context_before": "..." or null,
+  "alternatives": [...],
+  "consequences": [...]
+}}
+"""
 
 
 async def decision_extraction_node(state: AgentState) -> dict[str, Any]:
