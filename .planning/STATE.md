@@ -12,12 +12,12 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 
 ## Current Position
 
-Phase: 39-intent-classification-v2
-Plan: 7 of 7 in current phase
-Status: Complete
-Last activity: 2026-01-25 — Completed 39-07-PLAN.md (Graph Integration)
+Phase: 40-decision-v2-rich-context
+Plan: 1 of 6 in current phase
+Status: In progress
+Last activity: 2026-01-25 — Completed 40-01-PLAN.md (Rich Context Field Models)
 
-Progress: ███████████████████████████ 7/7 plans
+Progress: █░░░░░ 1/6 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 39-07-PLAN.md (Graph Integration)
+Stopped at: Completed 40-01-PLAN.md (Rich Context Field Models)
 Resume file: None
-Next action: Phase 39 complete - next phase TBD
+Next action: Execute 40-02-PLAN.md (Database Persistence)
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -416,13 +416,28 @@ Phase 38-06 decisions:
 - context_packet field added to AgentState for graph propagation
 - Handler builds context packet optionally (opt-in, not breaking change)
 
+Phase 40-01 decisions:
+- Structured models (RationaleItem, Alternative, Consequence) for rich context
+- RationaleItem has optional weight (primary/secondary) for importance
+- Consequence has optional severity (minor/moderate/major) for impact
+- DecisionVersion uses list[dict] instead of models for JSON serialization
+- All rich context fields Optional for backward compatibility
+
 ## What's Next
 
-**Phase 40: Decision v2 — Rich Context & Versioning** — NOT STARTED (0/7 plans)
+**Phase 40: Decision v2 — Rich Context & Versioning** — IN PROGRESS (1/6 plans)
 
 **Objective:** Enrich decisions with rationale, context, alternatives, consequences, and proper versioning.
 
-**Next action:** Run `/gsd:plan-phase 40` to create detailed execution plans.
+**Progress:**
+- 40-01: Rich Context Field Models - COMPLETE
+- 40-02: Database Persistence - PENDING
+- 40-03: LLM Extraction - PENDING
+- 40-04: UI Rendering - PENDING
+- 40-05: Jira Projection - PENDING
+- 40-06: Testing & Integration - PENDING
+
+**Next action:** Execute 40-02-PLAN.md
 
 ---
 
