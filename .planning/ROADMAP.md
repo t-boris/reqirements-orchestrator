@@ -680,7 +680,7 @@ Bot: "To draft stories, pick approach:"
 
 ### Phase 39: Intent Classification v2
 
-**Status:** In Progress (2/7 plans)
+**Status:** COMPLETE (7/7 plans)
 
 **Objective:** Rebuild intent classification with 2-stage architecture, state-based gates, unified IntentEnvelope output, and margin-based ambiguity policy.
 
@@ -751,11 +751,11 @@ Bot: "To draft stories, pick approach:"
 **Plans:**
 - [x] 39-01: IntentEnvelope schema (unified output format) (2026-01-26)
 - [x] 39-02: Stage 0 pre-gates (deterministic state-based gates) (2026-01-26)
-- [ ] 39-03: Stage 1 mode classification (lightweight LLM)
-- [ ] 39-04: Stage 2 intent extraction (full LLM)
-- [ ] 39-05: Ambiguity policy + risk guards
-- [ ] 39-06: Unified intent router
-- [ ] 39-07: Graph integration + terminal handling
+- [x] 39-03: Stage 1 mode classification (lightweight LLM) (2026-01-26)
+- [x] 39-04: Stage 2 intent extraction (full LLM) (2026-01-26)
+- [x] 39-05: Ambiguity policy + risk guards (2026-01-26)
+- [x] 39-06: Unified intent router (2026-01-26)
+- [x] 39-07: Graph integration + terminal handling (2026-01-26)
 
 ## Completed Milestones
 
@@ -871,4 +871,4 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 36. Question Engine | v1.2 | 7/7 | Complete | 2026-01-24 |
 | 37. Unified Question Engine | v1.2 | 5/5 | Complete | 2026-01-24 |
 | 38. Context Architecture | v1.2 | 6/6 | Complete | 2026-01-25 |
-| 39. Intent Classification v2 | v1.2 | 2/7 | In Progress | - |
+| 39. Intent Classification v2 | v1.2 | 7/7 | Complete | 2026-01-26 |
