@@ -247,3 +247,36 @@ def check_target_ambiguity(envelope: IntentEnvelope) -> Optional[str]:
         return "This action needs a target. Which item do you want to update?"
 
     return None
+
+
+def apply_all_policies(
+    envelope: IntentEnvelope,
+    config: PolicyConfig = DEFAULT_CONFIG,
+) -> IntentEnvelope:
+    """Apply all policies to envelope in order.
+
+    Order:
+    1. Target ambiguity check
+    2. Risk guard
+    3. Margin/confidence policy
+
+    Args:
+        envelope: Raw envelope from Stage 2
+        config: Policy configuration
+
+    Returns:
+        Final envelope after all policies applied
+    """
+    # 1. Check target ambiguity
+    target_issue = check_target_ambiguity(envelope)
+    if target_issue:
+        logger.info(f"Target ambiguity: {target_issue}")
+        return _convert_to_ambiguous(envelope, reason=target_issue)
+
+    # 2. Apply risk guard
+    envelope = apply_risk_guard(envelope, config)
+
+    # 3. Apply margin/confidence policy
+    envelope = apply_ambiguity_policy(envelope, config)
+
+    return envelope
