@@ -43,6 +43,7 @@ from src.slack.handlers import (
     handle_scope_gate_submit,
     # Architecture approval (Phase 20)
     handle_approve_architecture,
+    handle_capture_as_decision,  # Capture review as formal Decision
     # Review artifact actions (Phase 25)
     handle_review_approve,
     handle_turn_into_workitem,
@@ -178,6 +179,9 @@ def register_handlers(app: App) -> None:
 
     # Architecture approval (Phase 20)
     app.action("approve_architecture")(handle_approve_architecture)
+
+    # Capture review as formal Decision (Phase 41)
+    app.action("capture_as_decision")(handle_capture_as_decision)
 
     # Review artifact actions (Phase 25)
     app.action("review_approve")(handle_review_approve)

@@ -189,11 +189,16 @@ NOTE: If user asks questions about this draft (structure, scope, decomposition),
 THREAD CONTEXT (user is in an anchored thread):
 - Anchor Type: {anchor_type.value if hasattr(anchor_type, 'value') else anchor_type}
 - Object ID: {object_id}{decision_info}
-NOTE: When user refers to "the decision", "this decision", "it", or asks to "expand", "explain", "show details" -
-they are referring to THIS specific object. Classify accordingly:
-- For decision threads: "expand the decision", "explain this", "show details" -> DECISION (to show/expand the decision)
-- For workitem threads: "update this", "change status" -> JIRA_COMMAND or TICKET_ACTION
-- "ask me the questions", "continue with questions" -> means user wants to be ASKED questions, not get answers
+NOTE: When user refers to "the decision", "this decision", "it" - they refer to THIS specific object.
+
+CRITICAL DISTINCTION for decision threads:
+- "expand the decision", "show details", "explain this decision", "what does it say" -> OPS with ops_subtype=expand
+  (User wants to see the DECISION'S content: rationale, alternatives, consequences)
+- "why did YOU do that?", "show YOUR reasoning", "explain YOUR logic" -> OPS with ops_subtype=explain
+  (User is asking about the BOT's reasoning/actions, NOT the decision content)
+
+For workitem threads: "update this", "change status" -> JIRA_COMMAND or TICKET_ACTION
+"ask me the questions", "continue with questions" -> means user wants to be ASKED questions, not get answers
 """
 
     prompt = f"""You are classifying user intent for a Slack bot that helps with Jira tickets and architecture discussions.
@@ -203,17 +208,24 @@ CURRENT USER MESSAGE: "{message}"
 
 Classify the user's intent into ONE category:
 
-- OPS: Operational mode - either debugging failures or explaining decisions
+- OPS: Operational mode - debugging failures, explaining bot reasoning, OR expanding object details
   Subtypes:
   - DEBUG: Error signals present (exception, failed, timeout, stack trace, 400/500 errors)
     Phrases: "fix this", "why did this fail", "retry", "error", "broken", "what went wrong"
-  - EXPLAIN: Questions about bot's reasoning/decisions
-    Phrases: "why did you do that?", "show reasoning", "explain your logic", "how did you decide?"
+  - EXPLAIN: Questions about BOT'S OWN reasoning/actions (meta-level)
+    Phrases: "why did YOU do that?", "show YOUR reasoning", "explain YOUR logic", "how did YOU decide?"
+    This is about the BOT's behavior, not about domain objects like decisions or tickets.
+  - EXPAND: Show details of a DOMAIN OBJECT (decision, ticket, work item)
+    Phrases: "expand the decision", "show decision details", "what does the decision say", "explain this decision"
+    This is about showing the CONTENT of an object, not about bot reasoning.
   Examples:
   - "why did this fail?" -> OPS, ops_subtype=debug
   - "fix this error" -> OPS, ops_subtype=debug
-  - "why did you do that?" -> OPS, ops_subtype=explain
-  - "show me your reasoning" -> OPS, ops_subtype=explain
+  - "why did you do that?" -> OPS, ops_subtype=explain (asking about BOT's action)
+  - "show me your reasoning" -> OPS, ops_subtype=explain (asking about BOT's reasoning)
+  - "expand the decision" -> OPS, ops_subtype=expand (show DECISION content)
+  - "show decision details" -> OPS, ops_subtype=expand (show DECISION content)
+  - "explain this decision" -> OPS, ops_subtype=expand (explain the DECISION's rationale, not bot reasoning)
 
 - SYNC_REQUEST: User wants to SYNC channel decisions with Jira (bulk update)
   Key phrases: "update Jira issues", "sync Jira", "sync tickets", "update the tickets",
@@ -433,7 +445,7 @@ TARGET_TYPE: <explicit|contextual|none>
 SEARCH_QUERY: <what to search for in Jira, or "none">
 CHANGE_TARGETS: <comma-separated list of affected keys/ids, or "none">
 CHANGE_OPERATION: <update|delete|split|merge|move|link|none>
-OPS_SUBTYPE: <debug|explain|none>
+OPS_SUBTYPE: <debug|explain|expand|none>
 CONTEXT_RELATION: <continue|refine|change|new_topic|none>
 TRANSFORM_OPERATION: <split_to_plan|add_items|merge_items|elevate_to_epic|decompose_to_stories|change_scope|remove_items|none>
 DECISION_TYPE_HINT: <arch|scope|constraint|priority|structure|process|none>
@@ -518,6 +530,8 @@ REASON: <brief explanation>"""
                     ops_subtype = OpsSubtype.DEBUG
                 elif subtype_str == "explain":
                     ops_subtype = OpsSubtype.EXPLAIN
+                elif subtype_str == "expand":
+                    ops_subtype = OpsSubtype.EXPAND
             elif line.upper().startswith("CONTEXT_RELATION:"):
                 relation = line.split(":", 1)[1].strip().lower()
                 if relation in ["continue", "refine", "change", "new_topic"]:
@@ -554,9 +568,15 @@ REASON: <brief explanation>"""
         if intent == Intent.OPS:
             if ops_subtype is None and reason:
                 reason_lower = reason.lower()
-                explain_signals = ["explain", "reasoning", "why did you", "show your", "logic"]
+                # EXPAND takes priority - showing object details
+                expand_signals = ["expand", "show details", "decision details", "show the decision", "explain the decision", "explain this decision"]
+                # EXPLAIN is about bot's own reasoning
+                explain_signals = ["why did you", "show your reasoning", "your logic", "bot reasoning"]
                 debug_signals = ["error", "failed", "exception", "timeout", "debug", "fix"]
-                if any(signal in reason_lower for signal in explain_signals):
+                if any(signal in reason_lower for signal in expand_signals):
+                    ops_subtype = OpsSubtype.EXPAND
+                    logger.info(f"Inferred ops_subtype=EXPAND from reason: {reason[:100]}")
+                elif any(signal in reason_lower for signal in explain_signals):
                     ops_subtype = OpsSubtype.EXPLAIN
                     logger.info(f"Inferred ops_subtype=EXPLAIN from reason: {reason[:100]}")
                 elif any(signal in reason_lower for signal in debug_signals):

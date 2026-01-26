@@ -72,6 +72,7 @@ from src.slack.handlers.review import (
     handle_review_to_ticket,
     handle_scope_gate_submit,
     handle_approve_architecture,
+    handle_capture_as_decision,  # Capture review decisions as formal Decision records
     # Artifact handlers (Phase 25)
     handle_review_approve,
     handle_turn_into_workitem,
@@ -226,6 +227,7 @@ __all__ = [
     "handle_review_to_ticket",
     "handle_scope_gate_submit",
     "handle_approve_architecture",
+    "handle_capture_as_decision",  # Capture review as formal Decision
     # Artifact handlers (Phase 25)
     "handle_review_approve",
     "handle_turn_into_workitem",

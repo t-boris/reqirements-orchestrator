@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from src.questions.freeform_provider import FreeformProvider
+from src.schemas.question import QuestionTask
 from src.schemas.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def _wants_questions_asked(user_message: str) -> bool:
 async def _generate_review_questions(
     review_context: dict,
     num_questions: int = 3,
-) -> list[str]:
+) -> list[QuestionTask]:
     """Generate review questions using FreeformProvider.
 
     Args:
@@ -46,7 +47,7 @@ async def _generate_review_questions(
         num_questions: Number of questions to generate
 
     Returns:
-        List of question strings
+        List of QuestionTask objects (with options if LLM generated them)
     """
     provider = FreeformProvider()
 
@@ -76,13 +77,16 @@ async def _generate_review_questions(
     if not missing_fields:
         missing_fields = ["assumptions", "constraints", "risks"]
 
-    questions = []
-    for _ in range(num_questions):
+    questions: list[QuestionTask] = []
+    for i in range(num_questions):
         if not missing_fields:
             break
         task = await provider.generate_question(context, missing_fields)
         if task:
-            questions.append(task.question_text)
+            # Assign a unique question_id if not set
+            if not task.question_id:
+                task.question_id = f"review_q_{i}"
+            questions.append(task)
             # Rotate to next field
             missing_fields = missing_fields[1:] + missing_fields[:1]
 
@@ -280,12 +284,36 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
 
     # Check if user wants to be asked questions - use FreeformProvider instead of LLM
     if _wants_questions_asked(user_answers):
-        questions = await _generate_review_questions(review_context)
-        if questions:
+        question_tasks = await _generate_review_questions(review_context)
+        if question_tasks:
+            # Build questions data for dispatch (include options for buttons)
+            questions_data = []
+            for task in question_tasks:
+                q_data = {
+                    "question_id": task.question_id,
+                    "question_text": task.question_text,
+                    "question_type": task.question_type.value if task.question_type else "ask_user",
+                    "target_field": task.target_field,
+                    "options": None,
+                }
+                if task.options:
+                    q_data["options"] = [
+                        {
+                            "option_id": opt.option_id,
+                            "label": opt.label,
+                            "value": opt.value,
+                            "description": opt.description,
+                            "is_recommended": opt.is_recommended,
+                        }
+                        for opt in task.options
+                    ]
+                questions_data.append(q_data)
+
+            # Also build fallback text for plain display
             response_content = "Great, here are the key questions we need to resolve:\n\n"
-            for i, q in enumerate(questions, 1):
-                response_content += f"{i}. {q}\n"
-            response_content += "\nPlease answer any or all of these."
+            for i, task in enumerate(question_tasks, 1):
+                response_content += f"{i}. {task.question_text}\n"
+            response_content += "\nPlease answer any or all of these, or click buttons below."
 
             return {
                 "decision_result": {
@@ -295,6 +323,7 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                     "topic": topic,
                     "version": current_version,
                     "is_questions": True,
+                    "questions_data": questions_data,  # Include full QuestionTask data
                 },
                 "review_context": {
                     **review_context,

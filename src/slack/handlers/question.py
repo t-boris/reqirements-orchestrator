@@ -6,6 +6,7 @@ Processes button clicks and text replies for questions.
 """
 
 import logging
+import re
 from typing import Any, Callable
 
 from slack_bolt import App
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 def register_question_handlers(app: App) -> None:
     """Register question-related button handlers."""
 
-    @app.action({"action_id": {"type": "regex", "pattern": "^question_.*"}})
+    @app.action(re.compile(r"^(question|review_question)_.*"))
     def handle_question_button(ack, body, client, action):
         """Handle question option button click."""
         ack()
@@ -28,16 +29,17 @@ def register_question_handlers(app: App) -> None:
         action_id = action.get("action_id", "")
         value = action.get("value", "")
         channel_id = body.get("channel", {}).get("id", "")
-        thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
+        message_ts = body.get("message", {}).get("ts")  # Original message with buttons
+        thread_ts = body.get("message", {}).get("thread_ts") or message_ts
         user_id = body.get("user", {}).get("id", "")
 
         _run_async(
             _handle_question_button_async(
-                client, action_id, value, channel_id, thread_ts, user_id
+                client, action_id, value, channel_id, thread_ts, user_id, message_ts
             )
         )
 
-    @app.action({"action_id": {"type": "regex", "pattern": "^budget_(proceed|wait|cancel)_.*"}})
+    @app.action(re.compile(r"^budget_(proceed|wait|cancel)_.*"))
     def handle_budget_action(ack, body, client, action):
         """Handle budget exhausted action buttons."""
         ack()
@@ -64,10 +66,35 @@ async def _handle_question_button_async(
     channel_id: str,
     thread_ts: str,
     user_id: str,
+    message_ts: str = None,
 ) -> None:
     """Handle question button click asynchronously."""
     try:
-        # Parse value: "{plan_id}:{question_id}:{version}:{option_id}:{encoded_value}"
+        # Check for review question format first (Phase 37)
+        # Format: "review_answer:{artifact_id}:{option_id}:{value}"
+        if value.startswith("review_answer:"):
+            parts = value.split(":", 3)
+            if len(parts) >= 4:
+                _, artifact_id, option_id, encoded_value = parts
+
+                # Handle "Other" button for review
+                if option_id == "other":
+                    _handle_other_selected(client, channel_id, thread_ts, "review")
+                    return
+
+                await _handle_review_question_answer(
+                    client,
+                    channel_id,
+                    thread_ts,
+                    user_id,
+                    artifact_id,  # question_id is artifact_id for reviews
+                    option_id,
+                    encoded_value,
+                    message_ts,
+                )
+                return
+
+        # Parse TaskPlan question value: "{plan_id}:{question_id}:{version}:{option_id}:{encoded_value}"
         parts = value.split(":", 4)
         if len(parts) < 4:
             logger.error(f"Invalid question button value: {value}")
@@ -82,7 +109,7 @@ async def _handle_question_button_async(
             _handle_other_selected(client, channel_id, thread_ts, question_id)
             return
 
-        # Process the button answer
+        # Process the button answer for TaskPlan
         result = await _process_button_answer(
             plan_id,
             question_id,
@@ -177,6 +204,97 @@ def _handle_other_selected(client, channel_id: str, thread_ts: str, question_id:
         thread_ts=thread_ts,
         text="Please type your answer in the thread.",
     )
+
+
+async def _handle_review_question_answer(
+    client,
+    channel_id: str,
+    thread_ts: str,
+    user_id: str,
+    question_id: str,
+    option_id: str,
+    encoded_value: str,
+    message_ts: str = None,
+) -> None:
+    """Handle review question button answer (Phase 37).
+
+    For review questions, we inject the selected answer as a simulated
+    message to continue the review conversation flow.
+    """
+    from src.slack.session import SessionIdentity
+    from src.graph.runner import get_runner
+    from src.slack.handlers.dispatch import _dispatch_result
+    from src.slack.progress import ProgressTracker
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    team_id = getattr(settings, "slack_team_id", "")
+
+    # Create identity for session lookup
+    identity = SessionIdentity(
+        team_id=team_id,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+
+    # Disable buttons in original message by updating it
+    if message_ts:
+        try:
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text=f"✓ Selected: *{encoded_value}*",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"✓ Selected: *{encoded_value}*",
+                        },
+                    }
+                ],
+            )
+        except Exception as e:
+            logger.warning(f"Could not update question message: {e}")
+            # Fallback: post acknowledgment as new message
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f"Selected: *{encoded_value}*",
+            )
+    else:
+        # No message_ts, post acknowledgment as new message
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Selected: *{encoded_value}*",
+        )
+
+    # Create progress tracker
+    tracker = ProgressTracker(client, channel_id, thread_ts)
+
+    try:
+        await tracker.start("Processing answer...")
+
+        # Run graph with selected answer as message
+        runner = get_runner(identity)
+        result = await runner.run_with_message(
+            message_text=encoded_value,
+            user_id=user_id,
+        )
+
+        # Dispatch result
+        await _dispatch_result(result, identity, client, runner, tracker)
+
+    except Exception as e:
+        logger.error(f"Review question answer error: {e}")
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Error processing answer: {e}",
+        )
+    finally:
+        await tracker.complete()
 
 
 async def _process_button_answer(

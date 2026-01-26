@@ -227,3 +227,91 @@ def build_clarification_blocks(
             }],
         },
     ]
+
+
+def build_review_question_blocks(
+    question_data: dict,
+    artifact_id: str | None = None,
+) -> list[dict]:
+    """Build Slack blocks for a review question.
+
+    Simpler version of build_question_blocks for review open questions.
+    Doesn't require plan versioning - uses artifact_id for context.
+
+    Phase 39: Review questions with button options.
+
+    Args:
+        question_data: Question info (question_text, options)
+        artifact_id: Review artifact ID (optional, for tracking)
+
+    Returns:
+        List of Slack blocks (question + buttons)
+    """
+    question_text = question_data.get("question_text", "")
+    options = question_data.get("options", [])
+
+    blocks = []
+
+    # Divider before question
+    blocks.append({"type": "divider"})
+
+    # Question text section
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": f":question: *{question_text}*",
+        },
+    })
+
+    # Options as buttons (if available)
+    if options:
+        button_elements = []
+        for opt in options:
+            option_id = opt.get("option_id", "")
+            label = opt.get("label", "")
+            value = opt.get("value", option_id)
+
+            # Encode artifact_id in value for context
+            button_value = f"review_answer:{artifact_id or 'none'}:{option_id}:{value}"
+
+            button = {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": label[:75],
+                    "emoji": True,
+                },
+                "action_id": f"review_question_{option_id}",
+                "value": button_value,
+            }
+
+            button_elements.append(button)
+
+        # Add "Other" button for free text response
+        button_elements.append({
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Something else...",
+                "emoji": True,
+            },
+            "action_id": "review_question_other",
+            "value": f"review_answer:{artifact_id or 'none'}:other:OTHER",
+        })
+
+        blocks.append({
+            "type": "actions",
+            "elements": button_elements[:5],  # Slack limit
+        })
+
+    # Help text
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": "_Click a button or reply in thread to answer_",
+        }],
+    })
+
+    return blocks

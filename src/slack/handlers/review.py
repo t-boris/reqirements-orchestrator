@@ -332,7 +332,12 @@ def handle_approve_architecture(ack, body, client: WebClient):
 
 async def _handle_approve_architecture_async(body, client: WebClient):
     """Async handler for architecture approval."""
-    from src.slack.blocks import build_decision_blocks
+    from src.slack.blocks.decision_cards import build_approved_card
+    from src.db import get_connection
+    from src.db.decision_store import DecisionStore
+    from src.schemas.decision import Decision, DecisionStatus, DecisionType
+    from datetime import datetime, timezone
+    import uuid
 
     # Extract context from button value
     button_value = body["actions"][0].get("value", "{}")
@@ -453,14 +458,31 @@ Rules:
             if conflicts:
                 all_conflicts.extend([(extracted_topic, c) for c in conflicts])
 
-            # Build and post decision blocks to CHANNEL
-            decision_blocks = build_decision_blocks(
-                topic=extracted_topic,
-                decision=decision_text,
-                channel_id=channel_id,
-                thread_ts=thread_ts,
-                user_id=user_id,
-            )
+            # Create Decision record in database
+            async with get_connection() as conn:
+                decision_store = DecisionStore(conn)
+                now = datetime.now(timezone.utc)
+
+                decision_record = Decision(
+                    id=str(uuid.uuid4()),
+                    channel_id=channel_id,
+                    title=extracted_topic,
+                    description=decision_text,
+                    decision_type=DecisionType.ARCH,
+                    status=DecisionStatus.APPROVED,
+                    version=1,
+                    created_at=now,
+                    created_by=user_id,
+                    context=f"From {persona} review" if persona else None,
+                    rationale=[],
+                    alternatives=[],
+                    consequences=[],
+                )
+
+                await decision_store.create(decision_record)
+
+            # Build and post rich decision card to CHANNEL
+            decision_blocks = build_approved_card(decision_record)
 
             client.chat_postMessage(
                 channel=channel_id,
@@ -874,4 +896,199 @@ async def _handle_turn_into_workitem_async(body, client: WebClient):
                 "workitem_id": workitem.id if workitem else None,
                 "error": str(slack_err),
             }
+        )
+
+
+def handle_capture_as_decision(ack, body, client: WebClient):
+    """Handle "Capture as Decision" button click from THINK mode review.
+
+    Extracts decisions from the review artifact and creates formal Decision records.
+    Pattern: Sync wrapper with immediate ack, delegates to async.
+    """
+    ack()
+    _run_async(_handle_capture_as_decision_async(body, client))
+
+
+async def _handle_capture_as_decision_async(body, client: WebClient):
+    """Async handler for capturing review as formal Decision.
+
+    Follows INVARIANT I2 truth-first ordering:
+    1. Create Decision in database (TRUTH)
+    2. Post decision card to channel (PRESENTATION)
+    """
+    from src.db import get_connection
+    from src.db.artifact_store import ArtifactStore
+    from src.db.decision_store import DecisionStore
+    from src.schemas.decision import Decision, DecisionStatus, DecisionType
+    from src.slack.blocks.decision_cards import build_approved_card
+    from datetime import datetime, timezone
+    import uuid
+
+    # Extract context from button value
+    button_value = body["actions"][0].get("value", "{}")
+    try:
+        value = json.loads(button_value)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse capture_as_decision button value: {button_value}")
+        value = {}
+
+    artifact_id = value.get("artifact_id")
+    topic = value.get("topic", "")
+    persona = value.get("persona", "")
+
+    message = body.get("message", {})
+    message_ts = message.get("ts")
+    thread_ts = message.get("thread_ts") or message_ts
+    channel_id = body["channel"]["id"]
+    user_id = body["user"]["id"]
+
+    if not artifact_id:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text="No artifact found to capture as decision.",
+        )
+        return
+
+    logger.info(
+        "Capture as decision button clicked",
+        extra={
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "user_id": user_id,
+            "artifact_id": artifact_id,
+        }
+    )
+
+    # Disable button by updating original message
+    try:
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="✓ Capturing as decision...",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":hourglass_flowing_sand: Capturing as decision...",
+                    },
+                }
+            ],
+        )
+    except Exception as e:
+        logger.warning(f"Could not update button message: {e}")
+
+    try:
+        async with get_connection() as conn:
+            artifact_store = ArtifactStore(conn)
+            decision_store = DecisionStore(conn)
+
+            # Load artifact
+            artifact = await artifact_store.get(artifact_id)
+            if not artifact:
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=":warning: Could not find the review artifact.",
+                )
+                return
+
+            # Extract decisions from artifact
+            decisions_to_create = artifact.decisions or []
+            if not decisions_to_create:
+                # Fallback: use artifact summary as the decision
+                decisions_to_create = [artifact.summary or topic or "Review conclusion"]
+
+            now = datetime.now(timezone.utc)
+            created_decisions = []
+
+            for i, decision_text in enumerate(decisions_to_create):
+                # Determine title from decision text
+                if isinstance(decision_text, dict):
+                    title = decision_text.get("topic", decision_text.get("title", f"Decision {i+1}"))
+                    description = decision_text.get("decision", decision_text.get("description", str(decision_text)))
+                else:
+                    # String decision - use first line as title
+                    lines = str(decision_text).strip().split("\n")
+                    title = lines[0][:100] if lines else f"Decision {i+1}"
+                    description = str(decision_text)
+
+                # Create Decision record
+                decision = Decision(
+                    id=str(uuid.uuid4()),
+                    channel_id=channel_id,
+                    title=title,
+                    description=description,
+                    decision_type=DecisionType.ARCH,  # Default to architecture
+                    status=DecisionStatus.APPROVED,  # Already approved since captured from review
+                    version=1,
+                    created_at=now,
+                    created_by=user_id,
+                    # Rich context from artifact
+                    context=f"From {persona} review" if persona else "From review analysis",
+                    rationale=[],  # Can be enhanced later
+                    alternatives=[],
+                    consequences=[],
+                )
+
+                await decision_store.create(decision)
+                created_decisions.append(decision)
+
+                # Post rich decision card to channel with edit/deprecate buttons
+                decision_blocks = build_approved_card(decision)
+
+                client.chat_postMessage(
+                    channel=channel_id,
+                    blocks=decision_blocks,
+                    text=f"Architecture Decision: {title}",
+                )
+
+            # Update original message to show completion
+            if created_decisions:
+                decision_count = len(created_decisions)
+                completion_text = (
+                    f"✓ Captured as decision" if decision_count == 1
+                    else f"✓ Captured {decision_count} decisions"
+                )
+                try:
+                    client.chat_update(
+                        channel=channel_id,
+                        ts=message_ts,
+                        text=completion_text,
+                        blocks=[
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": completion_text,
+                                },
+                            }
+                        ],
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not update completion message: {e}")
+
+            # Confirm in thread
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":white_check_mark: {len(created_decisions)} decision(s) captured and posted to channel.",
+            )
+
+            logger.info(
+                "Captured decisions from artifact",
+                extra={
+                    "artifact_id": artifact_id,
+                    "decision_count": len(created_decisions),
+                    "user_id": user_id,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to capture as decision: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Sorry, I couldn't capture this as a decision: {str(e)}",
         )

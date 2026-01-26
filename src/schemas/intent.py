@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 class OpsSubtype(str, Enum):
     """Subtypes for OPS intent."""
     DEBUG = "debug"      # Triage failures, retry
-    EXPLAIN = "explain"  # Policy trace, show reasoning
+    EXPLAIN = "explain"  # Policy trace, show bot's reasoning
+    EXPAND = "expand"    # Show object details (decision rationale, alternatives, etc.)
 
 
 class SuperMode(str, Enum):

@@ -27,6 +27,18 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
     - Bot messages
     - Message edits/deletes
     """
+    # Debug: Log all incoming message events
+    logger.info(
+        "Message event received",
+        extra={
+            "channel": event.get("channel"),
+            "thread_ts": event.get("thread_ts"),
+            "subtype": event.get("subtype"),
+            "has_bot_id": bool(event.get("bot_id")),
+            "text_preview": (event.get("text") or "")[:50],
+        }
+    )
+
     # Skip bot messages
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
@@ -79,6 +91,57 @@ def handle_message(event: dict, say, client: WebClient, context: BoltContext):
     if identity.session_id in _runners:
         # Active session - process message
         _run_async(_process_thread_message(identity, text, user, client, thread_ts, channel))
+    else:
+        # No active session in memory - check for persistent state or bot mention
+        should_process = False
+        process_reason = ""
+
+        # Check 1: Bot mention in message
+        from src.config.settings import get_settings
+        settings = get_settings()
+        bot_user_id = getattr(settings, "slack_bot_user_id", None)
+        if bot_user_id and f"<@{bot_user_id}>" in text:
+            should_process = True
+            process_reason = "bot mention in thread"
+
+        # Check 2: Active checkpoint exists for this thread (sync DB query)
+        if not should_process:
+            try:
+                import psycopg
+                from src.config import get_settings
+                settings = get_settings()
+                session_id = f"{team_id}:{channel}:{thread_ts}"
+
+                # Sync query to check if checkpoint exists with review data
+                with psycopg.connect(settings.database_url) as conn:
+                    with conn.cursor() as cur:
+                        # Check LangGraph checkpoints table for this thread_id
+                        cur.execute(
+                            """
+                            SELECT 1 FROM checkpoints
+                            WHERE thread_id = %s
+                            AND (checkpoint::text LIKE '%%review_context%%'
+                                 OR checkpoint::text LIKE '%%review_artifact%%')
+                            LIMIT 1
+                            """,
+                            (session_id,)
+                        )
+                        has_review = cur.fetchone() is not None
+
+                if has_review:
+                    should_process = True
+                    process_reason = "active review in checkpoint"
+            except Exception as e:
+                logger.debug(f"Could not check checkpoint: {e}")
+
+        if should_process:
+            logger.info(
+                f"Processing thread message without active session: {process_reason}",
+                extra={"channel": channel, "thread_ts": thread_ts},
+            )
+            # Import and call the mention handler directly
+            from src.slack.handlers.core import _process_mention
+            _run_async(_process_mention(identity, text, user, client, thread_ts, channel))
 
 
 async def _process_message_files(event: dict, files: list[dict]) -> None:

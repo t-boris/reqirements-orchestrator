@@ -1,19 +1,24 @@
-"""OPS node - operational mode for debugging and explaining.
+"""OPS node - operational mode for debugging, explaining, and expanding.
 
-Handles OPS intent with two subtypes:
+Handles OPS intent with three subtypes:
 - DEBUG: Triage failures, identify causes, suggest fixes/retry
-- EXPLAIN: Show reasoning, policy traces, decision explanations
+- EXPLAIN: Show bot's reasoning, policy traces (about bot's actions)
+- EXPAND: Show object details (decision rationale, alternatives, consequences)
 
 System operator perspective - not LLM chain-of-thought.
 
 Phase 27.5: Enhanced explain mode with audit trail.
 Phase 38-06: Uses ContextBuilder for structured explain context.
+Phase 41+: EXPAND subtype for showing domain object details.
 """
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from src.schemas.intent import OpsSubtype
+
+if TYPE_CHECKING:
+    from src.schemas.decision import Decision
 from src.schemas.state import AgentState
 from src.context import ContextSpec, build_context
 
@@ -68,6 +73,31 @@ Maximum 4-5 sentences.
 If you see no relevant context, say so honestly and suggest what the user can ask about.'''
 
 
+EXPAND_PROMPT = '''You are MARO showing details about a recorded decision.
+
+DECISION:
+Title: {title}
+Type: {decision_type}
+Status: {status}
+
+Rationale: {rationale}
+
+Alternatives Considered: {alternatives}
+
+Consequences: {consequences}
+
+USER MESSAGE: "{message}"
+
+INSTRUCTIONS:
+Explain this decision in clear terms. The user wants to understand:
+1. What was decided and why
+2. What alternatives were considered (if any)
+3. What the consequences or implications are
+
+Be informative but concise. Focus on the decision's content, not on bot mechanics.
+If specific sections are empty, skip them gracefully.'''
+
+
 async def ops_node(state: AgentState) -> dict:
     """LangGraph node for OPS flow.
 
@@ -92,6 +122,8 @@ async def ops_node(state: AgentState) -> dict:
         ops_subtype = OpsSubtype.DEBUG
     elif ops_subtype_str == "explain" or ops_subtype_str == OpsSubtype.EXPLAIN:
         ops_subtype = OpsSubtype.EXPLAIN
+    elif ops_subtype_str == "expand" or ops_subtype_str == OpsSubtype.EXPAND:
+        ops_subtype = OpsSubtype.EXPAND
     else:
         # Default to DEBUG if subtype not specified
         ops_subtype = OpsSubtype.DEBUG
@@ -159,6 +191,41 @@ async def ops_node(state: AgentState) -> dict:
     channel_id = state.get("channel_id")
     thread_ts = state.get("thread_ts")
 
+    # Handle EXPAND: find decision from thread context and return rich card
+    if ops_subtype == OpsSubtype.EXPAND:
+        decision_id = await _find_decision_in_context(state)
+        if decision_id:
+            # Generate additional context via LLM
+            decision = await _get_decision(decision_id)
+            if decision:
+                try:
+                    llm = get_llm()
+                    prompt = EXPAND_PROMPT.format(
+                        title=decision.title or "Untitled",
+                        decision_type=decision.decision_type.value if decision.decision_type else "general",
+                        status=decision.status.value if decision.status else "unknown",
+                        rationale=decision.rationale or "Not specified",
+                        alternatives=decision.alternatives or "Not specified",
+                        consequences=decision.consequences or "Not specified",
+                        message=latest_human_message or "Show decision details",
+                    )
+                    response_text = await llm.chat(prompt)
+                except Exception as e:
+                    logger.warning(f"LLM call failed generating expand context: {e}")
+                    response_text = ""
+
+                return {
+                    "decision_result": {
+                        "action": "ops",
+                        "subtype": ops_subtype.value,
+                        "message": response_text,
+                        "decision_id": str(decision_id),
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                }
+        # If no decision found, fall through to generate helpful message
+        logger.info("EXPAND requested but no decision found in context")
+
     if channel_id and ops_subtype == OpsSubtype.EXPLAIN and "=== ARCHITECTURE DECISIONS" not in context_str:
         try:
             from src.db import get_connection
@@ -211,6 +278,8 @@ async def ops_node(state: AgentState) -> dict:
         logger.warning("No human message found for OPS node")
         if ops_subtype == OpsSubtype.DEBUG:
             response_text = "I don't see an error to debug. What went wrong?"
+        elif ops_subtype == OpsSubtype.EXPAND:
+            response_text = "I couldn't find a decision to expand. Which decision would you like to see details for?"
         else:
             response_text = "I can explain my reasoning, but I need context. What would you like me to explain?"
     else:
@@ -222,6 +291,14 @@ async def ops_node(state: AgentState) -> dict:
                     context=context_str or "No prior context available.",
                     message=latest_human_message
                 )
+            elif ops_subtype == OpsSubtype.EXPAND:
+                # EXPAND without decision found - provide helpful response
+                prompt = f"""The user asked to expand/show details about something, but no specific decision was found in context.
+
+Context: {context_str or "No prior context available."}
+User message: "{latest_human_message}"
+
+Please explain that you couldn't find a specific decision to expand. If there are decisions visible in the context, mention them. Otherwise, suggest how the user can specify which decision they want to see."""
             else:  # EXPLAIN
                 prompt = EXPLAIN_PROMPT.format(
                     context=context_str or "No prior context available.",
@@ -234,6 +311,8 @@ async def ops_node(state: AgentState) -> dict:
             logger.warning(f"LLM call failed in OPS node: {e}")
             if ops_subtype == OpsSubtype.DEBUG:
                 response_text = f"Debug mode: Unable to analyze the error. Please describe what went wrong."
+            elif ops_subtype == OpsSubtype.EXPAND:
+                response_text = f"Expand mode: Unable to find decision details. Please specify which decision you want to see."
             else:
                 response_text = f"Explain mode: Unable to generate explanation. Please try again."
 
@@ -247,3 +326,82 @@ async def ops_node(state: AgentState) -> dict:
             "timestamp": datetime.utcnow().isoformat(),
         }
     }
+
+
+async def _find_decision_in_context(state: AgentState) -> Optional[str]:
+    """Find decision ID from thread context or state.
+
+    Looks in multiple places:
+    1. Thread context (anchor_type=decision)
+    2. review_artifact with decision ID
+    3. Thread binding's decision_id
+
+    Args:
+        state: Current AgentState
+
+    Returns:
+        Decision ID (UUID string) if found, None otherwise
+    """
+    # 1. Check thread_context for decision anchor
+    thread_context = state.get("thread_context")
+    if thread_context:
+        anchor_type = getattr(thread_context, "anchor_type", None)
+        if anchor_type and hasattr(anchor_type, "value") and anchor_type.value == "decision":
+            object_id = getattr(thread_context, "object_id", None)
+            if object_id:
+                logger.debug(f"Found decision from thread_context: {object_id}")
+                return str(object_id)
+
+        # Check decision attribute directly
+        decision = getattr(thread_context, "decision", None)
+        if decision:
+            decision_id = getattr(decision, "id", None)
+            if decision_id:
+                logger.debug(f"Found decision from thread_context.decision: {decision_id}")
+                return str(decision_id)
+
+    # 2. Check review_artifact
+    review_artifact = state.get("review_artifact")
+    if review_artifact and isinstance(review_artifact, dict):
+        decision_id = review_artifact.get("decision_id")
+        if decision_id:
+            logger.debug(f"Found decision from review_artifact: {decision_id}")
+            return str(decision_id)
+
+    # 3. Check thread binding
+    channel_id = state.get("channel_id")
+    thread_ts = state.get("thread_ts")
+    if channel_id and thread_ts:
+        try:
+            from src.slack.thread_bindings import get_thread_binding
+
+            binding = await get_thread_binding(channel_id, thread_ts)
+            if binding and hasattr(binding, "decision_id") and binding.decision_id:
+                logger.debug(f"Found decision from thread binding: {binding.decision_id}")
+                return str(binding.decision_id)
+        except Exception as e:
+            logger.debug(f"Could not check thread binding: {e}")
+
+    return None
+
+
+async def _get_decision(decision_id: str) -> Optional["Decision"]:
+    """Fetch decision from database.
+
+    Args:
+        decision_id: UUID string of the decision
+
+    Returns:
+        Decision object if found, None otherwise
+    """
+    from src.schemas.decision import Decision
+
+    try:
+        from src.db.decision_store import DecisionStore
+
+        async with DecisionStore() as store:
+            decision = await store.get(decision_id)
+            return decision
+    except Exception as e:
+        logger.warning(f"Could not fetch decision {decision_id}: {e}")
+        return None

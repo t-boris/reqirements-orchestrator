@@ -74,8 +74,8 @@ def get_default_model(provider: LLMProvider) -> str:
         Default model name for the provider
     """
     defaults = {
-        LLMProvider.GEMINI: "gemini-1.5-flash",
+        LLMProvider.GEMINI: "gemini-3-flash-preview",
         LLMProvider.OPENAI: "gpt-4o-mini",
         LLMProvider.ANTHROPIC: "claude-3-5-sonnet-latest",
     }
-    return defaults.get(provider, "gemini-1.5-flash")
+    return defaults.get(provider, "gemini-3-flash-preview")

@@ -647,6 +647,7 @@ async def _dispatch_result(
                     # Build action buttons based on super_mode
                     # "Approve & Post Decision" only for DECIDE mode
                     super_mode = result.get("super_mode", "think")
+                    artifact_id = result.get("artifact_id")
                     action_elements = []
 
                     if super_mode == "decide":
@@ -660,6 +661,19 @@ async def _dispatch_result(
                             "action_id": "approve_architecture",
                             "value": approve_button_value,
                             "style": "primary",
+                        })
+                    elif artifact_id:
+                        # In THINK mode with artifact - offer to capture as decision
+                        capture_button_value = json.dumps({
+                            "artifact_id": artifact_id,
+                            "topic": (topic or "")[:100],
+                            "persona": persona or "",
+                        })
+                        action_elements.append({
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Capture as Decision"},
+                            "action_id": "capture_as_decision",
+                            "value": capture_button_value,
                         })
 
                     # "Turn into Jira ticket" always available
@@ -1816,11 +1830,12 @@ async def _handle_ops_response(
     identity: SessionIdentity,
     client: WebClient,
 ) -> None:
-    """Handle OPS response - debug or explain.
+    """Handle OPS response - debug, explain, or expand.
 
     Formats response based on subtype:
     - DEBUG: System operator style with triage info
-    - EXPLAIN: Policy trace format
+    - EXPLAIN: Policy trace format (about bot's reasoning)
+    - EXPAND: Show object details (decision rationale, alternatives, etc.)
 
     Args:
         result: Decision result with message and subtype
@@ -1831,11 +1846,26 @@ async def _handle_ops_response(
     subtype = result.get("subtype", "debug")
     timestamp = result.get("timestamp", "")
 
+    # EXPAND subtype: Show rich decision card if decision_id present
+    if subtype == "expand":
+        decision_id = result.get("decision_id")
+        if decision_id:
+            await _handle_expand_decision(
+                decision_id=decision_id,
+                identity=identity,
+                client=client,
+                additional_context=ops_msg,
+            )
+            return
+        # Fall through to text response if no decision_id
+
     if not ops_msg:
         ops_msg = "I couldn't generate a response."
 
     # Format prefix based on subtype
-    if subtype == "explain":
+    if subtype == "expand":
+        prefix = ":mag: *Decision Details*\n\n"
+    elif subtype == "explain":
         prefix = ":brain: *MARO Explain*\n\n"
     else:  # debug
         prefix = ":wrench: *MARO Debug*\n\n"
@@ -1878,6 +1908,76 @@ async def _handle_ops_response(
             "subtype": subtype,
         }
     )
+
+
+async def _handle_expand_decision(
+    decision_id: str,
+    identity: SessionIdentity,
+    client: WebClient,
+    additional_context: str = "",
+) -> None:
+    """Handle EXPAND subtype: show rich decision details.
+
+    Loads decision from DB and displays it with full context:
+    rationale, alternatives, consequences, etc.
+
+    Args:
+        decision_id: UUID of the decision to expand
+        identity: Session identity
+        client: Slack WebClient
+        additional_context: Optional additional text from LLM
+    """
+    from src.db.decision_store import DecisionStore
+    from src.slack.blocks.decision_cards import build_approved_card
+
+    try:
+        async with DecisionStore() as store:
+            decision = await store.get(decision_id)
+
+        if not decision:
+            client.chat_postMessage(
+                channel=identity.channel_id,
+                thread_ts=identity.thread_ts,
+                text="Decision not found.",
+            )
+            return
+
+        # Build rich decision card
+        blocks = build_approved_card(decision)
+
+        # Add additional context if provided
+        if additional_context:
+            blocks.insert(0, {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":mag: *Decision Details*\n\n{additional_context}"
+                }
+            })
+            blocks.insert(1, {"type": "divider"})
+
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            blocks=blocks,
+            text=f"Decision: {decision.title}",
+        )
+
+        logger.info(
+            "Expanded decision details",
+            extra={
+                "decision_id": decision_id,
+                "channel_id": identity.channel_id,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to expand decision {decision_id}: {e}")
+        client.chat_postMessage(
+            channel=identity.channel_id,
+            thread_ts=identity.thread_ts,
+            text=f"Failed to load decision details: {e}",
+        )
 
 
 # --- Draft Conflict Handler (Phase 27.3) ---

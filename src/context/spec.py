@@ -92,10 +92,10 @@ class ContextSpec(BaseModel):
     ) -> "ContextSpec":
         """Create spec for OPS explain mode."""
         return cls(
-            mode=SuperMode.OPERATE,
+            mode=SuperMode.THINK,  # Explain is analysis, not operation
             target=f"{channel_id}:{thread_ts}",
-            purpose="explain bot reasoning and decisions",
-            budget_tokens=3000,
+            purpose="explain decision rationale and context",
+            budget_tokens=4000,  # More budget for rich context
             required_artifacts=["review_artifact", "decisions"],
             include_history=True,
             history_limit=10,
