@@ -69,6 +69,7 @@ class Task(BaseModel):
     target: Optional[str] = None  # anchor: channel|thread|decision_id|jira_key
     params: dict[str, Any] = Field(default_factory=dict)  # Intent-specific params
     progress: Optional[dict[str, int]] = None  # {current, total} for batch ops
+    active_step: Optional[str] = None  # Current action: "Parsing requirements", "Calling Jira API"
     requires_user_input: bool = False
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
