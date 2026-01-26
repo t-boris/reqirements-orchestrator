@@ -1,122 +1,21 @@
-"""Intent Router for classifying user messages.
+"""Stage 1: Mode classification via LLM.
 
-Classifies user messages into pure user intents:
-- WORKITEM_CREATE: User wants to create a new work item (Jira ticket)
-- TICKET_ACTION: User wants to perform actions on an existing ticket
-- JIRA_COMMAND: User wants to modify ticket fields via natural language
-- SYNC_REQUEST: User wants to sync channel with Jira
-- JIRA_SEARCH: User wants to search for existing issues
-- REVIEW: User wants analysis/feedback without Jira operations
-- DISCUSSION: Casual greeting, simple question, no action needed
-- META: Questions about the bot itself
-- AMBIGUOUS: Intent unclear - triggers scope gate for user to decide
-- OPS: Operational mode (debug failures or explain decisions)
-- DECISION: User stating a decision to record (Phase 30)
+This module handles the main LLM classification call (_llm_classify)
+and multi-intent detection signals.
 
-Pattern matching used for DECISION intent detection.
-LLM classification as fallback for all intents.
-
-Phase 33-05: Context-aware classification for anchored threads.
-When in an anchored thread, implicit commands are recognized without
-explicit target (Rule A4: Implicit Commands).
+Part of the modularized intent package (Phase 42).
 """
 import logging
-import re
 from typing import Optional, TYPE_CHECKING
 
 from src.schemas.intent import (
     Intent, IntentResult, OpsSubtype, SuperMode, get_super_mode,
-    TaskPlanProposal, TaskProposal, has_multi_intent_markers,
 )
 
 if TYPE_CHECKING:
     from src.schemas.anchor import ThreadContext
 
 logger = logging.getLogger(__name__)
-
-# Re-export for backward compatibility
-IntentType = Intent  # Alias for legacy code
-
-
-# =============================================================================
-# Decision type hints based on keywords (used after LLM classification)
-# =============================================================================
-
-# Decision type hints based on keywords
-# Maps from hint type to keywords that indicate it
-DECISION_TYPE_KEYWORDS: dict[str, list[str]] = {
-    "arch": [
-        "architecture", "tech stack", "framework", "library", "database",
-        "api design", "microservice", "monolith", "stack", "technology",
-        "infrastructure", "platform", "tool", "service",
-    ],
-    "scope": [
-        "scope", "boundary", "include", "exclude", "out of scope", "in scope",
-        "mvp", "phase 1", "first version", "later", "future",
-    ],
-    "constraint": [
-        "constraint", "limitation", "must not", "cannot", "required to",
-        "must have", "non-negotiable", "hard requirement", "compliance",
-    ],
-    "priority": [
-        "priority", "p0", "p1", "p2", "first", "before", "after", "order",
-        "blocker", "critical", "urgent", "important",
-    ],
-    "structure": [
-        "epic", "story", "breakdown", "split", "decompose", "structure",
-        "parent", "child", "hierarchy",
-    ],
-    "process": [
-        "process", "workflow", "procedure", "how we", "when we",
-        "review process", "approval", "deploy", "release",
-    ],
-}
-
-
-# =============================================================================
-# Thread Context for LLM Classification
-# Thread context is now passed to LLM for context-aware intent classification.
-# =============================================================================
-
-
-async def classify_intent_with_context(
-    message: str,
-    thread_context: Optional["ThreadContext"],
-    conversation_context: dict | None = None,
-    active_draft: dict | None = None,
-) -> IntentResult:
-    """Classify intent with thread context awareness using LLM.
-
-    Thread context (decision thread, workitem thread, etc.) is passed to the LLM
-    for context-aware classification. No pattern matching is used.
-
-    Args:
-        message: User's message text.
-        thread_context: Resolved thread context (from ContextResolver).
-        conversation_context: Full conversation history.
-        active_draft: Active draft summary for classification.
-
-    Returns:
-        IntentResult with intent type, confidence, and reasons.
-    """
-    # Pass thread context to LLM for context-aware classification
-    return await _llm_classify(message, conversation_context, active_draft, thread_context)
-
-
-def _detect_decision_type_hint(message: str) -> Optional[str]:
-    """Detect decision type from keywords in message.
-
-    Returns the decision type hint (arch, scope, etc.) if keywords match,
-    None otherwise.
-    """
-    message_lower = message.lower()
-
-    for type_hint, keywords in DECISION_TYPE_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in message_lower:
-                return type_hint
-
-    return None
 
 
 async def _llm_classify(
@@ -191,11 +90,22 @@ THREAD CONTEXT (user is in an anchored thread):
 - Object ID: {object_id}{decision_info}
 NOTE: When user refers to "the decision", "this decision", "it" - they refer to THIS specific object.
 
-CRITICAL DISTINCTION for decision threads:
-- "expand the decision", "show details", "explain this decision", "what does it say" -> OPS with ops_subtype=expand
-  (User wants to see the DECISION'S content: rationale, alternatives, consequences)
-- "why did YOU do that?", "show YOUR reasoning", "explain YOUR logic" -> OPS with ops_subtype=explain
-  (User is asking about the BOT's reasoning/actions, NOT the decision content)
+CRITICAL RULE FOR DECISION THREADS (MUST FOLLOW):
+When anchor_type is 'decision', ANY request to "explain", "show", "tell me about", "what is",
+"describe" THE OBJECT (this decision, the decision, it) is ALWAYS ops_subtype=expand.
+
+Examples in decision thread -> ALL are ops_subtype=expand:
+- "explain this decision" -> EXPAND (explain the DECISION'S content)
+- "explain this" -> EXPAND (refers to THE DECISION)
+- "tell me more" -> EXPAND (about THE DECISION)
+- "what does it say" -> EXPAND (the decision content)
+- "show details" -> EXPAND
+
+ONLY use ops_subtype=explain when user explicitly asks about BOT's behavior with "you/your":
+- "why did YOU do that?" -> EXPLAIN (bot's action)
+- "explain YOUR logic" -> EXPLAIN (bot's reasoning)
+
+DEFAULT TO EXPAND when in doubt in a decision thread.
 
 For workitem threads: "update this", "change status" -> JIRA_COMMAND or TICKET_ACTION
 "ask me the questions", "continue with questions" -> means user wants to be ASKED questions, not get answers
@@ -564,12 +474,34 @@ REASON: <brief explanation>"""
         intent = Intent(intent_str.lower())
         super_mode = get_super_mode(intent)
 
-        # Fallback: infer ops_subtype from reason if not explicitly set
+        # Fallback: infer ops_subtype from reason AND original message if not explicitly set
         if intent == Intent.OPS:
+            # Check original message for expand signals (more reliable than LLM reason)
+            message_lower = message.lower()
+            expand_message_signals = [
+                "explain this decision", "explain this", "explain the decision",
+                "show details", "tell me more", "what does it say", "describe this",
+                "more about this", "decision details", "expand",
+            ]
+            # EXPLAIN requires explicit "you/your" reference to bot
+            explain_message_signals = ["why did you", "your reasoning", "your logic", "explain your"]
+
+            # First check message - more reliable than LLM reason
+            if ops_subtype is None:
+                # Check for EXPAND signals first (takes priority)
+                if any(signal in message_lower for signal in expand_message_signals):
+                    ops_subtype = OpsSubtype.EXPAND
+                    logger.info(f"Inferred ops_subtype=EXPAND from message: {message[:100]}")
+                # Only EXPLAIN if explicitly about bot ("you/your")
+                elif any(signal in message_lower for signal in explain_message_signals):
+                    ops_subtype = OpsSubtype.EXPLAIN
+                    logger.info(f"Inferred ops_subtype=EXPLAIN from message: {message[:100]}")
+
+            # Then check LLM reason as fallback
             if ops_subtype is None and reason:
                 reason_lower = reason.lower()
                 # EXPAND takes priority - showing object details
-                expand_signals = ["expand", "show details", "decision details", "show the decision", "explain the decision", "explain this decision"]
+                expand_signals = ["expand", "show details", "decision details", "show the decision", "explain the decision", "explain this"]
                 # EXPLAIN is about bot's own reasoning
                 explain_signals = ["why did you", "show your reasoning", "your logic", "bot reasoning"]
                 debug_signals = ["error", "failed", "exception", "timeout", "debug", "fix"]
@@ -582,6 +514,15 @@ REASON: <brief explanation>"""
                 elif any(signal in reason_lower for signal in debug_signals):
                     ops_subtype = OpsSubtype.DEBUG
                     logger.info(f"Inferred ops_subtype=DEBUG from reason: {reason[:100]}")
+
+            # Special case: if in decision thread context AND asking to "explain" without "your",
+            # force EXPAND because user is asking about the decision, not bot reasoning
+            if ops_subtype == OpsSubtype.EXPLAIN and thread_context:
+                anchor_type = getattr(thread_context, 'anchor_type', None)
+                if anchor_type and (hasattr(anchor_type, 'value') and anchor_type.value == 'decision' or str(anchor_type) == 'decision'):
+                    if "your" not in message_lower and "you " not in message_lower:
+                        ops_subtype = OpsSubtype.EXPAND
+                        logger.info(f"Overriding EXPLAIN->EXPAND: in decision thread without 'your' reference")
 
         return IntentResult(
             intent=intent,
@@ -611,477 +552,3 @@ REASON: <brief explanation>"""
             super_mode=SuperMode.THINK,  # REVIEW maps to THINK
             reasons=["llm classification failed, default to REVIEW"],
         )
-
-
-async def _llm_classify_multi_intent(
-    message: str,
-    conversation_context: dict | None = None,
-    active_draft: dict | None = None,
-) -> TaskPlanProposal:
-    """Use LLM to classify multiple intents from compound requests.
-
-    When message contains conjunctions like "and", "also", "plus", this function
-    extracts multiple distinct intents as a TaskPlanProposal.
-
-    Args:
-        message: User's current message text
-        conversation_context: Full conversation history (messages + summary)
-        active_draft: Active draft summary for context-aware classification
-
-    Returns:
-        TaskPlanProposal with tasks for each detected intent
-    """
-    import json
-    from src.llm import get_llm
-
-    llm = get_llm()
-
-    # Build context string from conversation history
-    context_str = ""
-    if conversation_context:
-        messages = conversation_context.get("messages", [])
-        summary = conversation_context.get("summary")
-
-        if summary:
-            context_str += f"Conversation summary:\n{summary}\n\n"
-
-        if messages:
-            context_str += "Recent messages:\n"
-            for msg in messages[-10:]:  # Last 10 messages for multi-intent context
-                user = msg.get("user", "unknown")
-                text = msg.get("text", "")
-                if text:
-                    context_str += f"[{user}]: {text}\n"
-            context_str += "\n"
-
-    prompt = f"""You are classifying user intent for a Slack bot. The user message may contain MULTIPLE distinct requests.
-
-{f"CONVERSATION CONTEXT:{chr(10)}{context_str}" if context_str else ""}
-CURRENT USER MESSAGE: "{message}"
-
-When the user message contains multiple distinct requests (e.g., "check duplicates AND create stories"),
-return ALL intents as a JSON array. Look for conjunctions: and, also, plus, then, after that.
-
-AVAILABLE INTENTS:
-- WORKITEM_CREATE: Create new work item
-- TICKET_ACTION: Create items linked to existing ticket
-- JIRA_COMMAND: Modify existing ticket fields
-- JIRA_SEARCH: Search Jira for existing issues
-- SYNC_REQUEST: Sync channel with Jira
-- REVIEW: Analysis/feedback/discussion
-- DISCUSSION: Greeting/casual
-- DECISION: Recording a decision
-- DRAFT_REFINE: Questions about draft structure
-- DRAFT_TRANSFORM: Commands to change draft structure
-
-RESPONSE FORMAT (JSON only):
-{{
-  "intents": [
-    {{"intent": "INTENT_NAME", "confidence": 0.9, "title": "Human readable task title", "params": {{}}}},
-    {{"intent": "INTENT_NAME", "confidence": 0.85, "title": "Human readable task title", "params": {{}}}}
-  ],
-  "multi_intent": true,
-  "reasons": ["why multiple intents detected"]
-}}
-
-For single intent messages, return:
-{{
-  "intents": [{{"intent": "...", "confidence": ..., "title": "...", "params": {{}}}}],
-  "multi_intent": false,
-  "reasons": ["single intent explanation"]
-}}
-
-PARAMS can include:
-- For JIRA_SEARCH: {{"search_query": "query"}}
-- For TICKET_ACTION: {{"ticket_key": "SCRUM-123", "action_type": "create_stories"}}
-- For JIRA_COMMAND: {{"ticket_key": "SCRUM-123", "field": "status", "value": "Done"}}
-
-Respond with valid JSON only, no markdown code blocks."""
-
-    try:
-        result = await llm.chat(prompt)
-
-        # Strip markdown code blocks if present
-        result = result.strip()
-        if result.startswith("```"):
-            # Remove first line (```json or ```)
-            lines = result.split("\n")
-            result = "\n".join(lines[1:])
-        if result.endswith("```"):
-            result = result[:-3]
-        result = result.strip()
-
-        data = json.loads(result)
-
-        intents_data = data.get("intents", [])
-        is_multi = data.get("multi_intent", False)
-        reasons = data.get("reasons", [])
-
-        tasks = []
-        for idx, item in enumerate(intents_data):
-            intent_str = item.get("intent", "REVIEW").upper()
-            if intent_str == "TICKET":
-                intent_str = "WORKITEM_CREATE"
-
-            try:
-                intent = Intent(intent_str.lower())
-            except ValueError:
-                intent = Intent.REVIEW
-
-            super_mode = get_super_mode(intent)
-
-            task = TaskProposal(
-                intent=intent,
-                super_mode=super_mode,
-                confidence=float(item.get("confidence", 0.8)),
-                title=item.get("title", f"Task {idx + 1}"),
-                params=item.get("params", {}),
-                depends_on_indices=[],
-            )
-            tasks.append(task)
-
-        return TaskPlanProposal(
-            tasks=tasks,
-            is_multi_intent=is_multi or len(tasks) > 1,
-            low_confidence_signal=any(t.confidence < 0.7 for t in tasks),
-            trigger_message=message,
-            reasons=reasons,
-        )
-
-    except Exception as e:
-        logger.warning(f"Multi-intent LLM classification failed: {e}, returning single-task fallback")
-        # Fallback to single task with REVIEW intent
-        return TaskPlanProposal(
-            tasks=[TaskProposal(
-                intent=Intent.REVIEW,
-                super_mode=SuperMode.THINK,
-                confidence=0.5,
-                title="Review request",
-                params={},
-                depends_on_indices=[],
-            )],
-            is_multi_intent=False,
-            low_confidence_signal=True,
-            trigger_message=message,
-            reasons=["multi-intent classification failed, fallback to REVIEW"],
-        )
-
-
-# =============================================================================
-# Multi-intent detection heuristics (Phase 35)
-# Determine when to trigger multi-intent classification.
-# =============================================================================
-
-# Action verbs that suggest distinct operations
-ACTION_VERBS = [
-    "create", "check", "update", "review", "search", "find", "add",
-    "delete", "sync", "approve", "reject", "assign", "move", "mark",
-]
-
-
-def should_use_multi_intent_classification(
-    message: str,
-    single_result: IntentResult,
-) -> bool:
-    """Determine if message warrants multi-intent classification.
-
-    Signals:
-    1. Explicit conjunctions in message
-    2. Low confidence on top-1 (< 0.7)
-    3. Multiple action verbs detected
-
-    Args:
-        message: User's message text
-        single_result: Result from single-intent classification
-
-    Returns:
-        True if multi-intent classification should be used
-    """
-    # Signal 1: Conjunctions
-    if has_multi_intent_markers(message):
-        logger.debug(f"Multi-intent signal: conjunctions detected in '{message[:50]}...'")
-        return True
-
-    # Signal 2: Low confidence suggests ambiguity
-    if single_result.confidence < 0.7:
-        logger.debug(f"Multi-intent signal: low confidence {single_result.confidence}")
-        return True
-
-    # Signal 3: Multiple action verbs
-    message_lower = message.lower()
-    verb_count = sum(1 for verb in ACTION_VERBS if verb in message_lower)
-    if verb_count >= 2:
-        logger.debug(f"Multi-intent signal: {verb_count} action verbs detected")
-        return True
-
-    return False
-
-
-async def classify_intent(
-    message: str,
-    conversation_context: dict | None = None,
-    active_draft: dict | None = None,  # Phase 26
-    return_proposal: bool = False,  # Phase 35: Return TaskPlanProposal for multi-intent
-) -> IntentResult | TaskPlanProposal:
-    """Classify user message intent using LLM only.
-
-    All intent classification is done via LLM - no pattern matching.
-
-    Phase 35: When return_proposal=True, returns TaskPlanProposal with multiple
-    tasks for compound requests. Uses should_use_multi_intent_classification()
-    to determine if multi-intent re-classification is needed.
-
-    Args:
-        message: User's message text
-        conversation_context: Full conversation history for context
-        active_draft: Active draft summary for context-aware classification (Phase 26)
-        return_proposal: If True, return TaskPlanProposal (Phase 35)
-
-    Returns:
-        IntentResult for single intent, or TaskPlanProposal if return_proposal=True
-    """
-    # LLM-only classification (no pattern matching)
-    single_result = await _llm_classify(message, conversation_context, active_draft)
-    logger.info(
-        f"Intent classified by LLM: {single_result.intent.value}, "
-        f"confidence={single_result.confidence}, persona={single_result.persona_hint}, reasons={single_result.reasons}"
-    )
-
-    # Phase 35: Check if we should use multi-intent classification
-    if return_proposal and should_use_multi_intent_classification(message, single_result):
-        logger.info(
-            f"Multi-intent re-classification triggered for message: "
-            f"markers={has_multi_intent_markers(message)}, confidence={single_result.confidence}"
-        )
-        proposal = await _llm_classify_multi_intent(message, conversation_context, active_draft)
-        return proposal
-
-    if return_proposal:
-        # Wrap single result in TaskPlanProposal
-        return TaskPlanProposal(
-            tasks=[TaskProposal(
-                intent=single_result.intent,
-                super_mode=single_result.super_mode or get_super_mode(single_result.intent),
-                confidence=single_result.confidence,
-                title=_generate_task_title(single_result),
-                params=_extract_intent_params(single_result),
-                depends_on_indices=[],
-            )],
-            is_multi_intent=False,
-            low_confidence_signal=single_result.confidence < 0.7,
-            trigger_message=message,
-            reasons=single_result.reasons,
-        )
-
-    return single_result
-
-
-def _generate_task_title(result: IntentResult) -> str:
-    """Generate human-readable task title from IntentResult."""
-    titles = {
-        Intent.WORKITEM_CREATE: "Create work item",
-        Intent.TICKET_ACTION: f"Action on {result.ticket_key or 'ticket'}",
-        Intent.JIRA_COMMAND: f"Update {result.command_field or 'field'}",
-        Intent.JIRA_SEARCH: f"Search Jira{': ' + result.search_query if result.search_query else ''}",
-        Intent.REVIEW: "Review/analysis",
-        Intent.DISCUSSION: "Discussion",
-        Intent.DECISION: result.decision_title_hint or "Record decision",
-        Intent.DRAFT_REFINE: "Refine draft",
-        Intent.DRAFT_TRANSFORM: f"Transform draft ({result.transform_operation or 'structure'})",
-        Intent.SYNC_REQUEST: "Sync with Jira",
-        Intent.CHANGE_REQUEST: "Change request",
-    }
-    return titles.get(result.intent, "Process request")
-
-
-def _extract_intent_params(result: IntentResult) -> dict:
-    """Extract intent-specific parameters from IntentResult."""
-    params = {}
-    if result.ticket_key:
-        params["ticket_key"] = result.ticket_key
-    if result.action_type:
-        params["action_type"] = result.action_type
-    if result.command_type:
-        params["command_type"] = result.command_type
-    if result.command_field:
-        params["command_field"] = result.command_field
-    if result.command_value:
-        params["command_value"] = result.command_value
-    if result.search_query:
-        params["search_query"] = result.search_query
-    if result.transform_operation:
-        params["transform_operation"] = result.transform_operation
-    if result.decision_type_hint:
-        params["decision_type_hint"] = result.decision_type_hint
-    if result.decision_title_hint:
-        params["decision_title_hint"] = result.decision_title_hint
-    if result.ops_subtype:
-        params["ops_subtype"] = result.ops_subtype.value  # Serialize to string
-    return params
-
-
-async def intent_router_node(state: dict) -> dict:
-    """LangGraph node for intent routing.
-
-    Gets the latest human message and classifies intent using LLM with full context.
-    After classification, resolves attachment context based on SuperMode policy.
-    Returns partial state update with intent_result and attachment_context.
-
-    Phase 35: When multi-intent is detected, stores TaskPlanProposal in intent_result
-    for task_decomposer to use.
-
-    Args:
-        state: Current AgentState dict
-
-    Returns:
-        Partial state update with intent_result and attachment_context
-    """
-    from langchain_core.messages import HumanMessage
-    from src.slack.handlers.dispatch import resolve_attachment_context
-
-    # Check if intent is already forced (e.g., from scope_gate selection or continuation detection)
-    existing_intent = state.get("intent_result")
-    if existing_intent:
-        reasons = existing_intent.get("reasons", [])
-        forced_patterns = ["scope_gate", "event_router", "continuation"]
-        if any(pattern in r for r in reasons for pattern in forced_patterns):
-            logger.info(f"Skipping intent classification - already forced: {existing_intent.get('intent')}, reasons={reasons}")
-            return {"intent_result": existing_intent}
-
-    # Get latest human message
-    messages = state.get("messages", [])
-    latest_human_message = None
-
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            latest_human_message = msg.content
-            break
-
-    if not latest_human_message:
-        logger.warning("No human message found for intent classification")
-        result = IntentResult(
-            intent=Intent.REVIEW,
-            confidence=0.5,
-            super_mode=SuperMode.THINK,  # REVIEW maps to THINK
-            reasons=["no message found, default to REVIEW"],
-        )
-        proposal = None
-    else:
-        # Get conversation context for LLM
-        conversation_context = state.get("conversation_context")
-
-        # Build active draft summary for context-aware classification (Phase 26)
-        active_draft = None
-        draft = state.get("draft")
-        if draft and hasattr(draft, 'title') and draft.title:
-            active_draft = {
-                "title": draft.title,
-                "issue_type": draft.issue_type.value if hasattr(draft, 'issue_type') and draft.issue_type else None,
-                "requested_scope": draft.requested_scope.value if hasattr(draft, 'requested_scope') and draft.requested_scope else None,
-            }
-
-        # Phase 33-05: Use context-aware classification when thread_context available
-        thread_context = state.get("thread_context")
-        if thread_context:
-            result = await classify_intent_with_context(
-                latest_human_message,
-                thread_context,
-                conversation_context,
-                active_draft,
-            )
-            proposal = None  # Context-aware doesn't support return_proposal yet
-        else:
-            # Phase 35: Use return_proposal=True to get TaskPlanProposal for multi-intent
-            classification_result = await classify_intent(
-                latest_human_message,
-                conversation_context,
-                active_draft,
-                return_proposal=True,
-            )
-
-            # Handle both return types
-            if isinstance(classification_result, TaskPlanProposal):
-                proposal = classification_result
-                result = proposal.to_single_intent()
-            else:
-                result = classification_result
-                proposal = None
-
-    logger.info(
-        f"IntentRouter: intent={result.intent.value}, "
-        f"confidence={result.confidence}, reasons={result.reasons}"
-        f"{', multi_intent=True' if proposal and proposal.is_multi_intent else ''}"
-    )
-
-    # Phase 34: Resolve attachment context based on SuperMode policy
-    # This populates state["attachment_context"] for downstream nodes
-    intent_result_dict = result.model_dump()
-
-    # Phase 35: Store TaskPlanProposal in intent_result for task_decomposer
-    if proposal:
-        intent_result_dict["task_plan_proposal"] = proposal.model_dump()
-        # Set super_mode from proposal's primary mode
-        intent_result_dict["super_mode"] = proposal.primary_mode.value
-
-    state_update: dict = {"intent_result": intent_result_dict}
-
-    # Store super_mode in state for downstream nodes (e.g., review node uses it for cite mode)
-    state_update["super_mode"] = result.super_mode
-
-    try:
-        updated_state = await resolve_attachment_context(state, result.super_mode)
-        if updated_state.get("attachment_context"):
-            state_update["attachment_context"] = updated_state["attachment_context"]
-            logger.debug(
-                "Attachment context resolved in intent_router",
-                extra={
-                    "super_mode": result.super_mode.value,
-                    "pinned_count": len(updated_state["attachment_context"].pinned),
-                    "retrieved_count": len(updated_state["attachment_context"].retrieved_chunks),
-                }
-            )
-    except Exception as e:
-        logger.warning(f"Failed to resolve attachment context: {e}")
-        # Non-blocking - continue without attachment context
-
-    return state_update
-
-
-# === Phase 39: New Intent Router Integration ===
-
-async def classify_intent_v2(state: "AgentState") -> dict:
-    """New intent classification using Phase 39 router.
-
-    Wraps intent_router_node for gradual migration.
-    Returns both new envelope and legacy IntentResult.
-    """
-    from src.graph.intent_router import intent_router_node
-
-    result = await intent_router_node(state)
-
-    # Log migration metrics
-    envelope = result.get("envelope")
-    legacy = result.get("intent_result")
-
-    if envelope and legacy:
-        logger.info(
-            f"Intent v2: envelope={envelope.kind.value}, "
-            f"legacy={legacy.intent.value}, "
-            f"match={envelope.intent == legacy.intent if envelope.intent else 'N/A'}"
-        )
-
-    return result
-
-
-def get_intent_classifier(use_v2: bool = False):
-    """Get intent classifier function.
-
-    Args:
-        use_v2: If True, use Phase 39 router. Default False for safety.
-
-    Returns:
-        Classifier function
-    """
-    if use_v2:
-        return classify_intent_v2
-    return intent_router_node  # Original
