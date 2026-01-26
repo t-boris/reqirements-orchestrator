@@ -4,12 +4,65 @@ Decisions are versioned entities that represent architectural, scope, constraint
 and process decisions. Jira is a projection of decisions, not the source of truth.
 
 Core shift: From "bot writes to Jira" to "decisions are versioned, Jira is a projection."
+
+Phase 40: Added rich context fields to capture WHY, not just WHAT:
+- rationale: 2-6 bullets explaining the reasoning
+- context: status quo / what was before
+- alternatives: what was considered and why rejected
+- consequences: impact and constraints introduced
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+# =============================================================================
+# Rich Context Field Models (Phase 40)
+# =============================================================================
+
+
+class RationaleItem(BaseModel):
+    """Single rationale bullet point.
+
+    Enables structured reasoning capture for:
+    - UI rendering with appropriate formatting
+    - LLM extraction with validation
+    - Jira projection with proper formatting
+    """
+
+    text: str = Field(description="The reasoning point")
+    weight: Optional[Literal["primary", "secondary"]] = Field(
+        default=None,
+        description="Importance: primary = core reason, secondary = supporting",
+    )
+
+
+class Alternative(BaseModel):
+    """An alternative that was considered.
+
+    Captures what else was on the table and why it wasn't chosen.
+    Helps future readers understand the decision space.
+    """
+
+    option: str = Field(description="What was considered")
+    rejected_reason: str = Field(description="Why it was rejected")
+
+
+class Consequence(BaseModel):
+    """Impact or constraint introduced by this decision.
+
+    Documents the ripple effects: what changes, what's constrained,
+    what needs attention going forward.
+    """
+
+    area: str = Field(description="What area is affected (e.g., 'Performance', 'Security')")
+    impact: str = Field(description="What changes or is introduced")
+    severity: Optional[Literal["minor", "moderate", "major"]] = Field(
+        default=None,
+        description="How significant is this impact",
+    )
 
 
 class DecisionType(str, Enum):
