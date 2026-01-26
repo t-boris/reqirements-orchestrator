@@ -112,23 +112,59 @@ async def handle_triage_answer(
         )
 
         # Update the original message to show the selected answer
+        # Preserve the question text, just replace buttons with the selection
         if message_ts:
             try:
-                # Find the label for the selected value
+                # Get original message to extract question text
+                original_blocks = body.get("message", {}).get("blocks", [])
+                question_text = ""
+                for block in original_blocks:
+                    if block.get("type") == "section":
+                        text_obj = block.get("text", {})
+                        text = text_obj.get("text", "")
+                        # Find the bold question text (starts with *)
+                        if text.startswith("*") and text.endswith("*"):
+                            question_text = text
+                            break
+
+                # Find the label for the selected value (from button options)
                 label = answer_value
+                for block in original_blocks:
+                    if block.get("type") == "actions":
+                        for element in block.get("elements", []):
+                            if element.get("type") == "button":
+                                btn_value = element.get("value", "")
+                                try:
+                                    btn_data = json.loads(btn_value)
+                                    if btn_data.get("value") == answer_value:
+                                        label = element.get("text", {}).get("text", answer_value)
+                                        break
+                                except json.JSONDecodeError:
+                                    pass
+
+                # Build updated blocks: keep question, show selection
+                updated_blocks = [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": question_text or "Question answered",
+                        },
+                    },
+                    {
+                        "type": "context",
+                        "elements": [{
+                            "type": "mrkdwn",
+                            "text": f"✓ *{label}*",
+                        }],
+                    },
+                ]
+
                 client.chat_update(
                     channel=channel_id,
                     ts=message_ts,
-                    text=f"Selected: *{label}*",
-                    blocks=[
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"Selected: *{label}*",
-                            },
-                        },
-                    ],
+                    text=f"{question_text} → {label}",
+                    blocks=updated_blocks,
                 )
             except Exception as e:
                 logger.warning(f"Could not update triage question message: {e}")
