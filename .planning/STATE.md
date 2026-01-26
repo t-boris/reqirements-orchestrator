@@ -13,11 +13,11 @@ See: .planning/PROJECT.md (updated 2026-01-23)
 ## Current Position
 
 Phase: 39-intent-classification-v2
-Plan: 5 of 7 in current phase
+Plan: 6 of 7 in current phase
 Status: In progress
-Last activity: 2026-01-25 — Completed 39-05-PLAN.md
+Last activity: 2026-01-25 — Completed 39-06-PLAN.md
 
-Progress: █████░░░░░░░░░░░░░░░░░░░░ 5/7 plans
+Progress: ██████░░░░░░░░░░░░░░░░░░░ 6/7 plans
 
 ## Milestones Summary
 
@@ -338,9 +338,9 @@ Phase 37-05 decisions:
 ## Session Continuity
 
 Last session: 2026-01-25
-Stopped at: Completed 39-05-PLAN.md (Ambiguity Policy + Risk Guard)
+Stopped at: Completed 39-06-PLAN.md (Unified Intent Router)
 Resume file: None
-Next action: Execute 39-06-PLAN.md
+Next action: Execute 39-07-PLAN.md
 
 Phase 39-01 decisions:
 - IntentEnvelope unified output format with kind: single/plan/ambiguous
@@ -371,6 +371,14 @@ Phase 39-05 decisions:
 - Policy order: target ambiguity -> risk guard -> margin/confidence
 - Risk guard triggers ambiguous for SINGLE, requires_confirm for PLAN
 - _convert_to_ambiguous includes original intent + alternatives + safe fallback
+
+Phase 39-06 decisions:
+- route_intent() orchestrates Stage 0 -> 1 -> 2 -> Policy in sequence
+- Stage 0 bypass creates deterministic envelope with confidence=1.0
+- Stage 0 constraints boost priority modes by 0.2 score
+- Context built using ContextSpec.for_extraction() when channel+thread available
+- route_after_intent routes by envelope kind then by mode/intent
+- Terminal intents are DISCUSSION and META (CHAT mode)
 
 Phase 38-01 decisions:
 - ReviewArtifact stored in review_artifacts table (not checkpoint-only)
