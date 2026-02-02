@@ -54,15 +54,17 @@ Key deliverables:
 ### Phase 3: Intent & Modes
 **Goal**: 2-stage intent classification with 4 SuperModes
 **Depends on**: Phase 2
-**Research**: Unlikely (spec defines approach)
-**Plans**: TBD
+**Research**: Complete (03-RESEARCH.md)
+**Plans**: 6 (03-01 through 03-06)
 
 Key deliverables:
-- PreGates (deterministic routing)
-- LLM Router
+- LLM abstraction layer (LiteLLM + Instructor for provider-agnostic access)
+- PreGates (deterministic routing for commands, actions, approvals)
+- LLM Router with structured output and confidence thresholds
+- Safety Evaluator (lifecycle checks, permissions, confirmation requirements)
 - SuperMode enum (CREATE, MODIFY, RECORD, CONVERSE)
-- Mode handlers skeleton
-- LLM abstraction layer (Gemini default)
+- Mode handler skeletons with dispatcher
+- Architecture documentation update
 
 ### Phase 4: Entity Lifecycle
 **Goal**: Unified entity model with full lifecycle support
@@ -127,7 +129,7 @@ Key deliverables:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete | 2026-02-02 |
 | 2. Slack Integration | 5/5 | Complete | 2026-02-02 |
-| 3. Intent & Modes | 0/TBD | Not started | - |
+| 3. Intent & Modes | 0/6 | Planned | - |
 | 4. Entity Lifecycle | 0/TBD | Not started | - |
 | 5. Process Orchestration | 0/TBD | Not started | - |
 | 6. Jira Projection | 0/TBD | Not started | - |
