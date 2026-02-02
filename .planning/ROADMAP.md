@@ -69,16 +69,17 @@ Key deliverables:
 ### Phase 4: Entity Lifecycle
 **Goal**: Unified entity model with full lifecycle support
 **Depends on**: Phase 3
-**Research**: Unlikely (sum types defined in spec)
-**Plans**: TBD
+**Research**: None (sum types already defined in spec)
+**Plans**: 7 (04-01 through 04-07)
 
 Key deliverables:
-- Entity sum types (Draft, Proposed, Approved, Committed, Deprecated)
-- Channel aggregate root
-- Entity projections
-- Approval/Objection handling
-- Canonical message management
-- Multi-user attribution
+- Approval/Objection lifecycle events (04-01)
+- Entity lifecycle transition functions (04-02)
+- Channel aggregate root (04-03)
+- Updated projections for approval/objection (04-04)
+- Mode handler integration with entities (04-05)
+- SafetyEvaluator with entity state checks (04-06)
+- Architecture documentation update (04-07)
 
 ### Phase 5: Process Orchestration
 **Goal**: Multi-stage process, plan execution, workflow coordination
@@ -130,7 +131,7 @@ Key deliverables:
 | 1. Foundation | 5/5 | Complete | 2026-02-02 |
 | 2. Slack Integration | 5/5 | Complete | 2026-02-02 |
 | 3. Intent & Modes | 6/6 | Complete | 2026-02-02 |
-| 4. Entity Lifecycle | 0/TBD | Not started | - |
+| 4. Entity Lifecycle | 0/7 | Planning complete | - |
 | 5. Process Orchestration | 0/TBD | Not started | - |
 | 6. Jira Projection | 0/TBD | Not started | - |
 | 7. Polish & Deploy | 0/TBD | Not started | - |
