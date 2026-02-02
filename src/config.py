@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     )
 
     # Application settings
+    environment: Literal["development", "staging", "production"] = Field(
+        default="development", description="Application environment"
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO", description="Logging level"
     )
