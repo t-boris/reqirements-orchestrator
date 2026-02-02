@@ -28,13 +28,17 @@ async def _handle_review_continuation(
     identity: SessionIdentity,
     client: WebClient,
 ) -> None:
-    """Handle review_continuation action - synthesized response to user's answers."""
+    """Handle review_continuation action - synthesized response to user's answers.
+
+    Phase 45: Also handles decision capture and transition offers.
+    """
     continuation_msg = result.get("message", "")
     persona = result.get("persona", "")
     topic = result.get("topic", "")
     is_questions = result.get("is_questions", False)
     is_synthesis = result.get("is_synthesis", False)  # Phase 43: final synthesis with buttons
     questions_data = result.get("questions_data", [])
+    captured_decisions = result.get("captured_decisions", [])  # Phase 45
 
     if persona:
         prefix = f"*{persona}:*\n\n"
@@ -176,6 +180,17 @@ async def _handle_review_continuation(
                 blocks=followup_blocks,
                 text="Follow-up question",
             )
+
+    # Phase 45: Post transition offer if decisions have been captured
+    if captured_decisions and len(captured_decisions) >= 2:
+        from src.slack.handlers.question import _post_decision_transition_offer
+
+        await _post_decision_transition_offer(
+            client=client,
+            channel_id=identity.channel_id,
+            thread_ts=identity.thread_ts or "",
+            captured_decisions=captured_decisions,
+        )
 
 
 async def _handle_review(

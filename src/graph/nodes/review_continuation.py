@@ -293,6 +293,8 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     Uses PATCH mode by default for efficiency - outputs only changes.
     Full synthesis available via "Show full architecture" button.
 
+    Phase 45: Detects decisions in user's free-text answers using LLM.
+
     Respects freeze semantics (Phase 20):
     - If review_context is None (frozen), don't continue
     - If review_context.state is POSTED or APPROVED, don't continue
@@ -306,6 +308,7 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     from langchain_core.messages import HumanMessage
     from src.llm import get_llm
     from src.schemas.state import ReviewState
+    from src.questions.decision_detector import detect_decision
 
     # Don't continue if review is frozen or already posted
     review_context = state.get("review_context")
@@ -346,6 +349,52 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
     if all_questions_answered and qa_summary:
         user_answers = f"All questions have been answered:\n\n{qa_summary}"
         logger.info("Review synthesis triggered with accumulated Q&A")
+
+    # Phase 45: Detect decisions in user's free-text answer (non-button)
+    # Only check if not synthesis (synthesis already captured decisions via buttons)
+    if user_answers and not all_questions_answered:
+        try:
+            # Get pending questions to provide context
+            pending_questions = review_context.get("pending_questions", [])
+            question_context = None
+            if pending_questions:
+                # Use first pending question as context
+                from src.schemas.question import QuestionTask, QuestionType
+                first_q = pending_questions[0]
+                question_context = QuestionTask(
+                    question_id=first_q.get("question_id", ""),
+                    question_type=QuestionType(first_q.get("question_type", "ask_user")),
+                    question_text=first_q.get("question_text", ""),
+                    target_field=first_q.get("target_field"),
+                    options=None,
+                )
+
+            decision = await detect_decision(user_answers, question_context)
+
+            if decision and decision.confidence >= 0.7:
+                # Capture the decision
+                captured_decisions = review_context.get("captured_decisions", [])
+                captured_decisions.append({
+                    "decision_text": decision.decision_text,
+                    "decision_type": decision.decision_type.value,
+                    "confidence": decision.confidence,
+                    "source_question": decision.source_question,
+                    "captured_at": decision.captured_at.isoformat(),
+                })
+                review_context["captured_decisions"] = captured_decisions
+
+                logger.info(
+                    "Decision captured from free-text continuation",
+                    extra={
+                        "decision_text": decision.decision_text[:50],
+                        "decision_type": decision.decision_type.value,
+                        "confidence": decision.confidence,
+                        "total_captured": len(captured_decisions),
+                    },
+                )
+        except Exception as e:
+            # Decision detection is non-blocking
+            logger.warning(f"Decision detection failed (non-blocking): {e}")
 
     # Get review context fields
     topic = review_context.get("topic", "Architecture discussion")
@@ -422,22 +471,14 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                 "review_context": updated_context,
             }
 
-        # Extract questions WITH options directly from LLM response
-        # This avoids a second LLM call and preserves the options the LLM already generated
-        from src.graph.nodes.review import _extract_questions_with_options
+        # Extract questions and generate button options using LLM
+        # Phase 45: Use DiscussionProvider for consistent option generation
+        from src.graph.nodes.review import _extract_questions_with_options, _generate_question_options
         extracted_qna = _extract_questions_with_options(response_content)
 
         if extracted_qna and question_round <= max_question_rounds:
-            questions_data = []
-            for i, qna in enumerate(extracted_qna):
-                q_data = {
-                    "question_id": f"review_q_{i}",
-                    "question_text": qna["question_text"],
-                    "question_type": "ask_user",
-                    "target_field": f"answer_{i}",
-                    "options": qna.get("options"),
-                }
-                questions_data.append(q_data)
+            # Generate button options for each question using LLM
+            questions_data = await _generate_question_options(extracted_qna, topic)
 
             logger.info(
                 f"Extracted {len(questions_data)} questions from continuation",
@@ -445,6 +486,8 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
             )
 
             if questions_data:
+                # Include captured_decisions in review_context
+                captured_decisions = review_context.get("captured_decisions", [])
                 return {
                     "decision_result": {
                         "action": "review_continuation",
@@ -454,14 +497,18 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                         "version": current_version,
                         "is_questions": True,
                         "questions_data": questions_data,
+                        "captured_decisions": captured_decisions,  # Phase 45
                     },
                     "review_context": {
                         **updated_context,
                         "question_round": question_round,
                         "awaiting_answers": True,
+                        "captured_decisions": captured_decisions,  # Persist
                     },
                 }
 
+        # Phase 45: Include captured decisions for transition offer
+        captured_decisions = review_context.get("captured_decisions", [])
         return {
             "decision_result": {
                 "action": "review_continuation",
@@ -470,8 +517,12 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                 "topic": topic,
                 "version": current_version,
                 "is_patch": True,
+                "captured_decisions": captured_decisions,  # Phase 45
             },
-            "review_context": updated_context,
+            "review_context": {
+                **updated_context,
+                "captured_decisions": captured_decisions,  # Persist
+            },
         }
 
     except Exception as e:

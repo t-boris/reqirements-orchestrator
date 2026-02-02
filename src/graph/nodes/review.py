@@ -381,6 +381,73 @@ async def _store_review_artifact(
         return None
 
 
+async def _generate_question_options(
+    extracted_qna: list[dict],
+    topic: str | None,
+) -> list[dict]:
+    """Generate button options for extracted questions using LLM.
+
+    Phase 45: Convert text-based questions to structured format with options.
+    Uses DiscussionProvider for LLM-based option generation.
+
+    Args:
+        extracted_qna: List of dicts with question_text from _extract_questions_with_options
+        topic: Discussion topic for context
+
+    Returns:
+        List of question data dicts with generated options
+    """
+    from src.questions.discussion_provider import DiscussionProvider
+
+    if not extracted_qna:
+        return []
+
+    provider = DiscussionProvider()
+    context = {"topic": topic} if topic else {}
+
+    questions_data = []
+    for i, qna in enumerate(extracted_qna):
+        question_text = qna.get("question_text", "")
+        if not question_text:
+            continue
+
+        # Generate button options using LLM
+        options = await provider.generate_options_for_question(question_text, context)
+
+        # Convert QuestionOption objects to dicts for JSON serialization
+        options_data = None
+        if options:
+            options_data = [
+                {
+                    "option_id": opt.option_id,
+                    "label": opt.label,
+                    "value": opt.value,
+                    "description": opt.description,
+                }
+                for opt in options
+            ]
+
+        q_data = {
+            "question_id": f"review_q_{i}",
+            "question_text": question_text,
+            "question_type": "confirm_scope" if options_data else "ask_user",
+            "target_field": f"answer_{i}",
+            "options": options_data,
+        }
+        questions_data.append(q_data)
+
+        logger.debug(
+            f"Generated options for question {i}",
+            extra={
+                "question_preview": question_text[:50],
+                "has_options": bool(options_data),
+                "options_count": len(options_data) if options_data else 0,
+            }
+        )
+
+    return questions_data
+
+
 async def review_node(state: AgentState) -> dict[str, Any]:
     """Generate persona-based analysis for review requests.
 
@@ -519,19 +586,10 @@ Provide your analysis:"""
             user_id=user_id,
         )
 
-        # Phase 39: Extract questions WITH options directly from LLM response
-        # This avoids a second LLM call and preserves the options the LLM already generated
+        # Phase 39/45: Extract questions and generate button options via LLM
+        # Use DiscussionProvider to convert text questions to structured QuestionTask
         extracted_qna = _extract_questions_with_options(analysis)
-        questions_data = []
-        for i, qna in enumerate(extracted_qna):
-            q_data = {
-                "question_id": f"review_q_{i}",
-                "question_text": qna["question_text"],
-                "question_type": "ask_user",
-                "target_field": f"answer_{i}",
-                "options": qna.get("options"),  # Already extracted from text
-            }
-            questions_data.append(q_data)
+        questions_data = await _generate_question_options(extracted_qna, topic)
 
         logger.info(
             f"Extracted {len(questions_data)} questions from review",
