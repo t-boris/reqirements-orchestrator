@@ -29,8 +29,8 @@ async def _handle_record_decisions_async(
 ) -> None:
     """Phase 45: Create formal Decision entities from captured decisions.
 
-    Retrieves captured_decisions from review_context and creates
-    Decision entities in the database.
+    Retrieves captured_decisions from review_context, creates Decision entities,
+    posts canonical messages, and pins them.
 
     Args:
         client: Slack client
@@ -45,8 +45,7 @@ async def _handle_record_decisions_async(
     from src.db.connection import get_connection
     from src.db.decision_store import DecisionStore
     from src.schemas.decision import DecisionType, DecisionStatus
-    from datetime import datetime, timezone
-    import uuid
+    from src.slack.blocks.decision_cards import build_compact_draft_card
 
     identity = SessionIdentity(
         team_id=team_id,
@@ -69,8 +68,10 @@ async def _handle_record_decisions_async(
             )
             return
 
-        # Create Decision entities
+        # Create Decision entities and post canonical messages
         created_decisions = []
+        pinned_count = 0
+
         async with get_connection() as conn:
             store = DecisionStore(conn)
 
@@ -90,8 +91,38 @@ async def _handle_record_decisions_async(
                 )
                 created_decisions.append(decision)
 
+                # Post canonical message for this decision
+                blocks = build_compact_draft_card(decision)
+                try:
+                    post_result = client.chat_postMessage(
+                        channel=channel_id,
+                        blocks=blocks,
+                        text=f"Decision: {decision.title}",
+                    )
+
+                    canonical_ts = post_result.get("ts")
+                    if canonical_ts:
+                        # Store canonical message reference
+                        await store.set_canonical_message(
+                            decision_id=decision.id,
+                            message_ts=canonical_ts,
+                        )
+
+                        # Pin the canonical message
+                        try:
+                            client.pins_add(
+                                channel=channel_id,
+                                timestamp=canonical_ts,
+                            )
+                            pinned_count += 1
+                        except Exception as pin_error:
+                            logger.warning(f"Could not pin decision message: {pin_error}")
+
+                except Exception as post_error:
+                    logger.error(f"Could not post canonical message: {post_error}")
+
                 logger.info(
-                    "Created decision from captured",
+                    "Created and posted decision",
                     extra={
                         "decision_id": decision.id,
                         "decision_type": decision_type.value,
@@ -105,6 +136,8 @@ async def _handle_record_decisions_async(
             for d in created_decisions
         )
 
+        pin_status = f" ({pinned_count} pinned)" if pinned_count > 0 else ""
+
         try:
             client.chat_update(
                 channel=channel_id,
@@ -115,7 +148,7 @@ async def _handle_record_decisions_async(
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f":white_check_mark: *Created {len(created_decisions)} decision(s):*\n\n{decision_list}",
+                            "text": f":white_check_mark: *Created {len(created_decisions)} decision(s){pin_status}:*\n\n{decision_list}",
                         },
                     },
                     {
@@ -123,7 +156,7 @@ async def _handle_record_decisions_async(
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": "_Decisions are in PROPOSED status. Approve them to sync to Jira._",
+                                "text": "_Decisions are in PROPOSED status. Click to edit or approve._",
                             }
                         ],
                     },
@@ -140,7 +173,7 @@ async def _handle_record_decisions_async(
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text=f":memo: Created {len(created_decisions)} decision(s). Use `/maro decisions` to view and approve them.",
+            text=f":pushpin: Created {len(created_decisions)} decision(s) - see pinned messages in channel.",
         )
 
     except Exception as e:
@@ -149,161 +182,6 @@ async def _handle_record_decisions_async(
             channel=channel_id,
             thread_ts=thread_ts,
             text=f":warning: Failed to record decisions: {e}",
-        )
-
-
-async def _handle_pin_decisions_async(
-    client,
-    channel_id: str,
-    thread_ts: str,
-    user_id: str,
-    team_id: str,
-    message_ts: str,
-) -> None:
-    """Phase 45: Create a pinned note with captured decisions.
-
-    Posts a formatted message to the channel with captured decisions
-    and pins it for visibility.
-
-    Args:
-        client: Slack client
-        channel_id: Slack channel ID
-        thread_ts: Thread timestamp
-        user_id: User who clicked the button
-        team_id: Team ID for session lookup
-        message_ts: Message timestamp to update
-    """
-    from src.slack.session import SessionIdentity
-    from src.graph.runner import get_runner
-    from datetime import datetime
-
-    identity = SessionIdentity(
-        team_id=team_id,
-        channel_id=channel_id,
-        thread_ts=thread_ts,
-    )
-
-    try:
-        runner = get_runner(identity)
-        state = await runner._get_current_state()
-        review_context = state.get("review_context", {})
-        captured_decisions = review_context.get("captured_decisions", [])
-
-        if not captured_decisions:
-            client.chat_postEphemeral(
-                channel=channel_id,
-                user=user_id,
-                thread_ts=thread_ts,
-                text="No decisions to pin.",
-            )
-            return
-
-        # Build the pinned note content
-        topic = review_context.get("topic", "Discussion")
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        decision_list = []
-        for d in captured_decisions:
-            decision_type = d.get("decision_type", "").upper()
-            decision_text = d.get("decision_text", "")
-            decision_list.append(f"• *[{decision_type}]* {decision_text}")
-
-        decisions_text = "\n".join(decision_list)
-
-        note_blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": f":pushpin: Decisions: {topic[:50]}",
-                    "emoji": True,
-                },
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": decisions_text,
-                },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"_Captured on {today} from <#{channel_id}|this channel> discussion_",
-                    }
-                ],
-            },
-        ]
-
-        # Post the note to the channel (not in thread - so it's visible)
-        note_response = client.chat_postMessage(
-            channel=channel_id,
-            blocks=note_blocks,
-            text=f"Decisions from {topic}: {len(captured_decisions)} decision(s)",
-        )
-
-        if note_response.get("ok") and note_response.get("ts"):
-            # Pin the message
-            try:
-                client.pins_add(
-                    channel=channel_id,
-                    timestamp=note_response["ts"],
-                )
-                logger.info(
-                    "Pinned decisions note",
-                    extra={
-                        "channel_id": channel_id,
-                        "note_ts": note_response["ts"],
-                        "decisions_count": len(captured_decisions),
-                    },
-                )
-            except Exception as pin_error:
-                # Pinning might fail if user doesn't have permission
-                logger.warning(f"Could not pin message: {pin_error}")
-                client.chat_postEphemeral(
-                    channel=channel_id,
-                    user=user_id,
-                    text=f"Note posted but could not pin it: {pin_error}",
-                )
-
-        # Update the transition offer message
-        try:
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                text=f"Pinned {len(captured_decisions)} decision(s)",
-                blocks=[
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f":pushpin: *Pinned {len(captured_decisions)} decision(s) as a note in this channel.*",
-                        },
-                    },
-                ],
-            )
-        except Exception as e:
-            logger.warning(f"Could not update pin message: {e}")
-
-        # Clear captured_decisions from review_context
-        review_context["captured_decisions"] = []
-        await runner._update_state({"review_context": review_context})
-
-        # Notify in thread
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=f":pushpin: Decisions pinned as a note. See the channel for the pinned message.",
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to pin decisions: {e}")
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=f":warning: Failed to pin decisions: {e}",
         )
 
 
@@ -357,12 +235,6 @@ async def _post_decision_transition_offer(
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Pin as Note"},
-                    "action_id": f"pin_decisions_{thread_ts}",
-                    "value": thread_ts,
-                },
-                {
-                    "type": "button",
                     "text": {"type": "plain_text", "text": "Continue Discussion"},
                     "action_id": f"continue_discussion_{thread_ts}",
                     "value": thread_ts,
@@ -374,7 +246,7 @@ async def _post_decision_transition_offer(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "_Record: create formal Decision entries (sync to Jira) | Pin: create pinned note in channel_",
+                    "text": "_Recording creates pinned Decision cards in the channel._",
                 }
             ],
         },
@@ -562,23 +434,6 @@ def register_question_handlers(app: App) -> None:
             )
         except Exception as e:
             logger.warning(f"Could not update continue message: {e}")
-
-    @app.action(re.compile(r"^pin_decisions_.*"))
-    def handle_pin_decisions(ack, body, client, action):
-        """Handle 'Pin as Note' button click."""
-        ack()
-
-        thread_ts = action.get("value", "")
-        channel_id = body.get("channel", {}).get("id", "")
-        user_id = body.get("user", {}).get("id", "")
-        team_id = body.get("team", {}).get("id") or body.get("user", {}).get("team_id", "")
-        message_ts = body.get("message", {}).get("ts")
-
-        _run_async(
-            _handle_pin_decisions_async(
-                client, channel_id, thread_ts, user_id, team_id, message_ts
-            )
-        )
 
     logger.info("Registered question button handlers")
 
