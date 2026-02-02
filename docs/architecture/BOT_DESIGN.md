@@ -267,6 +267,75 @@ Plan:
 
 ---
 
+## Slack Integration Layer
+
+### Message Flow
+
+```
+Slack -> POST /slack/events -> Bolt AsyncApp -> Handler -> SlackClient -> Slack
+```
+
+**Inbound Flow:**
+1. Slack sends events to `/slack/events` endpoint
+2. Bolt handles signature verification automatically
+3. Event routed to appropriate handler:
+   - `@app.event("message")` - Message events
+   - `@app.event("app_mention")` - @mentions
+   - `@app.action(pattern)` - Button clicks
+   - `@app.command("/maro")` - Slash commands
+4. Handler processes event and responds via SlackClient
+
+**Outbound Flow:**
+1. Handler calls `SlackClient.send(message_type, channel_id, content)`
+2. SlackClient routes based on `WRITE_TARGETS` mapping:
+   - CHANNEL: Permanent, visible to all
+   - THREAD: Conversation context
+   - EPHEMERAL: Only visible to one user
+3. Rate limiter ensures 1 msg/sec limit respected
+4. Message posted to Slack
+
+### Handler Types
+
+| Handler | Trigger | Response Type |
+|---------|---------|---------------|
+| Message | User sends message | Thread (conversation_response) |
+| App Mention | @MARO in message | Thread |
+| Button Action | Approve/Object/Discuss click | Thread (ack + feedback) |
+| Slash Command | /maro command | Ephemeral (command_help) |
+
+### Critical Rules
+
+1. **ack() First**: All action/command handlers MUST call `ack()` as first line. Slack times out after 3 seconds.
+
+2. **Check bot_id**: Message handlers MUST check `event.get("bot_id")` to avoid infinite loops.
+
+3. **Use thread_ts**: Always respond in the correct thread using `thread_ts` from the event.
+
+4. **Rate Limiting**: All outbound messages go through RateLimiter (1/sec).
+
+### Message Type Routing
+
+| Message Type | Target | Example |
+|--------------|--------|---------|
+| entity_proposed | CHANNEL | "New story proposed: ..." |
+| entity_approved | CHANNEL | "Story approved by @user" |
+| question_asked | THREAD | "What's the priority?" |
+| draft_preview | THREAD | "Here's the draft..." |
+| command_help | EPHEMERAL | "/maro help output" |
+| error_message | EPHEMERAL | "You don't have permission" |
+
+### Dashboard
+
+Each channel has a pinned status dashboard showing:
+- Pending approvals (count + first 5)
+- Committed items in Jira (count + first 5)
+- Active decisions (count)
+- Last updated timestamp
+
+Dashboard is updated when entities change lifecycle state.
+
+---
+
 ## Prompts Overview
 
 ### Intent Classification Prompt
