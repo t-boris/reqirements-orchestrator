@@ -44,7 +44,7 @@ async def _handle_record_decisions_async(
     from src.graph.runner import get_runner
     from src.db.connection import get_connection
     from src.db.decision_store import DecisionStore
-    from src.schemas.decision import DecisionType, DecisionStatus
+    from src.schemas.decision import DecisionType
     from src.slack.blocks.decision_cards import build_compact_draft_card
 
     identity = SessionIdentity(
@@ -87,7 +87,7 @@ async def _handle_record_decisions_async(
                     title=captured.get("decision_text", "Untitled decision")[:100],
                     description=captured.get("decision_text", ""),
                     created_by=user_id,
-                    status=DecisionStatus.PROPOSED,
+                    # Note: create() always creates in PROPOSED status
                 )
                 created_decisions.append(decision)
 

@@ -454,15 +454,27 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
         question_round = review_context.get("question_round", 0) + 1
         max_question_rounds = 5
 
-        # Phase 43 fix: If this is a synthesis (all questions answered),
-        # do NOT extract more questions - this is the final response with buttons
+        # Phase 43/45 fix: Synthesis path - all questions answered
+        # Still extract questions (LLM may ask follow-ups) and include captured_decisions
         if all_questions_answered:
-            logger.info("Synthesis complete - returning final response with buttons")
+            logger.info("Synthesis triggered - processing final response")
+
+            # Extract any new questions from synthesis (with buttons)
+            from src.graph.nodes.review import _extract_questions_with_options, _generate_question_options
+            extracted_qna = _extract_questions_with_options(response_content)
+            questions_data = []
+            if extracted_qna:
+                questions_data = await _generate_question_options(extracted_qna, topic)
+
+            # Get captured decisions for transition offer
+            captured_decisions = review_context.get("captured_decisions", [])
+
             # Clear the synthesis flags so next interaction works normally
             updated_context["all_questions_answered"] = False
             updated_context["qa_summary"] = None
-            updated_context["pending_questions"] = []
+            updated_context["pending_questions"] = questions_data if questions_data else []
             updated_context["answers"] = {}
+            updated_context["captured_decisions"] = captured_decisions  # Preserve decisions
 
             return {
                 "decision_result": {
@@ -471,7 +483,10 @@ async def review_continuation_node(state: AgentState) -> dict[str, Any]:
                     "persona": persona,
                     "topic": topic,
                     "version": current_version,
-                    "is_synthesis": True,  # Tells dispatch to show buttons
+                    "is_synthesis": True,
+                    "is_questions": bool(questions_data),  # Phase 45: flag for question buttons
+                    "questions_data": questions_data,  # Phase 45: questions with options
+                    "captured_decisions": captured_decisions,  # Phase 45: for transition offer
                 },
                 "review_context": updated_context,
             }
