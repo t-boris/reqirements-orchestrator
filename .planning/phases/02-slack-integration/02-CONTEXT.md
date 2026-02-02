@@ -40,6 +40,19 @@ The integration is pure infrastructure - no business logic, no LLM calls, no int
   - `DashboardManager` for pinned status messages
   - `ButtonHandler` for routing button clicks
 
+### Slash Commands (Skeleton Only)
+
+Include basic `/maro` command infrastructure with `/maro help` working. The full command set will be implemented in later phases as features are built:
+
+- `/maro help` - Show help (implement in Phase 2)
+- `/maro status` - Show channel status (defer - needs entity projection)
+- `/maro sync` - Check Jira sync status (defer - needs Jira integration)
+- `/maro decisions` - List active decisions (defer - needs entity lifecycle)
+- `/maro entities` - List all entities (defer - needs entity lifecycle)
+- `/maro config` - Channel configuration (defer - needs operational features)
+
+The `CommandHandler` structure and `/maro help` will be implemented. Other commands return "Coming soon" until their dependent features exist.
+
 </specifics>
 
 <notes>
