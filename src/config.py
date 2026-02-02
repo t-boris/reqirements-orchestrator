@@ -36,6 +36,18 @@ class Settings(BaseSettings):
         default=500, description="Snapshot every N events"
     )
 
+    # Slack configuration
+    slack_bot_token: str = Field(
+        default="", description="Slack bot token (SLACK_BOT_TOKEN env var, xoxb-...)"
+    )
+    slack_signing_secret: str = Field(
+        default="", description="Slack signing secret (SLACK_SIGNING_SECRET env var)"
+    )
+    slack_app_token: str = Field(
+        default="",
+        description="Slack app token (SLACK_APP_TOKEN env var, xapp-..., for Socket Mode)",
+    )
+
     # Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO", description="Logging level"
