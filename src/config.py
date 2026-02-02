@@ -62,7 +62,7 @@ class Settings(BaseSettings):
         description="LLM provider prefix for LiteLLM (gemini, openai, anthropic)",
     )
     llm_model: str = Field(
-        default="gemini-2.0-flash", description="Model name for LLM calls"
+        default="gemini-2.5-pro", description="Model name for LLM calls"
     )
     llm_api_key: str = Field(
         default="",
