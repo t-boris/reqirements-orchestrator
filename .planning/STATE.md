@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 3 of 7 (Intent & Modes)
-Plan: 0 of 6 in current phase
-Status: Planning complete, ready for execution
-Last activity: 2026-02-02 - Created plans 03-01 through 03-06
+Plan: 2 of 6 in current phase
+Status: In progress
+Last activity: 2026-02-02 - Completed 03-02-PLAN.md
 
-Progress: ░░░░░░░░░░ 0% (Phase 3)
+Progress: ██░░░░░░░░ 17% (Phase 3)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 2.5 min
-- Total execution time: 25 min
+- Total plans completed: 12
+- Average duration: 2.3 min
+- Total execution time: 27 min
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: ░░░░░░░░░░ 0% (Phase 3)
 | 2. Slack Integration | 5 | 12 min | 2.4 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (2 min), 02-04 (3 min), 02-05 (3 min)
+- Last 5 plans: 02-03 (2 min), 02-04 (3 min), 02-05 (3 min), 03-01 (1 min), 03-02 (1 min)
 - Trend: Stable
 
 ## Accumulated Context
@@ -63,6 +63,9 @@ Progress: ░░░░░░░░░░ 0% (Phase 3)
 | 02-04 | Approve/Object/Discuss for work items | Decisions get only Approve/Object (no Discuss) |
 | 02-05 | Bolt app init in lifespan handler | Avoid import-time initialization |
 | 02-05 | Environment setting controls reload | Development mode enables uvicorn reload |
+| 03-02 | PreGate order (bot first) | Short-circuit self-reply loops early |
+| 03-02 | Word boundary pattern matching | Flexibility for approval/objection detection |
+| 03-02 | Frozen PreGateOutput | Immutable output for predictable behavior |
 
 ### Deferred Issues
 
@@ -74,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 23:10 UTC
-Stopped at: Completed 02-05-PLAN.md (Phase 2 complete)
+Last session: 2026-02-02 23:24 UTC
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
