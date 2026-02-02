@@ -56,6 +56,25 @@ class Settings(BaseSettings):
         default="INFO", description="Logging level"
     )
 
+    # LLM Configuration
+    llm_provider: str = Field(
+        default="gemini",
+        description="LLM provider prefix for LiteLLM (gemini, openai, anthropic)",
+    )
+    llm_model: str = Field(
+        default="gemini-2.0-flash", description="Model name for LLM calls"
+    )
+    llm_api_key: str = Field(
+        default="",
+        description="API key for LLM provider (GEMINI_API_KEY, OPENAI_API_KEY, etc.)",
+    )
+    llm_temperature: float = Field(
+        default=0.1, description="Temperature for LLM calls (lower = more deterministic)"
+    )
+    llm_max_retries: int = Field(
+        default=2, description="Max retries for structured output validation failures"
+    )
+
     @property
     def postgres_url(self) -> str:
         """Build PostgreSQL connection URL for asyncpg."""
@@ -71,6 +90,13 @@ class Settings(BaseSettings):
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_dbname}"
         )
+
+    @property
+    def llm_model_full(self) -> str:
+        """Build full model name for LiteLLM (provider/model format)."""
+        if "/" in self.llm_model:
+            return self.llm_model  # Already fully qualified
+        return f"{self.llm_provider}/{self.llm_model}"
 
 
 @lru_cache
