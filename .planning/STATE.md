@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 3 of 7 (Intent & Modes)
-Plan: 3 of 6 in current phase
+Plan: 5 of 6 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 03-04-PLAN.md
+Last activity: 2026-02-02 - Completed 03-05-PLAN.md
 
-Progress: ███░░░░░░░ 26% (Phase 3)
+Progress: █████░░░░░ 50% (Phase 3)
 
 ## Performance Metrics
 
@@ -75,6 +75,9 @@ Progress: ███░░░░░░░ 26% (Phase 3)
 | 03-04 | CREATE/MODIFY/RECORD require confirmation | Per BOT_DESIGN.md: all approvals require human action |
 | 03-04 | CONVERSE always allowed | No side effects means no safety restrictions |
 | 03-04 | Only DRAFT/PROPOSED modifiable | Per BOT_DESIGN.md transition rules |
+| 03-05 | Handler skeletons with placeholders | Full implementation in Phase 4 with entity system |
+| 03-05 | Safety evaluation in dispatcher | Single point for safety checks before handler execution |
+| 03-05 | Mode handlers as stateless singletons | Simple, thread-safe, no per-request state |
 
 ### Deferred Issues
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 23:30 UTC
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-02-02 23:36 UTC
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
