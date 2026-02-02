@@ -221,3 +221,104 @@ class ConflictResolved(DomainEvent):
     resolution_type: str
     resolved_by: UserId
     outcome: str
+
+
+# =============================================================================
+# Process/Plan Events (spec 4.3)
+# =============================================================================
+
+
+class ProcessStarted(DomainEvent):
+    """Multi-stage process started.
+
+    Emitted when a multi-stage process begins, such as requirements discovery,
+    epic breakdown, or scope definition.
+    """
+
+    process_id: str
+    process_type: str
+    thread_ts: ThreadTs
+
+
+class ProcessStageCompleted(DomainEvent):
+    """Process stage completed.
+
+    Emitted when a stage within a multi-stage process completes successfully.
+    """
+
+    process_id: str
+    stage_name: str
+    outputs: dict[str, Any]
+
+
+class ProcessCompleted(DomainEvent):
+    """Process finished.
+
+    Emitted when a multi-stage process completes all its stages.
+    """
+
+    process_id: str
+    final_outputs: dict[str, Any]
+
+
+class PlanCreated(DomainEvent):
+    """Execution plan created.
+
+    Emitted when a plan is created for executing a series of items,
+    such as creating work items or syncing to Jira.
+    """
+
+    plan_id: str
+    items: list[dict[str, Any]]  # Serialized PlanItem list
+    source_process_id: str | None
+
+
+class PlanItemCompleted(DomainEvent):
+    """Plan item executed.
+
+    Emitted when a single item within a plan is executed successfully.
+    """
+
+    plan_id: str
+    item_index: int
+    result: dict[str, Any]
+
+
+class PlanCompleted(DomainEvent):
+    """All plan items executed.
+
+    Emitted when all items in a plan have been executed.
+    """
+
+    plan_id: str
+
+
+# =============================================================================
+# Event Registry - All event types for serialization
+# =============================================================================
+
+# All event types in the system, for use by serialization module
+ALL_EVENT_TYPES: list[type[DomainEvent]] = [
+    # Work Item Events
+    WorkItemDrafted,
+    WorkItemProposed,
+    WorkItemApproved,
+    WorkItemCommitted,
+    WorkItemUpdated,
+    # Decision Events
+    DecisionRecorded,
+    DecisionProposed,
+    DecisionApproved,
+    DecisionCommitted,
+    DecisionDeprecated,
+    # Conflict Events
+    ConflictDetected,
+    ConflictResolved,
+    # Process/Plan Events
+    ProcessStarted,
+    ProcessStageCompleted,
+    ProcessCompleted,
+    PlanCreated,
+    PlanItemCompleted,
+    PlanCompleted,
+]
