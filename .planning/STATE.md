@@ -69,6 +69,9 @@ Progress: ███░░░░░░░ 26% (Phase 3)
 | 03-02 | PreGate order (bot first) | Short-circuit self-reply loops early |
 | 03-02 | Word boundary pattern matching | Flexibility for approval/objection detection |
 | 03-02 | Frozen PreGateOutput | Immutable output for predictable behavior |
+| 03-03 | 0.7 base confidence threshold | Per RESEARCH.md recommendation - conservative default |
+| 03-03 | 0.85 for CREATE/MODIFY | Side-effect modes need higher confidence |
+| 03-03 | APPROVAL PreGate maps to MODIFY | Approvals change entity state (lifecycle transition) |
 | 03-04 | CREATE/MODIFY/RECORD require confirmation | Per BOT_DESIGN.md: all approvals require human action |
 | 03-04 | CONVERSE always allowed | No side effects means no safety restrictions |
 | 03-04 | Only DRAFT/PROPOSED modifiable | Per BOT_DESIGN.md transition rules |
