@@ -122,7 +122,7 @@ Key deliverables:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/5 | In progress | - |
+| 1. Foundation | 2/5 | In progress | - |
 | 2. Slack Integration | 0/TBD | Not started | - |
 | 3. Intent & Modes | 0/TBD | Not started | - |
 | 4. Entity Lifecycle | 0/TBD | Not started | - |
