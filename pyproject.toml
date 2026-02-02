@@ -19,6 +19,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "slack-bolt>=1.27.0",
     "aiohttp>=3.9.0",
+    "litellm>=1.57",
+    "instructor>=1.8",
+    "json-repair>=0.30",
 ]
 
 [project.optional-dependencies]
