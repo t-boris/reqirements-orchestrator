@@ -699,32 +699,17 @@ async def _handle_review_question_answer(
     )
 
     if unanswered:
-        # More questions remain - show next question (NO LLM)
-        next_question = unanswered[0]
-        review_plan_id = f"review_{thread_ts}"
+        # More questions remain - just update state (questions already shown at once)
+        # Don't post new questions - they're already visible in the thread
+        await runner._update_state({"review_context": review_context})
 
-        question_blocks = build_question_blocks(
-            question_data=next_question,
-            plan_id=review_plan_id,
-            plan_version=1,
-        )
-
-        # Add progress indicator
-        progress_text = f"_Question {len(answers) + 1} of {len(pending_questions)}_"
-        question_blocks.insert(0, {
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": progress_text}]
-        })
-
+        # Post progress update
+        progress_text = f":white_check_mark: {len(answers)}/{len(pending_questions)} questions answered"
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            blocks=question_blocks,
-            text=next_question.get("question_text", "Next question"),
+            text=progress_text,
         )
-
-        # Update state with new answers
-        await runner._update_state({"review_context": review_context})
 
     else:
         # All questions answered - trigger LLM synthesis
@@ -795,7 +780,11 @@ async def _trigger_review_synthesis(
         await _dispatch_result(result, identity, client, runner, tracker)
 
         # Phase 45: Check for captured decisions and offer transition
-        captured_decisions = review_context.get("captured_decisions", [])
+        # Get fresh state after synthesis (decisions may have been captured during continuation)
+        updated_state = await runner._get_current_state()
+        updated_review_context = updated_state.get("review_context", {})
+        captured_decisions = updated_review_context.get("captured_decisions", [])
+
         if captured_decisions:
             await _post_decision_transition_offer(
                 client=client,

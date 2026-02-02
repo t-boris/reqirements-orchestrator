@@ -89,6 +89,19 @@ async def _handle_review_continuation(
             blocks=blocks,
             text=continuation_msg[:200],
         )
+
+        # Phase 45: Post transition offer even when asking questions
+        # (decisions may have been captured from previous answers)
+        if captured_decisions and len(captured_decisions) >= 1:
+            from src.slack.handlers.question import _post_decision_transition_offer
+
+            await _post_decision_transition_offer(
+                client=client,
+                channel_id=identity.channel_id,
+                thread_ts=identity.thread_ts or "",
+                captured_decisions=captured_decisions,
+            )
+
         return  # Questions rendered, exit early
 
     if continuation_msg:
@@ -182,7 +195,8 @@ async def _handle_review_continuation(
             )
 
     # Phase 45: Post transition offer if decisions have been captured
-    if captured_decisions and len(captured_decisions) >= 2:
+    # Lower threshold to 1 decision to offer recording early
+    if captured_decisions and len(captured_decisions) >= 1:
         from src.slack.handlers.question import _post_decision_transition_offer
 
         await _post_decision_transition_offer(
@@ -293,46 +307,56 @@ async def _handle_review(
                 last_actionable_ts,
             )
 
-        # Phase 39: Post structured questions if available
-        # Post ONE question at a time - subsequent questions shown after each answer
+        # Phase 39/45: Post ALL structured questions at once with buttons
         is_questions = result.get("is_questions", False)
         questions_data = result.get("questions_data", [])
         if is_questions and questions_data:
             review_plan_id = f"review_{identity.thread_ts}"
             review_version = 1
 
-            # Only post the FIRST question - others will be posted after answers
-            first_question = questions_data[0]
             logger.info(
-                f"Posting first question (1/{len(questions_data)})",
+                f"Posting all {len(questions_data)} questions at once",
                 extra={
-                    "question_id": first_question.get("question_id"),
-                    "has_options": bool(first_question.get("options")),
-                    "options_count": len(first_question.get("options", []) or []),
-                    "question_text_preview": first_question.get("question_text", "")[:100],
+                    "questions_count": len(questions_data),
+                    "questions_with_options": sum(1 for q in questions_data if q.get("options")),
                 }
             )
 
-            question_blocks = build_question_blocks(
-                question_data=first_question,
-                plan_id=review_plan_id,
-                plan_version=review_version,
-            )
+            # Build blocks for ALL questions
+            all_question_blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "_Please answer these questions:_"}
+                }
+            ]
 
-            # Add progress indicator
-            progress_text = f"_Question 1 of {len(questions_data)}_"
-            question_blocks.insert(0, {
+            for i, q_data in enumerate(questions_data):
+                question_blocks = build_question_blocks(
+                    question_data=q_data,
+                    plan_id=review_plan_id,
+                    plan_version=review_version,
+                )
+                all_question_blocks.extend(question_blocks)
+                # Add divider between questions (but not after last one)
+                if i < len(questions_data) - 1:
+                    all_question_blocks.append({"type": "divider"})
+
+            # Add context about text replies
+            all_question_blocks.append({
                 "type": "context",
-                "elements": [{"type": "mrkdwn", "text": progress_text}]
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "_Click buttons above or reply in thread to answer._",
+                }]
             })
 
             try:
                 client.chat_postMessage(
                     channel=identity.channel_id,
                     thread_ts=identity.thread_ts if identity.thread_ts else None,
-                    blocks=question_blocks,
-                    text=first_question.get("question_text", "Question for you"),
+                    blocks=all_question_blocks,
+                    text=f"{len(questions_data)} questions for you",
                 )
-                logger.info(f"Posted first of {len(questions_data)} review questions")
+                logger.info(f"Posted all {len(questions_data)} review questions")
             except Exception as e:
-                logger.error(f"Failed to post review question: {e}")
+                logger.error(f"Failed to post review questions: {e}")

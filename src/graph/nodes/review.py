@@ -238,14 +238,16 @@ def _extract_questions(text: str) -> list[str]:
 
 
 def _extract_questions_with_options(text: str) -> list[dict]:
-    """Extract questions from the 'Open Questions' section of review.
+    """Extract questions from review text.
 
-    Only extracts from section 5 (Open Questions) to avoid picking up
-    parenthetical clarifications like "(where is the student?)".
+    Looks for questions in multiple places:
+    1. "Open Questions" section (preferred - section 5)
+    2. Numbered questions anywhere in text (fallback)
 
     Parses patterns like:
     - Scale: How many students? (This affects architecture)
     - Auth: Are we using OAuth or Slack ID?
+    - 1. What is the expected load?
 
     Returns:
         List of dicts with question_text and options list
@@ -259,6 +261,8 @@ def _extract_questions_with_options(text: str) -> list[dict]:
     open_questions_patterns = [
         r'5\.\s*\*?Open Questions\*?',
         r'\*?Open Questions\*?\s*[-:]?',
+        r'\*?Questions?\*?\s*[-:]?',  # More flexible: "Questions:" or "*Questions*"
+        r'(?:here\s+are|I\s+have)\s+(?:some|a\s+few)?\s*questions?',  # "Here are some questions"
     ]
 
     section_start = -1
@@ -268,54 +272,71 @@ def _extract_questions_with_options(text: str) -> list[dict]:
             section_start = match.end()
             break
 
-    if section_start == -1:
-        # No "Open Questions" section found
-        return []
+    if section_start != -1:
+        # Extract text from Open Questions section until next section or end
+        section_text = text[section_start:]
 
-    # Extract text from Open Questions section until next section or end
-    section_text = text[section_start:]
+        # Stop at next numbered section (like "6.") or end of text
+        next_section = re.search(r'\n\d+\.\s+\*?[A-Z]', section_text)
+        if next_section:
+            section_text = section_text[:next_section.start()]
 
-    # Stop at next numbered section (like "6.") or end of text
-    next_section = re.search(r'\n\d+\.\s+\*?[A-Z]', section_text)
-    if next_section:
-        section_text = section_text[:next_section.start()]
+        # Now extract questions from this section
+        lines = section_text.split("\n")
 
-    # Now extract questions from this section
-    lines = section_text.split("\n")
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # Question must END with ? (not just contain ? in parentheses)
-        # Skip lines where ? is inside parentheses like "(where is X?)"
-        if not line.rstrip().endswith('?'):
-            # Check if it ends with ?) which is parenthetical
-            if line.rstrip().endswith('?)'):
+        for line in lines:
+            line = line.strip()
+            if not line:
                 continue
-            # No question mark at end, skip
-            continue
 
-        # Must be reasonably long to be a real question
-        if len(line) < 15:
-            continue
+            # Question must END with ? (not just contain ? in parentheses)
+            # Skip lines where ? is inside parentheses like "(where is X?)"
+            if not line.rstrip().endswith('?'):
+                # Check if it ends with ?) which is parenthetical
+                if line.rstrip().endswith('?)'):
+                    continue
+                # No question mark at end, skip
+                continue
 
-        # Clean the question text - remove leading bullets/numbers
-        question_text = re.sub(r'^[\d\.\)\-\*\•\s]+', '', line).strip()
-        question_text = re.sub(r'^\*+|\*+$', '', question_text).strip()
+            # Must be reasonably long to be a real question
+            if len(line) < 15:
+                continue
 
-        # Skip if it's just a fragment
-        if len(question_text) < 10:
-            continue
+            # Clean the question text - remove leading bullets/numbers
+            question_text = re.sub(r'^[\d\.\)\-\*\•\s]+', '', line).strip()
+            question_text = re.sub(r'^\*+|\*+$', '', question_text).strip()
 
-        results.append({
-            "question_text": question_text,
-            "options": None,  # Open questions typically don't have predefined options
-        })
+            # Skip if it's just a fragment
+            if len(question_text) < 10:
+                continue
 
-        if len(results) >= 4:  # Max 4 questions
-            break
+            results.append({
+                "question_text": question_text,
+                "options": None,  # Open questions typically don't have predefined options
+            })
+
+            if len(results) >= 4:  # Max 4 questions
+                break
+
+    # Fallback: If no questions found in section, look for numbered questions anywhere
+    if not results:
+        # Pattern: "1. Question text?" or "1) Question text?"
+        numbered_question_pattern = r'^\s*\d+[\.\)]\s*(.+\?)\s*$'
+        for line in text.split('\n'):
+            match = re.match(numbered_question_pattern, line.strip())
+            if match:
+                question_text = match.group(1).strip()
+                # Clean markdown
+                question_text = re.sub(r'\*+', '', question_text).strip()
+
+                if len(question_text) >= 15:
+                    results.append({
+                        "question_text": question_text,
+                        "options": None,
+                    })
+
+                    if len(results) >= 4:
+                        break
 
     return results
 
