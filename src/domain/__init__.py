@@ -22,6 +22,21 @@ from .entities import (
     ProposedEntity,
     get_lifecycle,
 )
+from .transitions import (
+    TransitionError,
+    add_approval,
+    approve,
+    can_approve,
+    can_commit,
+    can_modify,
+    commit,
+    deprecate,
+    has_active_objections,
+    propose,
+    raise_objection,
+    resolve_objection,
+    withdraw_objection,
+)
 from .types import (
     ChannelId,
     EntityId,
@@ -65,4 +80,18 @@ __all__ = [
     "EntityContent",
     "ProposedEntity",
     "get_lifecycle",
+    # Transitions
+    "TransitionError",
+    "propose",
+    "add_approval",
+    "raise_objection",
+    "resolve_objection",
+    "withdraw_objection",
+    "approve",
+    "commit",
+    "deprecate",
+    "can_approve",
+    "can_commit",
+    "can_modify",
+    "has_active_objections",
 ]
