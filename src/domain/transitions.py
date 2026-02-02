@@ -1,0 +1,421 @@
+"""Entity lifecycle transitions.
+
+Pure functions that transform entities between states.
+Each function takes an entity in one state and returns an entity in the next state.
+The type system enforces that illegal transitions are impossible.
+
+Ref: Spec 3.8 - Sum types pattern
+Ref: BOT_DESIGN.md - Entity Lifecycle State Machine
+"""
+
+from datetime import datetime
+from typing import Union
+
+from .content import Approval, Attribution, JiraLink, Objection, ObjectionStatus
+from .entities import (
+    ApprovedEntity,
+    CommittedEntity,
+    DeprecatedEntity,
+    DraftEntity,
+    Entity,
+    ProposedEntity,
+)
+from .types import EntityId, JiraKey, SyncStatus, UserId, Version
+
+
+class TransitionError(Exception):
+    """Error during entity state transition."""
+
+    pass
+
+
+# =============================================================================
+# Draft -> Proposed
+# =============================================================================
+
+
+def propose(draft: DraftEntity, canonical_message_ts: str) -> ProposedEntity:
+    """Transition draft entity to proposed state.
+
+    Args:
+        draft: Entity in draft state
+        canonical_message_ts: Slack message timestamp for the proposal
+
+    Returns:
+        Entity in proposed state with empty approvals/objections
+    """
+    return ProposedEntity(
+        id=draft.id,
+        entity_type=draft.entity_type,
+        channel_id=draft.channel_id,
+        thread_ts=draft.thread_ts,
+        content=draft.content,
+        attribution=draft.attribution,
+        version=Version(draft.version + 1),
+        canonical_message_ts=canonical_message_ts,
+        approvals=[],
+        objections=[],
+    )
+
+
+# =============================================================================
+# Proposed -> Proposed (with approval/objection)
+# =============================================================================
+
+
+def add_approval(
+    entity: ProposedEntity,
+    user_id: UserId,
+    comment: str | None = None,
+) -> ProposedEntity:
+    """Add an approval to a proposed entity.
+
+    Args:
+        entity: Entity in proposed state
+        user_id: User adding approval
+        comment: Optional approval comment
+
+    Returns:
+        Entity with new approval added
+
+    Raises:
+        TransitionError: If user already approved
+    """
+    # Check for duplicate approval
+    if any(a.user_id == user_id for a in entity.approvals):
+        raise TransitionError(f"User {user_id} already approved this entity")
+
+    new_approval = Approval(
+        user_id=user_id,
+        timestamp=datetime.utcnow(),
+        comment=comment,
+    )
+
+    return ProposedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        approvals=[*entity.approvals, new_approval],
+        objections=entity.objections,
+    )
+
+
+def raise_objection(
+    entity: ProposedEntity,
+    user_id: UserId,
+    reason: str,
+) -> ProposedEntity:
+    """Raise an objection against a proposed entity.
+
+    Args:
+        entity: Entity in proposed state
+        user_id: User raising objection
+        reason: Reason for objection
+
+    Returns:
+        Entity with new objection added
+    """
+    new_objection = Objection(
+        user_id=user_id,
+        timestamp=datetime.utcnow(),
+        reason=reason,
+        status=ObjectionStatus.ACTIVE,
+    )
+
+    return ProposedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        approvals=entity.approvals,
+        objections=[*entity.objections, new_objection],
+    )
+
+
+def resolve_objection(
+    entity: ProposedEntity,
+    objection_index: int,
+    resolved_by: UserId,
+    resolution: str,
+) -> ProposedEntity:
+    """Resolve an objection on a proposed entity.
+
+    Args:
+        entity: Entity in proposed state
+        objection_index: Index of objection to resolve
+        resolved_by: User resolving the objection
+        resolution: How the objection was resolved
+
+    Returns:
+        Entity with objection marked resolved
+
+    Raises:
+        TransitionError: If objection index is invalid or already resolved
+    """
+    if objection_index < 0 or objection_index >= len(entity.objections):
+        raise TransitionError(f"Invalid objection index: {objection_index}")
+
+    old_objection = entity.objections[objection_index]
+    if old_objection.status != ObjectionStatus.ACTIVE:
+        raise TransitionError(f"Objection {objection_index} is not active")
+
+    resolved_objection = Objection(
+        user_id=old_objection.user_id,
+        timestamp=old_objection.timestamp,
+        reason=old_objection.reason,
+        status=ObjectionStatus.RESOLVED,
+        resolution=resolution,
+    )
+
+    new_objections = list(entity.objections)
+    new_objections[objection_index] = resolved_objection
+
+    return ProposedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        approvals=entity.approvals,
+        objections=new_objections,
+    )
+
+
+def withdraw_objection(
+    entity: ProposedEntity,
+    objection_index: int,
+    withdrawn_by: UserId,
+) -> ProposedEntity:
+    """Withdraw an objection (by the original objector).
+
+    Args:
+        entity: Entity in proposed state
+        objection_index: Index of objection to withdraw
+        withdrawn_by: User withdrawing (must be original objector)
+
+    Returns:
+        Entity with objection marked withdrawn
+
+    Raises:
+        TransitionError: If not the original objector or already resolved
+    """
+    if objection_index < 0 or objection_index >= len(entity.objections):
+        raise TransitionError(f"Invalid objection index: {objection_index}")
+
+    old_objection = entity.objections[objection_index]
+    if old_objection.status != ObjectionStatus.ACTIVE:
+        raise TransitionError(f"Objection {objection_index} is not active")
+
+    if old_objection.user_id != withdrawn_by:
+        raise TransitionError("Only the original objector can withdraw")
+
+    withdrawn_objection = Objection(
+        user_id=old_objection.user_id,
+        timestamp=old_objection.timestamp,
+        reason=old_objection.reason,
+        status=ObjectionStatus.WITHDRAWN,
+        resolution=None,
+    )
+
+    new_objections = list(entity.objections)
+    new_objections[objection_index] = withdrawn_objection
+
+    return ProposedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        approvals=entity.approvals,
+        objections=new_objections,
+    )
+
+
+# =============================================================================
+# Proposed -> Approved
+# =============================================================================
+
+
+def has_active_objections(entity: ProposedEntity) -> bool:
+    """Check if entity has any active (unresolved) objections."""
+    return any(o.status == ObjectionStatus.ACTIVE for o in entity.objections)
+
+
+def approve(
+    entity: ProposedEntity,
+    approved_by: UserId,
+    min_approvals: int = 1,
+) -> ApprovedEntity:
+    """Transition proposed entity to approved state.
+
+    Args:
+        entity: Entity in proposed state
+        approved_by: User doing final approval
+        min_approvals: Minimum approvals required
+
+    Returns:
+        Entity in approved state
+
+    Raises:
+        TransitionError: If has active objections or insufficient approvals
+    """
+    if has_active_objections(entity):
+        raise TransitionError("Cannot approve entity with active objections")
+
+    if len(entity.approvals) < min_approvals:
+        raise TransitionError(
+            f"Insufficient approvals: {len(entity.approvals)} < {min_approvals}"
+        )
+
+    # Update attribution with approval info
+    new_attribution = Attribution(
+        proposed_by=entity.attribution.proposed_by,
+        proposed_at=entity.attribution.proposed_at,
+        approved_by=approved_by,
+        approved_at=datetime.utcnow(),
+        modifications=entity.attribution.modifications,
+    )
+
+    return ApprovedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=new_attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+    )
+
+
+# =============================================================================
+# Approved -> Committed
+# =============================================================================
+
+
+def commit(
+    entity: ApprovedEntity,
+    jira_key: JiraKey,
+    field_path: str | None = None,
+) -> CommittedEntity:
+    """Transition approved entity to committed state.
+
+    Args:
+        entity: Entity in approved state
+        jira_key: Jira issue key (e.g., PROJ-123)
+        field_path: For decisions, the Jira field this affects
+
+    Returns:
+        Entity in committed state with required JiraLink
+    """
+    jira_link = JiraLink(
+        jira_key=jira_key,
+        synced_version=entity.version,
+        synced_at=datetime.utcnow(),
+        sync_status=SyncStatus.SYNCED,
+        field_path=field_path,
+    )
+
+    return CommittedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        thread_ts=entity.thread_ts,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        jira_link=jira_link,
+    )
+
+
+# =============================================================================
+# Committed -> Deprecated (decisions only)
+# =============================================================================
+
+
+def deprecate(
+    entity: CommittedEntity,
+    superseded_by: EntityId | None = None,
+) -> DeprecatedEntity:
+    """Deprecate a committed decision.
+
+    Args:
+        entity: Entity in committed state
+        superseded_by: Optional ID of superseding decision
+
+    Returns:
+        Entity in deprecated state
+    """
+    return DeprecatedEntity(
+        id=entity.id,
+        entity_type=entity.entity_type,
+        channel_id=entity.channel_id,
+        content=entity.content,
+        attribution=entity.attribution,
+        version=Version(entity.version + 1),
+        canonical_message_ts=entity.canonical_message_ts,
+        jira_link=entity.jira_link,
+        deprecated_at=datetime.utcnow(),
+        superseded_by=superseded_by,
+    )
+
+
+# =============================================================================
+# Query helpers
+# =============================================================================
+
+
+def can_approve(entity: Entity) -> tuple[bool, str | None]:
+    """Check if entity can be approved.
+
+    Returns:
+        Tuple of (can_approve, reason if not)
+    """
+    if not isinstance(entity, ProposedEntity):
+        return False, f"Entity must be proposed, is {type(entity).__name__}"
+
+    if has_active_objections(entity):
+        active_count = sum(1 for o in entity.objections if o.status == ObjectionStatus.ACTIVE)
+        return False, f"Entity has {active_count} active objection(s)"
+
+    return True, None
+
+
+def can_commit(entity: Entity) -> tuple[bool, str | None]:
+    """Check if entity can be committed.
+
+    Returns:
+        Tuple of (can_commit, reason if not)
+    """
+    if not isinstance(entity, ApprovedEntity):
+        return False, f"Entity must be approved, is {type(entity).__name__}"
+
+    return True, None
+
+
+def can_modify(entity: Entity) -> tuple[bool, str | None]:
+    """Check if entity can be modified.
+
+    Returns:
+        Tuple of (can_modify, reason if not)
+    """
+    if isinstance(entity, (DraftEntity, ProposedEntity)):
+        return True, None
+
+    return False, f"Entity is {type(entity).__name__}, only Draft/Proposed can be modified"
