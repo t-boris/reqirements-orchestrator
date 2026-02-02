@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 1 of 7 (Foundation)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-02 — Completed 01-02-PLAN.md, 01-03-PLAN.md (parallel)
+Last activity: 2026-02-02 — Completed 01-04-PLAN.md
 
-Progress: ███░░░░░░░ 30%
+Progress: ████░░░░░░ 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2.7 min
-- Total execution time: 8 min
+- Total plans completed: 4
+- Average duration: 2.5 min
+- Total execution time: 10 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Foundation | 3 | 8 min | 2.7 min |
+| 1. Foundation | 4 | 10 min | 2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (3 min), 01-03 (2 min)
-- Trend: —
+- Last 5 plans: 01-01 (3 min), 01-02 (3 min), 01-03 (2 min), 01-04 (2 min)
+- Trend: Stable
 
 ## Accumulated Context
 
@@ -46,6 +46,8 @@ Progress: ███░░░░░░░ 30%
 | 01-02 | Frozen models for immutability | ConfigDict(frozen=True) supports event-sourced architecture |
 | 01-03 | ClassVar for schema_version | Avoids serializing as instance field while including in metadata |
 | 01-03 | Correlation/causation IDs | Support distributed tracing from day one |
+| 01-04 | 500-event snapshot interval | Per CONTEXT.md recommendation for production |
+| 01-04 | Atomic outbox writes | Ensure projections receive all events reliably |
 
 ### Deferred Issues
 
@@ -57,6 +59,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 22:27 UTC
-Stopped at: Completed 01-02-PLAN.md, 01-03-PLAN.md
+Last session: 2026-02-02 22:31 UTC
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
