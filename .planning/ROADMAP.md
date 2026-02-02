@@ -37,16 +37,19 @@ Key deliverables:
 ### Phase 2: Slack Integration
 **Goal**: Working Slack bot with message handling and routing
 **Depends on**: Phase 1
-**Research**: Unlikely (Bolt SDK, v1.x patterns exist)
-**Plans**: TBD
+**Research**: Complete (02-RESEARCH.md)
+**Plans**: 5 (02-01 through 02-05, all complete)
 
 Key deliverables:
-- Slack Bolt app setup
-- Message event handlers
-- Button action handlers
-- SlackClient wrapper with rate limiting
-- Message routing (channel/thread/ephemeral)
-- Basic response posting
+- Slack Bolt AsyncApp with FastAPI adapter
+- SlackClient wrapper with rate limiting (1 msg/sec)
+- Message type routing (CHANNEL/THREAD/EPHEMERAL)
+- Event handlers (message, app_mention) with bot_id filtering
+- Button action handlers (approve/object/discuss)
+- /maro slash command with help
+- Block Kit builders for common messages
+- DashboardManager for pinned channel status
+- Complete documentation in BOT_DESIGN.md
 
 ### Phase 3: Intent & Modes
 **Goal**: 2-stage intent classification with 4 SuperModes
