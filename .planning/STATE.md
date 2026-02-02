@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 3 of 7 (Intent & Modes)
-Plan: 2 of 6 in current phase
+Plan: 3 of 6 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 03-01-PLAN.md
+Last activity: 2026-02-02 - Completed 03-04-PLAN.md
 
-Progress: ██░░░░░░░░ 17% (Phase 3)
+Progress: ███░░░░░░░ 26% (Phase 3)
 
 ## Performance Metrics
 
@@ -69,6 +69,9 @@ Progress: ██░░░░░░░░ 17% (Phase 3)
 | 03-02 | PreGate order (bot first) | Short-circuit self-reply loops early |
 | 03-02 | Word boundary pattern matching | Flexibility for approval/objection detection |
 | 03-02 | Frozen PreGateOutput | Immutable output for predictable behavior |
+| 03-04 | CREATE/MODIFY/RECORD require confirmation | Per BOT_DESIGN.md: all approvals require human action |
+| 03-04 | CONVERSE always allowed | No side effects means no safety restrictions |
+| 03-04 | Only DRAFT/PROPOSED modifiable | Per BOT_DESIGN.md transition rules |
 
 ### Deferred Issues
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 23:27 UTC
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-02-02 23:30 UTC
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None

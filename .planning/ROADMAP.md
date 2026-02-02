@@ -129,7 +129,7 @@ Key deliverables:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete | 2026-02-02 |
 | 2. Slack Integration | 5/5 | Complete | 2026-02-02 |
-| 3. Intent & Modes | 2/6 | In progress | - |
+| 3. Intent & Modes | 3/6 | In progress | - |
 | 4. Entity Lifecycle | 0/TBD | Not started | - |
 | 5. Process Orchestration | 0/TBD | Not started | - |
 | 6. Jira Projection | 0/TBD | Not started | - |
