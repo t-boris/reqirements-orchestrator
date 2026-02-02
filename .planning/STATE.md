@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 1 of 7 (Foundation)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-02-02 — Completed 01-04-PLAN.md
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-02 — Completed 01-05-PLAN.md
 
-Progress: ████░░░░░░ 40%
+Progress: █████░░░░░ 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 2.5 min
-- Total execution time: 10 min
+- Total plans completed: 5
+- Average duration: 2.6 min
+- Total execution time: 13 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Foundation | 4 | 10 min | 2.5 min |
+| 1. Foundation | 5 | 13 min | 2.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3 min), 01-02 (3 min), 01-03 (2 min), 01-04 (2 min)
+- Last 5 plans: 01-01 (3 min), 01-02 (3 min), 01-03 (2 min), 01-04 (2 min), 01-05 (3 min)
 - Trend: Stable
 
 ## Accumulated Context
@@ -48,6 +48,8 @@ Progress: ████░░░░░░ 40%
 | 01-03 | Correlation/causation IDs | Support distributed tracing from day one |
 | 01-04 | 500-event snapshot interval | Per CONTEXT.md recommendation for production |
 | 01-04 | Atomic outbox writes | Ensure projections receive all events reliably |
+| 01-05 | Upsert pattern for idempotency | Safe event replay with ON CONFLICT DO UPDATE |
+| 01-05 | FOR UPDATE SKIP LOCKED | Concurrent-safe outbox processing |
 
 ### Deferred Issues
 
@@ -59,6 +61,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 22:31 UTC
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-02-02 22:38 UTC
+Stopped at: Completed 01-05-PLAN.md (Phase 1 complete)
 Resume file: None

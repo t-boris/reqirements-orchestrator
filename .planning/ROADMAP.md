@@ -10,7 +10,7 @@ None
 
 ## Phases
 
-- [ ] **Phase 1: Foundation** - Project setup, domain model, event store
+- [x] **Phase 1: Foundation** - Project setup, domain model, event store
 - [ ] **Phase 2: Slack Integration** - Bolt app, message routing, handlers
 - [ ] **Phase 3: Intent & Modes** - PreGates, Router, 4 SuperModes
 - [ ] **Phase 4: Entity Lifecycle** - Unified entity, state transitions, approvals
@@ -122,7 +122,7 @@ Key deliverables:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 4/5 | In progress | - |
+| 1. Foundation | 5/5 | Complete | 2026-02-02 |
 | 2. Slack Integration | 0/TBD | Not started | - |
 | 3. Intent & Modes | 0/TBD | Not started | - |
 | 4. Entity Lifecycle | 0/TBD | Not started | - |
