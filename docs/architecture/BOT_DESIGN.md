@@ -336,6 +336,120 @@ Dashboard is updated when entities change lifecycle state.
 
 ---
 
+## Intent Classification Implementation
+
+### Technology Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| LLM Abstraction | LiteLLM | Multi-provider support (Gemini, OpenAI, Anthropic, etc.) |
+| Structured Output | Instructor | Pydantic validation with auto-retries |
+| JSON Repair | json-repair | Fallback for malformed LLM responses |
+
+### Classification Pipeline
+
+```
+Message arrives
+    |
++---------------------------------------------+
+| Stage 1: PreGates (Deterministic)           |
+|   * /maro command -> COMMAND                |
+|   * Button click -> ACTION                  |
+|   * "lgtm", "approved" -> APPROVAL          |
+|   * Bot message -> IGNORE                   |
+|   * Process thread -> PROCESS               |
+|   * Otherwise -> PASS_THROUGH               |
++---------------------------------------------+
+    | (if PASS_THROUGH)
++---------------------------------------------+
+| Stage 2: LLM Router                         |
+|   * Input: message + context                |
+|   * Output: IntentClassification            |
+|   * Uses Instructor for structured output   |
+|   * Auto-retries on validation failure      |
++---------------------------------------------+
+    |
++---------------------------------------------+
+| Stage 3: Confidence Thresholds              |
+|   * confidence < 0.7 -> CONVERSE            |
+|   * CREATE/MODIFY < 0.85 -> CONVERSE        |
+|   * Otherwise -> classified mode            |
++---------------------------------------------+
+    |
++---------------------------------------------+
+| Stage 4: Safety Evaluator                   |
+|   * Check lifecycle state                   |
+|   * Check permissions                       |
+|   * Determine if confirmation required      |
++---------------------------------------------+
+    |
++---------------------------------------------+
+| Stage 5: Mode Handler                       |
+|   * CREATE -> CreateModeHandler             |
+|   * MODIFY -> ModifyModeHandler             |
+|   * RECORD -> RecordModeHandler             |
+|   * CONVERSE -> ConverseModeHandler         |
++---------------------------------------------+
+```
+
+### Configuration
+
+LLM settings in environment:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | gemini | Provider prefix for LiteLLM |
+| `LLM_MODEL` | gemini-2.0-flash | Model name |
+| `LLM_API_KEY` | (none) | Provider API key |
+| `LLM_TEMPERATURE` | 0.1 | Lower = more deterministic |
+| `LLM_MAX_RETRIES` | 2 | Retry count for validation failures |
+
+### Confidence Thresholds
+
+| Threshold | Value | Effect |
+|-----------|-------|--------|
+| Base | 0.7 | Below this, always CONVERSE |
+| Side-effect | 0.85 | CREATE/MODIFY require this |
+
+**Rationale:** Side-effect modes (CREATE, MODIFY) can cause irreversible actions. Requiring higher confidence prevents accidental entity creation or modification on ambiguous input.
+
+### Module Structure
+
+```
+src/
++-- llm/
+|   +-- client.py         # LiteLLM + Instructor wrapper
+|   +-- __init__.py
++-- intent/
+|   +-- schemas.py        # SuperMode, IntentClassification, etc.
+|   +-- pregates.py       # Deterministic pre-routing
+|   +-- router.py         # LLM-based classification
+|   +-- prompts.py        # Classification prompts
+|   +-- safety.py         # Safety evaluator
+|   +-- __init__.py
++-- modes/
+    +-- base.py           # ModeHandler base class
+    +-- create.py         # CREATE mode handler
+    +-- modify.py         # MODIFY mode handler
+    +-- record.py         # RECORD mode handler
+    +-- converse.py       # CONVERSE mode handler
+    +-- dispatcher.py     # Routes intents to handlers
+    +-- __init__.py
+```
+
+### Error Handling
+
+| Error Type | Handling |
+|------------|----------|
+| LLM timeout | Fall back to CONVERSE |
+| Validation failure | Instructor retries with error feedback |
+| JSON malformed | json-repair attempts fix |
+| All retries exhausted | Fall back to CONVERSE |
+
+**Key principle:** Always fail safe to CONVERSE mode. Never take action when uncertain.
+
+---
+
 ## Prompts Overview
 
 ### Intent Classification Prompt
