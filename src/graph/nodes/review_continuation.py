@@ -275,8 +275,13 @@ For INCREMENTAL UPDATE (user providing answers/feedback):
 Focus on what's new or changed:
 - New decisions based on user's input
 - New risks identified
-- New open questions (if any)
 - What changed from previous version
+
+IMPORTANT: If you have follow-up questions for the user, you MUST put them in a section called "5. *Open Questions*" at the end, formatted as:
+5. *Open Questions*
+1. [First question]?
+2. [Second question]?
+This format is required for the system to display questions with answer buttons.
 
 Format for Slack:
 - Bold: *text* (single asterisks)
