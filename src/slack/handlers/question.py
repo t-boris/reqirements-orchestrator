@@ -711,6 +711,17 @@ async def _handle_review_question_answer(
             text=progress_text,
         )
 
+        # Phase 45: Post transition offer if decisions have been captured
+        # (don't wait until all questions answered)
+        captured_decisions = review_context.get("captured_decisions", [])
+        if captured_decisions:
+            await _post_decision_transition_offer(
+                client=client,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                captured_decisions=captured_decisions,
+            )
+
     else:
         # All questions answered - trigger LLM synthesis
         await _trigger_review_synthesis(
