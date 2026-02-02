@@ -191,6 +191,58 @@ class DecisionDeprecated(DomainEvent):
 
 
 # =============================================================================
+# Approval/Objection Events (spec 3.9)
+# =============================================================================
+
+
+class ApprovalAdded(DomainEvent):
+    """Approval added to proposed entity.
+
+    Emitted when a team member approves a proposed entity.
+    Multiple approvals may be required per ApprovalPolicy.
+    """
+
+    entity_id: EntityId
+    approved_by: UserId
+    comment: str | None = None
+
+
+class ObjectionRaised(DomainEvent):
+    """Objection raised against proposed entity.
+
+    Emitted when a team member objects to a proposed entity.
+    Objections block progress until resolved.
+    """
+
+    entity_id: EntityId
+    objected_by: UserId
+    reason: str
+
+
+class ObjectionResolved(DomainEvent):
+    """Objection resolved.
+
+    Emitted when an objection is resolved (either withdrawn or addressed).
+    """
+
+    entity_id: EntityId
+    objection_index: int  # Index in the objections list
+    resolved_by: UserId
+    resolution: str
+
+
+class ObjectionWithdrawn(DomainEvent):
+    """Objection withdrawn by the objector.
+
+    Emitted when the original objector withdraws their objection.
+    """
+
+    entity_id: EntityId
+    objection_index: int
+    withdrawn_by: UserId
+
+
+# =============================================================================
 # Conflict Events (spec 4.2)
 # =============================================================================
 
@@ -311,6 +363,11 @@ ALL_EVENT_TYPES: list[type[DomainEvent]] = [
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
+    # Approval/Objection Events
+    ApprovalAdded,
+    ObjectionRaised,
+    ObjectionResolved,
+    ObjectionWithdrawn,
     # Conflict Events
     ConflictDetected,
     ConflictResolved,
