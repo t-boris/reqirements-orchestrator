@@ -493,12 +493,13 @@ async def _handle_question_button_async(
         # Check if this is a review question (plan_id starts with "review_")
         if plan_id.startswith("review_"):
             # Handle review question answer without TaskPlan
+            # Note: question_id is the actual question ID (e.g., "review_q_0")
             await _handle_review_question_answer(
                 client,
                 channel_id,
                 thread_ts,
                 user_id,
-                plan_id,  # Use plan_id as context identifier
+                question_id,  # Pass the actual question_id, not plan_id
                 option_id,
                 encoded_value,
                 message_ts,
