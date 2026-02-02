@@ -59,6 +59,8 @@ Key integration point: The SafetyEvaluator from Phase 3 will use the LifecycleSt
 
 The existing event store infrastructure from Phase 1 (EventStore, projections, outbox) provides the foundation for entity events.
 
+**Documentation update required:** Update `docs/architecture/*.md` (especially BOT_DESIGN.md) to document the entity lifecycle implementation, sum types pattern, and how the mode handlers integrate with entities.
+
 </notes>
 
 ---
