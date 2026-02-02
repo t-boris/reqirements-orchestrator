@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 Phase: 3 of 7 (Intent & Modes)
 Plan: 2 of 6 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 03-02-PLAN.md
+Last activity: 2026-02-02 - Completed 03-01-PLAN.md
 
 Progress: ██░░░░░░░░ 17% (Phase 3)
 
@@ -63,6 +63,9 @@ Progress: ██░░░░░░░░ 17% (Phase 3)
 | 02-04 | Approve/Object/Discuss for work items | Decisions get only Approve/Object (no Discuss) |
 | 02-05 | Bolt app init in lifespan handler | Avoid import-time initialization |
 | 02-05 | Environment setting controls reload | Development mode enables uvicorn reload |
+| 03-01 | gemini/gemini-2.0-flash default | Fast, cost-effective for classification |
+| 03-01 | Temperature 0.1 for intent routing | Deterministic output for classification |
+| 03-01 | 2 retries for validation failures | Balance reliability vs latency |
 | 03-02 | PreGate order (bot first) | Short-circuit self-reply loops early |
 | 03-02 | Word boundary pattern matching | Flexibility for approval/objection detection |
 | 03-02 | Frozen PreGateOutput | Immutable output for predictable behavior |
@@ -77,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02 23:24 UTC
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-02-02 23:27 UTC
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
