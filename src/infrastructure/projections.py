@@ -18,12 +18,16 @@ from typing import Any
 import asyncpg
 
 from src.domain.events import (
+    ApprovalAdded,
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
     DecisionProposed,
     DecisionRecorded,
     DomainEvent,
+    ObjectionRaised,
+    ObjectionResolved,
+    ObjectionWithdrawn,
     WorkItemApproved,
     WorkItemCommitted,
     WorkItemDrafted,
@@ -94,6 +98,11 @@ class EntityProjection(Projection):
             "DecisionApproved",
             "DecisionCommitted",
             "DecisionDeprecated",
+            # Approval/Objection events
+            "ApprovalAdded",
+            "ObjectionRaised",
+            "ObjectionResolved",
+            "ObjectionWithdrawn",
         ]
 
     async def apply(self, event: DomainEvent) -> None:
@@ -139,6 +148,25 @@ class EntityProjection(Projection):
                 await self._commit_decision(event)
             case DecisionDeprecated():
                 await self._deprecate_entity(event)
+            case ApprovalAdded():
+                await self._add_approval(event.entity_id, event.approved_by)
+            case ObjectionRaised():
+                await self._add_objection(
+                    event.entity_id,
+                    event.objected_by,
+                    event.reason,
+                )
+            case ObjectionResolved():
+                await self._resolve_objection(
+                    event.entity_id,
+                    event.objection_index,
+                    event.resolution,
+                )
+            case ObjectionWithdrawn():
+                await self._withdraw_objection(
+                    event.entity_id,
+                    event.objection_index,
+                )
 
     async def _create_entity(
         self,
@@ -297,6 +325,78 @@ class EntityProjection(Projection):
                 datetime.utcnow(),
                 str(event.superseded_by) if event.superseded_by else None,
                 str(event.entity_id),
+            )
+
+    async def _add_objection(
+        self,
+        entity_id: str,
+        objected_by: str,
+        reason: str,
+    ) -> None:
+        """Add objection to entity's objections list."""
+        async with self.pool.acquire() as conn:
+            objection = {
+                "user_id": objected_by,
+                "timestamp": datetime.utcnow().isoformat(),
+                "reason": reason,
+                "status": "active",
+            }
+            await conn.execute(
+                """
+                UPDATE entities_view
+                SET objections = COALESCE(objections, '[]'::jsonb) || $1::jsonb,
+                    updated_at = NOW()
+                WHERE id = $2
+                """,
+                [objection],
+                str(entity_id),
+            )
+
+    async def _resolve_objection(
+        self,
+        entity_id: str,
+        objection_index: int,
+        resolution: str,
+    ) -> None:
+        """Mark objection as resolved."""
+        async with self.pool.acquire() as conn:
+            # Update the specific objection in the array
+            await conn.execute(
+                """
+                UPDATE entities_view
+                SET objections = jsonb_set(
+                    objections,
+                    ARRAY[$1::text],
+                    (objections->$1::int) || '{"status": "resolved", "resolution": "'|| $2 ||'"}'::jsonb
+                ),
+                updated_at = NOW()
+                WHERE id = $3
+                """,
+                str(objection_index),
+                resolution,
+                str(entity_id),
+            )
+
+    async def _withdraw_objection(
+        self,
+        entity_id: str,
+        objection_index: int,
+    ) -> None:
+        """Mark objection as withdrawn."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE entities_view
+                SET objections = jsonb_set(
+                    objections,
+                    ARRAY[$1::text],
+                    (objections->$1::int) || '{"status": "withdrawn"}'::jsonb
+                ),
+                updated_at = NOW()
+                WHERE id = $2
+                """,
+                str(objection_index),
+                str(entity_id),
             )
 
     def _serialize_content(self, content: Any) -> dict:
