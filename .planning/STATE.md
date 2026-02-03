@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 8 (Smart UX Layer) — v2.1 milestone
-Plan: 0 of 0 in current phase (not yet planned)
-Status: Phase added, awaiting planning
-Last activity: 2026-02-03 - Phase 8 added from improvement review
+Plan: 0 of 5 in current phase (planned, awaiting execution)
+Status: Phase planned — 5 plans in 2 waves
+Last activity: 2026-02-03 - Phase 8 planned
 
 Progress: █░░░░░░░░░ 0% (v2.1)
 
@@ -34,6 +34,7 @@ Progress: █░░░░░░░░░ 0% (v2.1)
 | 5. Process Orchestration | 7 | Complete |
 | 6. Jira Projection | 5 | Complete |
 | 7. Polish & Deploy | 4 | Complete |
+| 8. Smart UX Layer | 5 | Planned |
 
 ## Milestone Summary
 
@@ -55,6 +56,6 @@ Key accomplishments:
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Phase 8 added to roadmap
+Stopped at: Phase 8 planned (5 plans, 2 waves)
 Resume file: None
-Next action: Plan Phase 8 (/gsd:plan-phase 8)
+Next action: Execute Phase 8 (/gsd:execute-phase 8)
