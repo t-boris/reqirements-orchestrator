@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 4 of 7 (Entity Lifecycle)
-Plan: 5 of 7 in current phase (04-01, 04-02, 04-03, 04-04, 04-06 complete)
+Plan: 6 of 7 in current phase (04-01 through 04-06 complete)
 Status: In progress
-Last activity: 2026-02-03 - Completed 04-06-PLAN.md
+Last activity: 2026-02-03 - Completed 04-05-PLAN.md
 
-Progress: █████████░ 91% (21/23 plans)
+Progress: █████████░ 96% (22/23 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 22
 - Average duration: 2.2 min
-- Total execution time: 44 min
+- Total execution time: 48 min
 
 **By Phase:**
 
@@ -88,6 +88,9 @@ Progress: █████████░ 91% (21/23 plans)
 | 04-03 | Auto-approve when 1 approval and no active objections | Default approval policy for entities |
 | 04-04 | Reuse _add_approval for ApprovalAdded | DRY - method already handles JSONB append pattern |
 | 04-04 | String interpolation for resolution JSON | Dynamic construction of resolution field in jsonb_set |
+| 04-05 | Handlers create entities through ChannelAggregate | Consistent event emission for entity operations |
+| 04-05 | Preview-before-create pattern | Show draft preview before actual entity creation |
+| 04-05 | Decision type inference from keywords | Architecture, scope, constraint, priority keywords for RECORD mode |
 | 04-06 | Functional API over class-based SafetyEvaluator | Simpler interface, no singleton management needed |
 | 04-06 | Direct entity types in ActionContext | Use domain Entity types directly instead of intermediate EntityContext |
 
@@ -102,6 +105,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-03
-Stopped at: Completed 04-06-PLAN.md
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
 Next action: Execute 04-07-PLAN.md
