@@ -15,8 +15,13 @@ from src.intent import (
     check_pregates,
 )
 from src.modes import dispatch_mode
+from src.slack.client import SlackClient
+from src.slack.dashboard import DashboardManager
 
 logger = logging.getLogger(__name__)
+
+# Cached bot user ID (resolved on first event)
+_bot_user_id: str | None = None
 
 # Track active process threads (will be populated by process orchestration in Phase 5)
 _active_process_threads: set[str] = set()
@@ -207,5 +212,40 @@ def register_event_handlers(app: AsyncApp) -> None:
                 text="Sorry, I encountered an error. Please try again.",
                 thread_ts=thread_ts,
             )
+
+    @app.event("member_joined_channel")
+    async def handle_member_joined(event: dict, client) -> None:
+        """Handle bot being added to a channel - create dashboard.
+
+        When the bot joins a channel, post and pin the status dashboard.
+        Only triggers for the bot itself, not other users joining.
+        """
+        global _bot_user_id
+
+        user_id = event.get("user", "")
+        channel_id = event.get("channel", "")
+
+        # Resolve our bot user ID if not cached
+        if _bot_user_id is None:
+            try:
+                auth = await client.auth_test()
+                _bot_user_id = auth.get("user_id", "")
+            except Exception as e:
+                logger.warning(f"Failed to resolve bot user ID: {e}")
+                return
+
+        # Only create dashboard when the bot itself joins
+        if user_id != _bot_user_id:
+            return
+
+        logger.info(f"Bot added to channel {channel_id}, creating dashboard")
+
+        try:
+            slack_client = SlackClient(client)
+            dashboard_mgr = DashboardManager(slack_client)
+            await dashboard_mgr.create_or_update(channel_id=channel_id)
+            logger.info(f"Dashboard created in {channel_id}")
+        except Exception as e:
+            logger.error(f"Failed to create dashboard in {channel_id}: {e}", exc_info=True)
 
     logger.info("Event handlers registered with intent routing")
