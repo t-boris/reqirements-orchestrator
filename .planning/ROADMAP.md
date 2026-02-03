@@ -28,7 +28,7 @@ Address UX friction and operational gaps identified in improvement review (docs/
 Plans:
 - [ ] 08-01: LLM Question Extraction + Button Rendering (wave 1)
 - [ ] 08-02: Intent Audit Logging (wave 1)
-- [ ] 08-03: Deterministic Post-Filters (wave 1)
+- [x] 08-03: Deterministic Post-Filters (wave 1)
 - [ ] 08-04: /maro inspect Command (wave 2, depends: 02)
 - [ ] 08-05: Architecture Docs Update (wave 1)
 
@@ -64,4 +64,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 5. Process Orchestration | v2.0 | 7/7 | Complete | 2026-02-02 |
 | 6. Jira Projection | v2.0 | 5/5 | Complete | 2026-02-02 |
 | 7. Polish & Deploy | v2.0 | 4/4 | Complete | 2026-02-02 |
-| 8. Smart UX Layer | v2.1 | 0/5 | Planned | - |
+| 8. Smart UX Layer | v2.1 | 3/5 | In progress | - |
