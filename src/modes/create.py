@@ -310,9 +310,51 @@ class CreateModeHandler(ModeHandler):
                 response_blocks=self._build_draft_blocks(draft),
             )
 
-        # Handle decision creation similarly
+        # Handle decision creation
+        if action == "create_decisions":
+            decisions_data = content_data.get("decisions", [])
+            if not decisions_data:
+                return ModeResult(
+                    response_text="No decisions to create.",
+                )
+
+            from src.domain.content import DecisionContent, DecisionType
+
+            created_ids = []
+            for d in decisions_data:
+                try:
+                    dt = DecisionType(d.get("decision_type", "architecture").lower())
+                except ValueError:
+                    dt = DecisionType.ARCHITECTURE
+
+                decision_content = DecisionContent(
+                    decision_type=dt,
+                    title=d.get("title", "Untitled Decision"),
+                    description=d.get("decision", d.get("description", "")),
+                    rationale=d.get("rationale", ""),
+                    alternatives_considered=d.get("alternatives_considered", []),
+                )
+
+                draft = aggregate.record_decision(
+                    actor_id=UserId(context.user_id),
+                    thread_ts=ThreadTs(context.thread_ts or ""),
+                    content=decision_content,
+                )
+                created_ids.append((str(draft.id), decision_content.title))
+
+            events = aggregate.clear_pending_events()
+
+            titles_text = "\n".join(f"- {title}" for _, title in created_ids)
+            return ModeResult(
+                response_text=(
+                    f":white_check_mark: Recorded {len(created_ids)} decisions:\n{titles_text}"
+                ),
+                entity_created=created_ids[0][0] if created_ids else None,
+                events_emitted=[e.event_type for e in events],
+            )
+
         return ModeResult(
-            response_text="Decision creation not yet implemented",
+            response_text="Unknown creation action.",
         )
 
     def _build_preview_blocks(self, content: dict) -> list[dict]:

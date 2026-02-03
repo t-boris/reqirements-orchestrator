@@ -52,9 +52,24 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("No SLACK_APP_TOKEN - Socket Mode disabled, using HTTP mode only")
 
+    # Initialize database pool
+    try:
+        from src.infrastructure.database import get_pool
+        await get_pool()
+        logger.info("Database pool initialized")
+    except Exception as e:
+        logger.warning(f"Database pool initialization failed (will retry on demand): {e}")
+
     yield
 
     # Shutdown
+    try:
+        from src.infrastructure.database import close_pool
+        await close_pool()
+        logger.info("Database pool closed")
+    except Exception:
+        pass
+
     if _socket_handler:
         await _socket_handler.close_async()
         logger.info("Socket Mode disconnected")

@@ -6,6 +6,13 @@ from typing import Any
 from slack_bolt.async_app import AsyncAck
 from slack_sdk.web.async_client import AsyncWebClient
 
+from src.config import get_settings
+from src.domain.entities import ApprovedEntity
+from src.domain.types import EntityId, JiraKey, UserId
+from src.infrastructure.aggregate_loader import load_aggregate, save_events
+from src.jira.factory import get_sync_service
+from src.jira.sync_service import DuplicateDetectedError, JiraSyncError
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +27,6 @@ async def handle_commit_to_jira(
     """
     await ack()
 
-    # Extract entity info from action value
     action = body["actions"][0]
     entity_id = action.get("value", "")
     channel_id = body["channel"]["id"]
@@ -29,20 +35,78 @@ async def handle_commit_to_jira(
 
     logger.info(f"Commit to Jira requested for entity {entity_id} by {user_id}")
 
-    # TODO: In full implementation:
-    # 1. Load entity from projection
-    # 2. Get channel config for project_key
-    # 3. Call CommitHandler.commit_work_item()
-    # 4. Based on result:
-    #    - SUCCESS: Update entity via ChannelAggregate.commit_work_item()
-    #    - DUPLICATE_FOUND: Post duplicate selection message
-    #    - ERROR: Post error message
-
     await client.chat_postMessage(
         channel=channel_id,
         thread_ts=thread_ts,
-        text=f":hourglass: Checking for duplicates before creating Jira issue...",
+        text=":hourglass: Checking for duplicates before creating Jira issue...",
     )
+
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(EntityId(entity_id))
+
+        if entity is None:
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found in this channel.",
+            )
+            return
+
+        if not isinstance(entity, ApprovedEntity):
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity must be approved before committing to Jira. Current state: {type(entity).__name__}",
+            )
+            return
+
+        settings = get_settings()
+        project_key = settings.jira_default_project
+        sync_service = get_sync_service()
+
+        jira_key = await sync_service.commit_work_item(entity, project_key)
+
+        committed = aggregate.commit_work_item(
+            entity_id=EntityId(entity_id),
+            actor_id=UserId(user_id),
+            jira_key=JiraKey(jira_key),
+        )
+        await save_events(aggregate)
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":white_check_mark: Created Jira issue *{jira_key}* for _{entity.content.title}_",
+        )
+
+    except DuplicateDetectedError as e:
+        blocks = build_duplicate_selection_blocks(
+            entity_id=entity_id,
+            duplicate_keys=e.duplicate_keys,
+            original_title=getattr(entity.content, "title", entity_id),
+        )
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Potential duplicates found: {', '.join(e.duplicate_keys)}",
+            blocks=blocks,
+        )
+
+    except JiraSyncError as e:
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to commit to Jira: {e}",
+        )
+
+    except Exception as e:
+        logger.error(f"Error committing to Jira: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=":x: An unexpected error occurred while committing to Jira.",
+        )
 
 
 async def handle_select_duplicate(
@@ -57,7 +121,6 @@ async def handle_select_duplicate(
     await ack()
 
     action = body["actions"][0]
-    # Value format: "entity_id:jira_key"
     value = action.get("value", "")
     channel_id = body["channel"]["id"]
     user_id = body["user"]["id"]
@@ -71,16 +134,38 @@ async def handle_select_duplicate(
 
     logger.info(f"User {user_id} selected existing {jira_key} for entity {entity_id}")
 
-    # TODO: In full implementation:
-    # 1. Call CommitHandler.commit_with_existing()
-    # 2. Update entity via ChannelAggregate.commit_work_item()
-    # 3. Post confirmation
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(EntityId(entity_id))
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=thread_ts,
-        text=f":link: Linking to existing issue {jira_key}...",
-    )
+        if entity is None or not isinstance(entity, ApprovedEntity):
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found or not in approved state.",
+            )
+            return
+
+        committed = aggregate.commit_work_item(
+            entity_id=EntityId(entity_id),
+            actor_id=UserId(user_id),
+            jira_key=JiraKey(jira_key),
+        )
+        await save_events(aggregate)
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":link: Linked entity to existing issue *{jira_key}*",
+        )
+
+    except Exception as e:
+        logger.error(f"Error linking to duplicate: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to link to {jira_key}: {e}",
+        )
 
 
 async def handle_create_anyway(
@@ -102,17 +187,50 @@ async def handle_create_anyway(
 
     logger.info(f"User {user_id} chose to create anyway for entity {entity_id}")
 
-    # TODO: In full implementation:
-    # 1. Skip preflight check (user confirmed)
-    # 2. Call JiraSyncService directly to create
-    # 3. Update entity via ChannelAggregate.commit_work_item()
-    # 4. Post confirmation
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(EntityId(entity_id))
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=thread_ts,
-        text=f":rocket: Creating new Jira issue...",
-    )
+        if entity is None or not isinstance(entity, ApprovedEntity):
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found or not in approved state.",
+            )
+            return
+
+        settings = get_settings()
+        sync_service = get_sync_service()
+
+        jira_key = await sync_service.jira.create_issue(
+            project_key=settings.jira_default_project,
+            summary=entity.content.title,
+            issue_type=sync_service._map_issue_type(
+                getattr(entity.content, "issue_type", "Task")
+            ),
+            description=getattr(entity.content, "description", ""),
+        )
+
+        committed = aggregate.commit_work_item(
+            entity_id=EntityId(entity_id),
+            actor_id=UserId(user_id),
+            jira_key=JiraKey(jira_key),
+        )
+        await save_events(aggregate)
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":rocket: Created new Jira issue *{jira_key}* (duplicates ignored)",
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating Jira issue: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to create Jira issue: {e}",
+        )
 
 
 def build_duplicate_selection_blocks(

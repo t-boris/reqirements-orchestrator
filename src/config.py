@@ -75,6 +75,23 @@ class Settings(BaseSettings):
         default=2, description="Max retries for structured output validation failures"
     )
 
+    # Jira Configuration
+    jira_url: str = Field(
+        default="", description="Jira instance URL (e.g., https://your-domain.atlassian.net)"
+    )
+    jira_user: str = Field(
+        default="", description="Jira user email for authentication"
+    )
+    jira_api_token: str = Field(
+        default="", description="Jira API token"
+    )
+    jira_default_project: str = Field(
+        default="PROJ", description="Default Jira project key"
+    )
+    jira_dry_run: bool = Field(
+        default=False, description="If true, skip actual Jira API calls"
+    )
+
     @property
     def postgres_url(self) -> str:
         """Build PostgreSQL connection URL for asyncpg."""

@@ -8,6 +8,7 @@ Ref: BOT_DESIGN.md - Two-Stage Intent Classification
 import logging
 from slack_bolt.async_app import AsyncApp
 
+from src.domain.entities import get_lifecycle
 from src.intent import (
     classify_intent,
     RouterContext,
@@ -23,15 +24,46 @@ logger = logging.getLogger(__name__)
 # Cached bot user ID (resolved on first event)
 _bot_user_id: str | None = None
 
-# Track active process threads (will be populated by process orchestration in Phase 5)
+# Track active process threads
 _active_process_threads: set[str] = set()
+
+
+async def _build_entity_summaries(channel_id: str) -> str:
+    """Build entity summaries from event store for intent classification."""
+    try:
+        from src.infrastructure.aggregate_loader import load_aggregate
+
+        aggregate = await load_aggregate(channel_id)
+        if not aggregate.entities:
+            return "No existing entities"
+
+        summaries = []
+        for eid, entity in list(aggregate.entities.items())[:20]:
+            title = getattr(entity.content, "title", str(eid)[:8])
+            state = get_lifecycle(entity).value
+            etype = entity.entity_type.value
+            summaries.append(f"- {title} ({etype}, {state}) [id: {eid}]")
+
+        return "\n".join(summaries)
+    except Exception as e:
+        logger.debug(f"Could not load entity summaries: {e}")
+        return "No existing entities"
+
+
+async def _resolve_channel_name(client, channel_id: str) -> str:
+    """Resolve channel name from Slack API."""
+    try:
+        info = await client.conversations_info(channel=channel_id)
+        return info.get("channel", {}).get("name", channel_id)
+    except Exception:
+        return channel_id
 
 
 def register_event_handlers(app: AsyncApp) -> None:
     """Register all event handlers on the Bolt app."""
 
     @app.event("message")
-    async def handle_message(event: dict, say, logger) -> None:
+    async def handle_message(event: dict, say, client, logger) -> None:
         """Handle incoming messages with intent routing.
 
         Two-stage classification:
@@ -64,14 +96,16 @@ def register_event_handlers(app: AsyncApp) -> None:
 
         logger.info(f"Message in {channel_id} from {user_id}: {text[:50]}...")
 
-        # Build router context
-        # Note: In Phase 4+, we'll populate these from entity projections
+        # Populate router context from projections
+        channel_name = await _resolve_channel_name(client, channel_id)
+        entity_summaries = await _build_entity_summaries(channel_id)
+
         context = RouterContext(
             channel_id=channel_id,
-            channel_name=channel_id,  # Will be resolved in later phases
+            channel_name=channel_name,
             thread_ts=thread_ts,
-            thread_summary="",  # Will be populated in later phases
-            entity_summaries="",  # Will be populated in later phases
+            thread_summary="",
+            entity_summaries=entity_summaries,
             active_process_threads=_active_process_threads,
         )
 
@@ -163,13 +197,17 @@ def register_event_handlers(app: AsyncApp) -> None:
                 for m in thread_messages[-10:]  # Last 10 messages
             )
 
+        # Populate entity summaries from event store
+        channel_name = await _resolve_channel_name(client, channel_id)
+        entity_summaries = await _build_entity_summaries(channel_id)
+
         # Build context
         context = RouterContext(
             channel_id=channel_id,
-            channel_name=channel_id,
+            channel_name=channel_name,
             thread_ts=thread_ts,
             thread_summary=thread_summary,
-            entity_summaries="",
+            entity_summaries=entity_summaries,
             active_process_threads=_active_process_threads,
         )
 

@@ -6,7 +6,13 @@ from typing import Any
 from slack_bolt.async_app import AsyncAck
 from slack_sdk.web.async_client import AsyncWebClient
 
-from src.slack.blocks.sync import build_sync_report_blocks
+from src.domain.entities import CommittedEntity
+from src.infrastructure.aggregate_loader import load_aggregate
+from src.jira.factory import get_reconciliation_service, get_sync_service
+from src.slack.blocks.sync import (
+    build_discrepancy_resolution_blocks,
+    build_sync_report_blocks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,26 +34,45 @@ async def handle_sync_command(
 
     logger.info(f"Sync requested in {channel_id} by {user_id}")
 
-    # Acknowledge with loading message
     await client.chat_postEphemeral(
         channel=channel_id,
         user=user_id,
         text=":hourglass: Checking Jira sync status...",
     )
 
-    # TODO: In full implementation:
-    # 1. Load channel's committed entities from projection
-    # 2. Create JiraSyncService and ReconciliationService
-    # 3. Call reconciliation_service.check_sync_status(entities)
-    # 4. Build report blocks
-    # 5. Post to channel or ephemeral based on discrepancy count
+    try:
+        aggregate = await load_aggregate(channel_id)
+        committed_entities = [
+            e for e in aggregate.entities.values()
+            if isinstance(e, CommittedEntity)
+        ]
 
-    # For now, placeholder response
-    await client.chat_postEphemeral(
-        channel=channel_id,
-        user=user_id,
-        text=":white_check_mark: Sync check complete. No committed entities found in this channel.",
-    )
+        if not committed_entities:
+            await client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text=":white_check_mark: No committed entities found in this channel.",
+            )
+            return
+
+        recon_service = get_reconciliation_service()
+        report = await recon_service.check_sync_status(committed_entities)
+        blocks = build_sync_report_blocks(report)
+
+        await client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=report.summary,
+            blocks=blocks,
+        )
+
+    except Exception as e:
+        logger.error(f"Sync check failed: {e}", exc_info=True)
+        await client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=f":x: Sync check failed: {e}",
+        )
 
 
 async def handle_refresh_from_jira(
@@ -75,17 +100,47 @@ async def handle_refresh_from_jira(
 
     logger.info(f"Refresh from Jira requested for {entity_id} ({jira_key}) by {user_id}")
 
-    # TODO: In full implementation:
-    # 1. Load entity from projection
-    # 2. Call reconciliation_service.refresh_single(entity)
-    # 3. If discrepancies, show resolution UI
-    # 4. If in sync, confirm
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(entity_id)
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=thread_ts,
-        text=f":arrows_counterclockwise: Refreshing from {jira_key}...",
-    )
+        if entity is None or not isinstance(entity, CommittedEntity):
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found or not committed.",
+            )
+            return
+
+        recon_service = get_reconciliation_service()
+        report = await recon_service.refresh_single(entity)
+
+        if report.has_discrepancies:
+            blocks = build_discrepancy_resolution_blocks(
+                entity_id=str(entity.id),
+                jira_key=jira_key,
+                discrepancies=list(report.discrepancies),
+            )
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f"Discrepancies found for {jira_key}",
+                blocks=blocks,
+            )
+        else:
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":white_check_mark: *{jira_key}* is in sync with Slack.",
+            )
+
+    except Exception as e:
+        logger.error(f"Refresh from Jira failed: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to refresh from Jira: {e}",
+        )
 
 
 async def handle_resolve_use_jira(
@@ -103,17 +158,39 @@ async def handle_resolve_use_jira(
 
     logger.info(f"User {user_id} chose to use Jira values for {entity_id}")
 
-    # TODO: In full implementation:
-    # 1. Load current Jira values
-    # 2. Update entity content to match Jira
-    # 3. Emit appropriate events
-    # 4. Confirm resolution
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(entity_id)
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=thread_ts,
-        text=f":white_check_mark: Updated entity to match Jira values.",
-    )
+        if entity is None or not isinstance(entity, CommittedEntity) or entity.jira_link is None:
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found or not committed.",
+            )
+            return
+
+        sync_service = get_sync_service()
+        jira_data = await sync_service.refresh_from_jira(entity.jira_link.jira_key)
+        jira_fields = jira_data.get("fields", {})
+
+        jira_summary = jira_fields.get("summary", entity.content.title)
+        jira_description = jira_fields.get("description", "")
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":white_check_mark: Entity updated to match Jira values for *{entity.jira_link.jira_key}*.\n"
+                 f"Summary: _{jira_summary}_",
+        )
+
+    except Exception as e:
+        logger.error(f"Resolve use Jira failed: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to resolve: {e}",
+        )
 
 
 async def handle_resolve_keep_slack(
@@ -131,16 +208,41 @@ async def handle_resolve_keep_slack(
 
     logger.info(f"User {user_id} chose to keep Slack values for {entity_id}")
 
-    # TODO: In full implementation:
-    # 1. Push Slack values to Jira
-    # 2. Handle any update errors
-    # 3. Confirm resolution
+    try:
+        aggregate = await load_aggregate(channel_id)
+        entity = aggregate.get_entity(entity_id)
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=thread_ts,
-        text=f":white_check_mark: Jira updated to match Slack values.",
-    )
+        if entity is None or not isinstance(entity, CommittedEntity) or entity.jira_link is None:
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f":x: Entity `{entity_id}` not found or not committed.",
+            )
+            return
+
+        sync_service = get_sync_service()
+        fields_to_push = {"summary": entity.content.title}
+        if hasattr(entity.content, "description") and entity.content.description:
+            fields_to_push["description"] = entity.content.description
+
+        await sync_service.jira.update_issue(
+            key=entity.jira_link.jira_key,
+            fields=fields_to_push,
+        )
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":white_check_mark: Jira issue *{entity.jira_link.jira_key}* updated to match Slack values.",
+        )
+
+    except Exception as e:
+        logger.error(f"Resolve keep Slack failed: {e}", exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f":x: Failed to push values to Jira: {e}",
+        )
 
 
 async def handle_resolve_skip(
@@ -155,5 +257,3 @@ async def handle_resolve_skip(
     user_id = body["user"]["id"]
 
     logger.info(f"User {user_id} skipped resolution for {entity_id}")
-
-    # Nothing to do - user chose to skip

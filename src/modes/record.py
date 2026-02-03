@@ -5,12 +5,52 @@ Ref: BOT_DESIGN.md - RECORD Mode
 
 import logging
 
+from pydantic import BaseModel, Field
+
 from src.domain.channel import ChannelAggregate
 from src.domain.content import DecisionContent, DecisionType
 from src.domain.types import ChannelId, ThreadTs, UserId
+from src.llm.client import structured_completion
 from src.modes.base import ModeContext, ModeHandler, ModeResult
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractedRecordDecision(BaseModel):
+    """LLM-extracted decision from an inline statement."""
+
+    title: str = Field(description="Clear decision title, e.g. 'Use PostgreSQL for Storage'")
+    decision_type: str = Field(
+        description="One of: architecture, scope, constraint, priority, process, structure"
+    )
+    description: str = Field(description="Full description of what was decided and its context")
+    rationale: str = Field(description="Why this decision was made, based on the conversation")
+    alternatives_considered: list[str] = Field(
+        default_factory=list,
+        description="Alternatives mentioned in the conversation"
+    )
+
+
+EXTRACT_RECORD_DECISION_SYSTEM = """You are extracting a decision from an inline statement in a Slack conversation.
+
+The user stated a decision or commitment directly (not a request to document). Extract:
+- A clear ADR-style title (e.g. "Use PostgreSQL for Storage")
+- The decision type: architecture, scope, constraint, priority, process, or structure
+- A description of what was decided and its context
+- The rationale (why this choice, based on conversation context)
+- Any alternatives that were discussed
+
+CRITICAL formatting rules (Slack mrkdwn):
+- Bold: *text* (single asterisks)
+- NEVER use **double asterisks**"""
+
+EXTRACT_RECORD_DECISION_USER = """Thread conversation:
+{thread_context}
+
+User's statement (the decision):
+"{message}"
+
+Extract the decision from this inline statement."""
 
 
 class RecordModeHandler(ModeHandler):
@@ -25,7 +65,7 @@ class RecordModeHandler(ModeHandler):
 
         Flow:
         1. Check safety
-        2. Extract decision from conversation
+        2. Extract decision from conversation using LLM
         3. Create draft decision
         4. Return preview for confirmation
         """
@@ -42,39 +82,65 @@ class RecordModeHandler(ModeHandler):
         # Create the decision
         return await self._record_decision(context)
 
+    def _build_thread_context(self, context: ModeContext) -> str:
+        """Build a text summary of the thread for LLM context."""
+        if not context.thread_messages:
+            return f"(No thread history)\nMessage: {context.message}"
+        return "\n".join(
+            f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content']}"
+            for m in context.thread_messages
+        )
+
     async def _create_decision_preview(self, context: ModeContext) -> ModeResult:
-        """Extract decision and show preview."""
-        # TODO: Use LLM to extract structured decision
-        # For now, use basic extraction
+        """Extract decision using LLM and show preview."""
+        thread_context = self._build_thread_context(context)
 
-        # Try to infer decision type from keywords
-        message_lower = context.message.lower()
-        if any(kw in message_lower for kw in ["architecture", "design", "pattern", "technology"]):
-            decision_type = DecisionType.ARCHITECTURE
-        elif any(kw in message_lower for kw in ["scope", "include", "exclude", "out of scope"]):
-            decision_type = DecisionType.SCOPE
-        elif any(kw in message_lower for kw in ["constraint", "must", "requirement", "non-negotiable"]):
-            decision_type = DecisionType.CONSTRAINT
-        elif any(kw in message_lower for kw in ["priority", "first", "before", "after"]):
-            decision_type = DecisionType.PRIORITY
-        else:
-            decision_type = DecisionType.ARCHITECTURE  # Default
+        try:
+            extracted = await structured_completion(
+                response_model=ExtractedRecordDecision,
+                messages=[
+                    {"role": "system", "content": EXTRACT_RECORD_DECISION_SYSTEM},
+                    {"role": "user", "content": EXTRACT_RECORD_DECISION_USER.format(
+                        thread_context=thread_context,
+                        message=context.message,
+                    )},
+                ],
+            )
 
-        # Extract title (first sentence or up to 80 chars)
-        title = context.message.split(".")[0][:80].strip()
+            # Map decision type string to enum
+            try:
+                decision_type = DecisionType(extracted.decision_type.lower())
+            except ValueError:
+                decision_type = DecisionType.ARCHITECTURE
 
-        preview_content = {
-            "decision_type": decision_type.value,
-            "title": title,
-            "description": context.message,
-            "rationale": "",  # Will be extracted by LLM in future
-        }
+            preview_content = {
+                "decision_type": decision_type.value,
+                "title": extracted.title,
+                "description": extracted.description,
+                "rationale": extracted.rationale,
+                "alternatives_considered": extracted.alternatives_considered,
+            }
+        except Exception as e:
+            logger.warning(f"LLM decision extraction failed: {e}")
+            preview_content = {
+                "decision_type": DecisionType.ARCHITECTURE.value,
+                "title": context.message.split(".")[0][:80].strip(),
+                "description": context.message,
+                "rationale": "",
+                "alternatives_considered": [],
+            }
+
+        alts = ""
+        if preview_content["alternatives_considered"]:
+            alts = "\n*Alternatives:* " + ", ".join(preview_content["alternatives_considered"])
 
         preview_text = (
             f"*Draft Decision*\n\n"
-            f"*Type:* {decision_type.value.title()}\n"
-            f"*Title:* {title}\n"
-            f"*Description:* {context.message[:200]}...\n\n"
+            f"*Type:* {preview_content['decision_type'].title()}\n"
+            f"*Title:* {preview_content['title']}\n"
+            f"*Description:* {preview_content['description'][:300]}\n"
+            f"*Rationale:* {preview_content['rationale'][:200]}"
+            f"{alts}\n\n"
             "_Click 'Record' to capture this decision_"
         )
 
@@ -103,6 +169,7 @@ class RecordModeHandler(ModeHandler):
             title=content_data.get("title", "Untitled Decision"),
             description=content_data.get("description", ""),
             rationale=content_data.get("rationale", ""),
+            alternatives_considered=content_data.get("alternatives_considered", []),
         )
 
         draft = aggregate.record_decision(
@@ -123,19 +190,31 @@ class RecordModeHandler(ModeHandler):
 
     def _build_decision_preview_blocks(self, content: dict) -> list[dict]:
         """Build Slack blocks for decision preview."""
+        alts_text = ""
+        if content.get("alternatives_considered"):
+            alts_text = f"\n_Alternatives: {', '.join(content['alternatives_considered'])}_"
+
         return [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Draft Decision*\n\n*Type:* {content['decision_type'].title()}\n*Title:* {content['title']}",
+                    "text": (
+                        f"*Draft Decision*\n\n"
+                        f"*Type:* {content['decision_type'].title()}\n"
+                        f"*Title:* {content['title']}"
+                    ),
                 },
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Description:*\n{content['description'][:500]}",
+                    "text": (
+                        f"*Description:*\n{content['description'][:500]}\n\n"
+                        f"*Rationale:*\n{content.get('rationale', 'N/A')[:300]}"
+                        f"{alts_text}"
+                    ),
                 },
             },
             {
