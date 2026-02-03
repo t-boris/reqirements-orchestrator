@@ -69,7 +69,7 @@ class Settings(BaseSettings):
         description="API key for LLM provider (GEMINI_API_KEY, OPENAI_API_KEY, etc.)",
     )
     llm_temperature: float = Field(
-        default=0.1, description="Temperature for LLM calls (lower = more deterministic)"
+        default=1.0, description="Temperature for LLM calls (Gemini 3 requires 1.0)"
     )
     llm_max_retries: int = Field(
         default=2, description="Max retries for structured output validation failures"
