@@ -114,6 +114,9 @@ Progress: █████████░ 96% (34/35 plans estimated)
 | 06-03 | CommitHandler returns CommitResult dataclass | Structured results allow UI to handle each status appropriately |
 | 06-03 | Slack handlers are placeholders with TODOs | Full wiring requires entity projection and channel config (Phase 7) |
 | 06-03 | Limit duplicate display to 5 candidates | UX constraint - Slack actions block has element limits |
+| 06-04 | ReconciliationReport uses tuple for immutability | Frozen dataclass pattern for thread safety |
+| 06-04 | Group discrepancies by entity in UI | Show max 5 entities to prevent Slack block overflow |
+| 06-04 | Resolution handlers are placeholders | Ready for wiring with entity projection in Phase 7 |
 
 ### Deferred Issues
 
@@ -126,6 +129,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 06-03-PLAN.md (CommitHandler, Slack Jira handlers)
+Stopped at: Completed 06-04-PLAN.md (ReconciliationService, sync command)
 Resume file: None
-Next action: Execute 06-04-PLAN.md
+Next action: Execute 06-05-PLAN.md
