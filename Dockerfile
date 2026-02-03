@@ -49,6 +49,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY src/ ./src/
 
+# Copy alembic migrations
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+
+# Copy deploy scripts
+COPY deploy/ ./deploy/
+
 # Set ownership
 RUN chown -R maro:maro /app
 
@@ -61,5 +68,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the bot with uvicorn
-CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migrations and start the bot
+CMD ["sh", "-c", "alembic upgrade head && python -m uvicorn src.main:app --host 0.0.0.0 --port 8000"]
