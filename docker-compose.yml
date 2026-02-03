@@ -8,7 +8,7 @@ services:
   # PostgreSQL Database
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: maro-postgres
     restart: always
     environment:
@@ -31,9 +31,7 @@ services:
   # MARO 2.0 Slack Bot
   # ---------------------------------------------------------------------------
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: us-central1-docker.pkg.dev/gen-lang-client-0491393467/maro/maro:latest
     container_name: maro-bot
     restart: always
     env_file:
