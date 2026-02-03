@@ -56,8 +56,34 @@ app.include_router(slack_router)
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "version": "2.0.0"}
+    """Health check endpoint with DB status."""
+    health_status = {
+        "status": "ok",
+        "version": "2.0.0",
+        "checks": {
+            "database": "unknown",
+        },
+    }
+
+    # Check database connection
+    try:
+        settings = get_settings()
+        # Build asyncpg connection URL (without the +asyncpg driver prefix)
+        db_url = (
+            f"postgresql://{settings.postgres_user}:{settings.postgres_password}"
+            f"@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_dbname}"
+        )
+        import asyncpg
+
+        conn = await asyncpg.connect(db_url)
+        await conn.execute("SELECT 1")
+        await conn.close()
+        health_status["checks"]["database"] = "ok"
+    except Exception as e:
+        health_status["checks"]["database"] = f"error: {str(e)}"
+        health_status["status"] = "degraded"
+
+    return health_status
 
 
 @app.get("/")
