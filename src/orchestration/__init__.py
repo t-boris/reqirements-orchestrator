@@ -4,6 +4,18 @@ This module provides flow templates and orchestration primitives for
 guiding conversations through flexible, non-linear task execution.
 """
 
+from src.orchestration.actions import (
+    AskQuestion,
+    EntityDetected,
+    OfferCompletion,
+    OrchestratorAction,
+    PostMessage,
+    SwitchFocus,
+    TaskCompleted,
+    TaskCreated,
+    TaskSpawned,
+    UpdateSummary,
+)
 from src.orchestration.flows import (
     ARCHITECTURE_REVIEW,
     BATCH_CREATE,
@@ -25,8 +37,22 @@ from src.orchestration.models import (
     TaskStatus,
     Workspace,
 )
+from src.orchestration.orchestrator import Orchestrator
 
 __all__ = [
+    # Orchestrator
+    "Orchestrator",
+    # Action types
+    "OrchestratorAction",
+    "AskQuestion",
+    "PostMessage",
+    "TaskCreated",
+    "TaskSpawned",
+    "TaskCompleted",
+    "SwitchFocus",
+    "OfferCompletion",
+    "EntityDetected",
+    "UpdateSummary",
     # Core classes
     "FlowTemplate",
     "Question",
