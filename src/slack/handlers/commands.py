@@ -29,6 +29,7 @@ AVAILABLE_COMMANDS = {
     "decisions": "List active decisions",
     "entities": "List all entities",
     "config": "Show channel configuration",
+    "inspect": "Debug intent classifications",
 }
 
 
@@ -71,6 +72,8 @@ def register_command_handlers(app: AsyncApp) -> None:
                 await _handle_entities(respond, channel_id)
             case "config":
                 await _handle_config(respond, channel_id)
+            case "inspect":
+                await _handle_inspect(respond, channel_id, args)
             case _:
                 await respond(
                     text=f"Unknown command: `{subcommand}`. Use `/maro help` for available commands.",
@@ -316,3 +319,79 @@ async def _handle_config(respond, channel_id: str) -> None:
         text=config_text,
         response_type="ephemeral",
     )
+
+
+async def _handle_inspect(respond, channel_id: str, args: list[str]) -> None:
+    """Show intent classification debug info.
+
+    Subcommands:
+    - /maro inspect (no args): Show recent classifications for this channel
+    - /maro inspect thread <thread_ts>: Show classifications for a specific thread
+    - /maro inspect stats: Show classification distribution stats
+    - /maro inspect downgrades: Show threshold downgrade history
+    """
+    from src.infrastructure.audit_log import query_audit_log
+    from src.slack.blocks.inspect import (
+        build_thread_inspect_blocks,
+        build_stats_inspect_blocks,
+        build_downgrades_inspect_blocks,
+    )
+
+    subcommand = args[0] if args else "recent"
+
+    try:
+        if subcommand == "thread" and len(args) > 1:
+            thread_ts = args[1]
+            entries = await query_audit_log(channel_id, thread_ts=thread_ts)
+            if not entries:
+                await respond(
+                    text=":information_source: No audit entries for this thread.",
+                    response_type="ephemeral",
+                )
+                return
+            blocks = build_thread_inspect_blocks(entries)
+
+        elif subcommand == "stats":
+            entries = await query_audit_log(channel_id, limit=200)
+            if not entries:
+                await respond(
+                    text=":information_source: No audit entries yet.",
+                    response_type="ephemeral",
+                )
+                return
+            blocks = build_stats_inspect_blocks(entries)
+
+        elif subcommand == "downgrades":
+            entries = await query_audit_log(channel_id, limit=200)
+            downgrades = [e for e in entries if e.raw_mode != e.classified_mode]
+            if not downgrades:
+                await respond(
+                    text=":white_check_mark: No threshold downgrades found.",
+                    response_type="ephemeral",
+                )
+                return
+            blocks = build_downgrades_inspect_blocks(downgrades)
+
+        else:
+            # Default: recent classifications
+            entries = await query_audit_log(channel_id, limit=15)
+            if not entries:
+                await respond(
+                    text=":information_source: No audit entries yet.",
+                    response_type="ephemeral",
+                )
+                return
+            blocks = build_thread_inspect_blocks(entries)
+
+        await respond(
+            text=f"Inspect results ({len(entries)} entries)",
+            blocks=blocks,
+            response_type="ephemeral",
+        )
+
+    except Exception as e:
+        logger.error(f"Inspect command failed: {e}", exc_info=True)
+        await respond(
+            text=f":x: Inspect failed: {e}",
+            response_type="ephemeral",
+        )
