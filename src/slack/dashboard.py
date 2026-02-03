@@ -62,6 +62,10 @@ class DashboardManager:
 
         existing = self._dashboards.get(channel_id)
 
+        # If not in memory, search pinned messages for existing dashboard
+        if not existing:
+            existing = await self._find_pinned_dashboard(channel_id)
+
         if existing:
             # Update existing dashboard
             await self.client.update_message(
@@ -86,6 +90,36 @@ class DashboardManager:
                 message_ts=message.ts,
             )
             logger.info(f"Created and pinned dashboard in {channel_id}")
+
+    async def _find_pinned_dashboard(self, channel_id: ChannelId) -> ChannelDashboard | None:
+        """Search pinned messages for an existing dashboard.
+
+        Looks for a pinned message with a header block containing
+        "Channel Status" to identify the dashboard.
+        """
+        try:
+            result = await self.client.client.pins_list(channel=channel_id)
+            for item in result.get("items", []):
+                message = item.get("message", {})
+                blocks = message.get("blocks", [])
+                for block in blocks:
+                    if (
+                        block.get("type") == "header"
+                        and "Channel Status" in block.get("text", {}).get("text", "")
+                    ):
+                        ts = message.get("ts")
+                        if ts:
+                            dashboard = ChannelDashboard(
+                                channel_id=channel_id,
+                                message_ts=ts,
+                            )
+                            self._dashboards[channel_id] = dashboard
+                            logger.info(f"Found existing pinned dashboard in {channel_id}: {ts}")
+                            return dashboard
+        except Exception as e:
+            logger.warning(f"Failed to search pinned messages in {channel_id}: {e}")
+
+        return None
 
     async def _pin_message(self, channel_id: ChannelId, ts: str) -> None:
         """Pin a message in the channel."""
