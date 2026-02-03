@@ -9,6 +9,13 @@ from src.jira.models import (
     FieldConflict,
     SyncDiscrepancy,
 )
+from src.jira.preflight import PreflightService
+from src.jira.sync_service import (
+    JiraSyncService,
+    JiraSyncError,
+    DuplicateDetectedError,
+    ConflictDetectedError,
+)
 
 __all__ = [
     # Client
@@ -21,4 +28,10 @@ __all__ = [
     "PreflightCheck",
     "FieldConflict",
     "SyncDiscrepancy",
+    # Services
+    "PreflightService",
+    "JiraSyncService",
+    "JiraSyncError",
+    "DuplicateDetectedError",
+    "ConflictDetectedError",
 ]
