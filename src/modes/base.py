@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.domain.channel import ChannelAggregate
+from src.domain.entities import Entity
 from src.intent.schemas import IntentClassification, SafetyCheckResult
 
 
@@ -28,6 +30,10 @@ class ModeContext:
     thread_messages: list[dict] = field(default_factory=list)
     entity_data: dict | None = None
 
+    # Entity lifecycle (Phase 4)
+    channel_aggregate: ChannelAggregate | None = None
+    target_entity: Entity | None = None
+
 
 @dataclass
 class ModeResult:
@@ -45,6 +51,9 @@ class ModeResult:
     # State
     requires_confirmation: bool = False
     confirmation_data: dict | None = None
+
+    # Entity lifecycle (Phase 4)
+    draft_entity: Entity | None = None  # For preview before proposing
 
 
 class ModeHandler(ABC):
