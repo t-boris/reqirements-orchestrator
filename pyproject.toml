@@ -22,6 +22,8 @@ dependencies = [
     "litellm>=1.57",
     "instructor>=1.8",
     "json-repair>=0.30",
+    "atlassian-python-api>=4.0.7",
+    "tenacity>=8.2.0",
 ]
 
 [project.optional-dependencies]
