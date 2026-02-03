@@ -1,0 +1,27 @@
+# cloudbuild.yaml
+# =============================================================================
+# Cloud Build configuration for MARO 2.0
+# Builds Docker image and pushes to Artifact Registry
+# =============================================================================
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/maro:latest'
+      - '.'
+
+# Push images to Artifact Registry
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/maro:latest'
+
+# Substitution defaults
+substitutions:
+  _REGION: us-central1
+  _REPO: maro
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
