@@ -8,9 +8,13 @@ from slack_bolt.async_app import AsyncApp
 
 logger = logging.getLogger(__name__)
 
+# Version from pyproject.toml
+__version__ = "2.0.0"
+
 # Commands from CONTEXT.md - only /maro help implemented now
 AVAILABLE_COMMANDS = {
     "help": "Show available commands",
+    "version": "Show MARO version",
     "status": "Show channel status (coming soon)",
     "sync": "Check Jira sync status (coming soon)",
     "decisions": "List active decisions (coming soon)",
@@ -46,6 +50,8 @@ def register_command_handlers(app: AsyncApp) -> None:
         match subcommand:
             case "help":
                 await _handle_help(respond)
+            case "version":
+                await _handle_version(respond)
             case "status" | "sync" | "decisions" | "entities" | "config":
                 # Deferred per CONTEXT.md - return coming soon message
                 await respond(
@@ -70,5 +76,13 @@ async def _handle_help(respond) -> None:
 
     await respond(
         text=help_text,
+        response_type="ephemeral",
+    )
+
+
+async def _handle_version(respond) -> None:
+    """Show MARO version."""
+    await respond(
+        text=f"*MARO v{__version__}*\n_Threads propose. Channels decide. Jira executes._",
         response_type="ephemeral",
     )
