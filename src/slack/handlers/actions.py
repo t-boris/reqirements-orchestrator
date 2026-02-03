@@ -8,10 +8,12 @@ import logging
 import re
 from slack_bolt.async_app import AsyncApp
 
-from src.domain.entities import ProposedEntity, ApprovedEntity
+from src.domain.entities import ProposedEntity, ApprovedEntity, get_lifecycle
 from src.domain.transitions import TransitionError
 from src.domain.types import EntityId, UserId
 from src.infrastructure.aggregate_loader import load_aggregate, save_events
+from src.intent import classify_intent, RouterContext
+from src.modes import dispatch_mode
 
 logger = logging.getLogger(__name__)
 
@@ -218,11 +220,110 @@ def register_action_handlers(app: AsyncApp) -> None:
             )
             return
 
-        # Post the answer as a thread message so intent classification picks it up
+        # Post the answer as a visible thread message (for conversation record)
         await say(
             text=answer,
             thread_ts=thread_ts,
         )
+
+        # Directly invoke classification + dispatch pipeline.
+        # The posted message above is a bot message and will be filtered by the
+        # event handler (events.py:88-90), so we must classify and dispatch here.
+        try:
+            # Fetch thread history for classification context
+            thread_messages = []
+            thread_summary = ""
+            if thread_ts:
+                try:
+                    replies = await client.conversations_replies(
+                        channel=channel_id, ts=thread_ts, limit=50,
+                    )
+                    thread_messages = [
+                        {"role": "assistant" if msg.get("bot_id") else "user",
+                         "content": msg.get("text", "")}
+                        for msg in replies.get("messages", [])
+                    ]
+                    thread_summary = "\n".join(
+                        f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content'][:200]}"
+                        for m in thread_messages[-10:]
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch thread history for question answer: {e}")
+
+            # Build entity summaries for context
+            entity_summaries = "No existing entities"
+            try:
+                aggregate = await load_aggregate(channel_id)
+                if aggregate.entities:
+                    summaries = []
+                    for eid, entity in list(aggregate.entities.items())[:20]:
+                        title = getattr(entity.content, "title", str(eid)[:8])
+                        state = get_lifecycle(entity).value
+                        etype = entity.entity_type.value
+                        summaries.append(f"- {title} ({etype}, {state}) [id: {eid}]")
+                    entity_summaries = "\n".join(summaries)
+            except Exception as e:
+                logger.debug(f"Could not load entity summaries: {e}")
+
+            # Resolve channel name
+            channel_name = channel_id
+            try:
+                info = await client.conversations_info(channel=channel_id)
+                channel_name = info.get("channel", {}).get("name", channel_id)
+            except Exception:
+                pass
+
+            context = RouterContext(
+                channel_id=channel_id,
+                channel_name=channel_name,
+                thread_ts=thread_ts,
+                thread_summary=thread_summary,
+                entity_summaries=entity_summaries,
+                active_process_threads=set(),
+            )
+
+            # Compose message with question context for accurate classification
+            contextual_message = f"{question}: {answer}" if question else answer
+
+            intent = await classify_intent(
+                message=contextual_message,
+                event_type="message",
+                context=context,
+            )
+
+            logger.info(
+                f"Question answer classified: mode={intent.mode}, "
+                f"confidence={intent.confidence:.2f}, answer='{answer[:50]}'"
+            )
+
+            result = await dispatch_mode(
+                message=contextual_message,
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                intent=intent,
+                thread_messages=thread_messages,
+            )
+
+            if result.response_text:
+                if result.response_blocks:
+                    await say(
+                        text=result.response_text,
+                        blocks=result.response_blocks,
+                        thread_ts=thread_ts,
+                    )
+                else:
+                    await say(
+                        text=result.response_text,
+                        thread_ts=thread_ts,
+                    )
+
+        except Exception as e:
+            logger.error(f"Error processing question answer: {e}", exc_info=True)
+            await say(
+                text="Sorry, I encountered an error processing your answer. Please try again.",
+                thread_ts=thread_ts,
+            )
 
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
