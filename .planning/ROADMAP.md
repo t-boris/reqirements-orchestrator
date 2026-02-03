@@ -27,7 +27,7 @@ Address UX friction and operational gaps identified in improvement review (docs/
 
 Plans:
 - [x] 08-01: LLM Question Extraction + Button Rendering (wave 1)
-- [ ] 08-02: Intent Audit Logging (wave 1)
+- [x] 08-02: Intent Audit Logging (wave 1)
 - [x] 08-03: Deterministic Post-Filters (wave 1)
 - [ ] 08-04: /maro inspect Command (wave 2, depends: 02)
 - [x] 08-05: Architecture Docs Update (wave 1)
