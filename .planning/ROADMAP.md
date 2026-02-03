@@ -121,16 +121,22 @@ Key deliverables:
 ### Phase 7: Polish & Deploy
 **Goal**: Production-ready system deployed to existing infrastructure
 **Depends on**: Phase 6
-**Research**: Unlikely (existing GCE infrastructure)
-**Plans**: TBD
+**Research**: None (reusing existing GCE infrastructure from v1)
+**Plans**: 4 (07-01 through 07-04)
+
+Wave structure:
+- Wave 1: 07-01, 07-02 (Deployment files, environment config) - parallel
+- Wave 2: 07-03, 07-04 (Tests, health checks) - parallel
 
 Key deliverables:
-- Integration tests
-- Property-based tests (hypothesis)
-- Deployment configuration
-- Health checks
-- Logging and monitoring
-- Documentation
+- Dockerfile (multi-stage, python:3.12-slim)
+- docker-compose.yml (postgres + bot services)
+- cloudbuild.yaml + deploy.sh (GCE deployment)
+- Comprehensive .env.example
+- Entity lifecycle tests
+- Jira service unit tests
+- Enhanced health endpoint with DB check
+- Database initialization on startup
 
 ## Progress
 
@@ -142,4 +148,4 @@ Key deliverables:
 | 4. Entity Lifecycle | 7/7 | Complete | 2026-02-02 |
 | 5. Process Orchestration | 7/7 | Complete | 2026-02-02 |
 | 6. Jira Projection | 5/5 | Complete | 2026-02-02 |
-| 7. Polish & Deploy | 0/TBD | Not started | - |
+| 7. Polish & Deploy | 0/4 | Planned | - |
