@@ -43,11 +43,18 @@ class ExtractedDecision(BaseModel):
     title: str = Field(description="Clear decision title, e.g. 'Use Monolith Architecture'")
     decision_type: str = Field(
         default="architecture",
-        description="Decision type: architecture, technology, process, scope"
+        description="Decision type: architecture, technology, process, scope, constraint, priority, structure"
     )
     context: str = Field(description="What problem or question prompted this decision")
     decision: str = Field(description="The actual decision that was made")
-    rationale: str = Field(description="Why this decision was made, based on the discussion")
+    rationale: str = Field(
+        description=(
+            "Why this decision was made, with specific attribution: "
+            "WHO proposed it (user, bot, consensus), "
+            "HOW it was decided (stated as requirement, chosen from options, agreed in discussion), "
+            "WHY this option over alternatives"
+        )
+    )
     alternatives_considered: list[str] = Field(
         default_factory=list,
         description="Alternatives that were discussed but not chosen"
@@ -98,7 +105,14 @@ Use the FULL THREAD CONTEXT. Decisions come from:
 2. Answers during the discussion (user confirming or choosing options)
 3. Bot proposals that were accepted (if user agreed with a suggestion)
 
-Each title should read like an ADR title, e.g. "Use Monolith Architecture for Initial Release"."""
+Each title should read like an ADR title, e.g. "Use Monolith Architecture for Initial Release".
+
+For each decision's rationale, be SPECIFIC:
+- WHO proposed it (user, bot, consensus)
+- HOW decided (stated as requirement, chosen from options, agreed in discussion)
+- WHY this option over alternatives
+Bad: 'This was chosen for the project'
+Good: 'Proposed by the user as an explicit requirement. PostgreSQL preferred for ACID guarantees.'"""
 
 EXTRACT_DECISION_USER = """Thread conversation:
 {thread_context}
@@ -245,13 +259,17 @@ class CreateModeHandler(ModeHandler):
         # Build preview text for all decisions
         decision_blocks = []
         for i, d in enumerate(decisions, 1):
+            ctx = ""
+            if d.get("context"):
+                ctx = f"\n  _Context: {d['context']}_"
             alts = ""
             if d.get("alternatives_considered"):
                 alts = "\n  _Alternatives: " + ", ".join(d["alternatives_considered"]) + "_"
 
             decision_blocks.append(
                 f"*{i}. {d['title']}*\n"
-                f"  {d['decision']}\n"
+                f"  {d['decision']}"
+                f"{ctx}\n"
                 f"  _Rationale: {d['rationale']}_"
                 f"{alts}"
             )
@@ -398,7 +416,7 @@ class CreateModeHandler(ModeHandler):
         ]
 
     def _build_decisions_preview_blocks(self, decisions: list[dict]) -> list[dict]:
-        """Build Slack blocks for multiple decision previews."""
+        """Build Slack blocks for multiple decision previews with per-ADR buttons."""
         blocks = [
             {
                 "type": "header",
@@ -409,22 +427,49 @@ class CreateModeHandler(ModeHandler):
             },
         ]
 
-        for i, d in enumerate(decisions, 1):
+        for i, d in enumerate(decisions):
             alts = ""
             if d.get("alternatives_considered"):
                 alts = f"\n_Alternatives: {', '.join(d['alternatives_considered'])}_"
+
+            context = ""
+            if d.get("context"):
+                context = f"\n_Context: {d['context']}_"
 
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": (
-                        f"*{i}. {d['title']}*\n"
-                        f"{d['decision']}\n"
+                        f"*{i + 1}. {d['title']}*\n"
+                        f"{d['decision']}"
+                        f"{context}\n"
                         f"_Rationale: {d['rationale']}_"
                         f"{alts}"
                     ),
                 },
+            })
+            blocks.append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✓ Record"},
+                        "style": "primary",
+                        "action_id": f"adr_record_{i}",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✎ Edit"},
+                        "action_id": f"adr_edit_{i}",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✕ Delete"},
+                        "style": "danger",
+                        "action_id": f"adr_delete_{i}",
+                    },
+                ],
             })
             blocks.append({"type": "divider"})
 
@@ -433,18 +478,13 @@ class CreateModeHandler(ModeHandler):
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Record All"},
+                    "text": {"type": "plain_text", "text": "Record All Remaining"},
                     "style": "primary",
                     "action_id": "record_all_decisions",
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Edit"},
-                    "action_id": "edit_decisions",
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "text": {"type": "plain_text", "text": "Cancel All"},
                     "action_id": "cancel_decisions",
                 },
             ],

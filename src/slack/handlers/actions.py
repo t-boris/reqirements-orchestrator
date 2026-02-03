@@ -9,7 +9,7 @@ import re
 from slack_bolt.async_app import AsyncApp
 
 from src.domain.content import DecisionContent, DecisionType
-from src.domain.entities import ProposedEntity, ApprovedEntity, get_lifecycle
+from src.domain.entities import ProposedEntity, ApprovedEntity, DraftEntity, get_lifecycle
 from src.domain.transitions import TransitionError
 from src.domain.types import EntityId, ThreadTs, UserId
 from src.infrastructure.aggregate_loader import load_aggregate, save_events
@@ -26,16 +26,20 @@ ENTITY_ACTION_PATTERN = re.compile(r"^(approve|object|discuss)_(.+)$")
 # Pattern for follow-up question answer buttons: answer_q_{uuid}_{index}
 QUESTION_ANSWER_PATTERN = re.compile(r"^answer_q_.+$")
 
-# Pattern for decision preview action buttons: record_all_decisions, edit_decisions, cancel_decisions
-DECISION_PREVIEW_PATTERN = re.compile(r"^(record_all|edit|cancel)_decisions$")
+# Pattern for decision preview action buttons: record_all_decisions, cancel_decisions
+DECISION_PREVIEW_PATTERN = re.compile(r"^(record_all|cancel)_decisions$")
+
+# Pattern for per-ADR action buttons: adr_record_0, adr_edit_1, adr_delete_2
+ADR_ACTION_PATTERN = re.compile(r"^adr_(record|edit|delete)_(\d+)$")
 
 
 def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
     """Parse decision data from preview message blocks.
 
     Blocks are built by CreateModeHandler._build_decisions_preview_blocks:
-    header, then repeating [section, divider] for each decision, then actions.
-    Section text format: *{i}. {title}*\n{decision}\n_Rationale: ..._\n_Alternatives: ..._
+    header, then repeating [section, actions, divider] for each decision, then global actions.
+    Section text format: *{i}. {title}*\n{decision}\n_Context: ..._\n_Rationale: ..._\n_Alternatives: ..._
+    Already-handled ADRs are replaced with context blocks and won't match *N. pattern.
     """
     decisions = []
     for block in blocks:
@@ -52,12 +56,15 @@ def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
         title = re.sub(r"^\*\d+\.\s*", "", title_line).rstrip("*").strip()
 
         decision_text = ""
+        context = ""
         rationale = ""
         alternatives = []
 
         for line in lines[1:]:
             stripped = line.strip()
-            if stripped.startswith("_Rationale:"):
+            if stripped.startswith("_Context:"):
+                context = stripped.replace("_Context:", "").strip().rstrip("_").strip()
+            elif stripped.startswith("_Rationale:"):
                 rationale = stripped.replace("_Rationale:", "").strip().rstrip("_").strip()
             elif stripped.startswith("_Alternatives:"):
                 alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
@@ -69,6 +76,7 @@ def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
             decisions.append({
                 "decision_type": "architecture",
                 "title": title,
+                "context": context,
                 "decision": decision_text,
                 "rationale": rationale,
                 "alternatives_considered": alternatives,
@@ -134,13 +142,12 @@ async def _record_all_decisions(
 
         # Update channel dashboard with current entity counts
         try:
-            from src.domain.entities import DraftEntity, ProposedEntity as PE
             counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
             pending_items = []
             for entity in aggregate.entities.values():
                 if entity.entity_type.value == "decision":
                     counts["decisions"] += 1
-                    if isinstance(entity, (DraftEntity, PE)):
+                    if isinstance(entity, (DraftEntity, ProposedEntity)):
                         pending_items.append({
                             "title": getattr(entity.content, "title", str(entity.id)[:8]),
                             "id": str(entity.id),
@@ -174,6 +181,226 @@ async def _record_all_decisions(
             text=f":x: Failed to record decisions: {e}",
             thread_ts=thread_ts,
         )
+
+
+def _find_adr_section_index(blocks: list[dict], adr_index: int) -> int | None:
+    """Find the block index of the section block for a specific ADR (0-based).
+
+    Scans for section block whose text starts with *{adr_index+1}. to avoid
+    positional math issues when blocks shift after record/delete.
+    Returns the index into the blocks list, or None if not found.
+    """
+    prefix = f"*{adr_index + 1}. "
+    for i, block in enumerate(blocks):
+        if block.get("type") != "section":
+            continue
+        text = block.get("text", {}).get("text", "")
+        if text.startswith(prefix):
+            return i
+    return None
+
+
+def _parse_single_decision_from_section(section_block: dict) -> dict:
+    """Parse a single decision dict from a section block's mrkdwn text."""
+    text = section_block.get("text", {}).get("text", "")
+    lines = text.split("\n")
+
+    title_line = lines[0] if lines else ""
+    title = re.sub(r"^\*\d+\.\s*", "", title_line).rstrip("*").strip()
+
+    decision_text = ""
+    context = ""
+    rationale = ""
+    alternatives = []
+
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped.startswith("_Context:"):
+            context = stripped.replace("_Context:", "").strip().rstrip("_").strip()
+        elif stripped.startswith("_Rationale:"):
+            rationale = stripped.replace("_Rationale:", "").strip().rstrip("_").strip()
+        elif stripped.startswith("_Alternatives:"):
+            alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
+            alternatives = [a.strip() for a in alts_raw.split(",") if a.strip()]
+        elif stripped and not stripped.startswith("_"):
+            decision_text = stripped
+
+    return {
+        "decision_type": "architecture",
+        "title": title,
+        "context": context,
+        "decision": decision_text,
+        "rationale": rationale,
+        "alternatives_considered": alternatives,
+    }
+
+
+def _replace_adr_blocks(blocks: list[dict], section_idx: int, replacement_block: dict) -> list[dict]:
+    """Replace an ADR's section + actions + divider blocks with a single replacement block.
+
+    Starting at section_idx, removes the section block and any immediately
+    following actions/divider blocks that belong to this ADR.
+    """
+    updated = list(blocks)
+    # Count how many blocks to remove: section + optional actions + optional divider
+    remove_count = 1
+    for offset in range(1, 3):
+        if section_idx + offset < len(updated):
+            btype = updated[section_idx + offset].get("type")
+            if btype in ("actions", "divider"):
+                remove_count += 1
+            else:
+                break
+        else:
+            break
+
+    updated[section_idx:section_idx + remove_count] = [replacement_block]
+    return updated
+
+
+async def _update_dashboard_after_decision(client, channel_id: str, aggregate) -> None:
+    """Update the channel dashboard after a decision change."""
+    try:
+        counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
+        pending_items = []
+        for entity in aggregate.entities.values():
+            if entity.entity_type.value == "decision":
+                counts["decisions"] += 1
+                if isinstance(entity, (DraftEntity, ProposedEntity)):
+                    pending_items.append({
+                        "title": getattr(entity.content, "title", str(entity.id)[:8]),
+                        "id": str(entity.id),
+                    })
+            else:
+                lifecycle = get_lifecycle(entity)
+                lc = lifecycle.value
+                if lc in ("draft", "proposed"):
+                    counts["pending"] += 1
+                elif lc == "approved":
+                    counts["approved"] += 1
+                elif lc == "committed":
+                    counts["committed"] += 1
+
+        slack_client = SlackClient(client)
+        dashboard_mgr = DashboardManager(slack_client)
+        await dashboard_mgr.create_or_update(
+            channel_id=channel_id,
+            pending_count=counts["pending"],
+            approved_count=counts["approved"],
+            committed_count=counts["committed"],
+            decisions_count=counts["decisions"],
+            pending_items=pending_items,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update dashboard: {e}")
+
+
+async def _record_single_decision(
+    client, say, channel_id: str, message_ts: str, thread_ts: str | None,
+    user_id: str, blocks: list[dict], adr_index: int,
+) -> None:
+    """Record a single ADR from the preview message."""
+    section_idx = _find_adr_section_index(blocks, adr_index)
+    if section_idx is None:
+        await say(text=f":x: Could not find ADR #{adr_index + 1} in message.", thread_ts=thread_ts)
+        return
+
+    decision = _parse_single_decision_from_section(blocks[section_idx])
+
+    try:
+        aggregate = await load_aggregate(channel_id)
+
+        try:
+            dt = DecisionType(decision.get("decision_type", "architecture").lower())
+        except ValueError:
+            dt = DecisionType.ARCHITECTURE
+
+        content = DecisionContent(
+            decision_type=dt,
+            title=decision["title"],
+            description=decision["decision"],
+            rationale=decision.get("rationale", ""),
+            alternatives_considered=decision.get("alternatives_considered", []),
+        )
+
+        aggregate.record_decision(
+            actor_id=UserId(user_id),
+            thread_ts=ThreadTs(thread_ts or ""),
+            content=content,
+        )
+        await save_events(aggregate)
+
+        logger.info(f"Recorded single decision '{decision['title']}' in {channel_id} by {user_id}")
+
+        confirmation = {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f":white_check_mark: *{decision['title']}* recorded by <@{user_id}>"}],
+        }
+        updated_blocks = _replace_adr_blocks(blocks, section_idx, confirmation)
+
+        await client.chat_update(
+            channel=channel_id, ts=message_ts,
+            blocks=updated_blocks,
+            text=f"Decision '{decision['title']}' recorded",
+        )
+
+        await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+    except Exception as e:
+        logger.error(f"Error recording single decision: {e}", exc_info=True)
+        await say(text=f":x: Failed to record decision: {e}", thread_ts=thread_ts)
+
+
+async def _delete_single_decision(
+    client, say, channel_id: str, message_ts: str, thread_ts: str | None,
+    user_id: str, blocks: list[dict], adr_index: int,
+) -> None:
+    """Delete (remove) a single ADR from the preview — no domain event needed."""
+    section_idx = _find_adr_section_index(blocks, adr_index)
+    if section_idx is None:
+        await say(text=f":x: Could not find ADR #{adr_index + 1} in message.", thread_ts=thread_ts)
+        return
+
+    decision = _parse_single_decision_from_section(blocks[section_idx])
+
+    removal = {
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": f":wastebasket: *{decision['title']}* removed by <@{user_id}>"}],
+    }
+    updated_blocks = _replace_adr_blocks(blocks, section_idx, removal)
+
+    try:
+        await client.chat_update(
+            channel=channel_id, ts=message_ts,
+            blocks=updated_blocks,
+            text=f"Decision '{decision['title']}' removed",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update message after delete: {e}")
+
+
+async def _open_edit_modal(
+    client, trigger_id: str, blocks: list[dict], adr_index: int,
+    channel_id: str, message_ts: str, thread_ts: str | None,
+) -> None:
+    """Open modal for editing a single ADR."""
+    from src.slack.blocks.decisions import build_edit_adr_modal
+
+    section_idx = _find_adr_section_index(blocks, adr_index)
+    if section_idx is None:
+        logger.warning(f"Could not find ADR #{adr_index + 1} for edit modal")
+        return
+
+    decision = _parse_single_decision_from_section(blocks[section_idx])
+    modal = build_edit_adr_modal(
+        adr_index=adr_index,
+        decision=decision,
+        channel_id=channel_id,
+        message_ts=message_ts,
+        thread_ts=thread_ts,
+    )
+
+    await client.views_open(trigger_id=trigger_id, view=modal)
 
 
 def register_action_handlers(app: AsyncApp) -> None:
@@ -477,9 +704,44 @@ def register_action_handlers(app: AsyncApp) -> None:
                 thread_ts=thread_ts,
             )
 
+    @app.action(ADR_ACTION_PATTERN)
+    async def handle_adr_action(ack, body: dict, action: dict, client, say) -> None:
+        """Handle per-ADR Record / Edit / Delete button clicks."""
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = ADR_ACTION_PATTERN.match(action_id)
+        if not match:
+            return
+
+        action_type = match.group(1)
+        adr_index = int(match.group(2))
+
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if action_type == "record":
+            await _record_single_decision(
+                client, say, channel_id, message_ts, thread_ts, user_id, blocks, adr_index,
+            )
+        elif action_type == "edit":
+            trigger_id = body.get("trigger_id")
+            if trigger_id:
+                await _open_edit_modal(
+                    client, trigger_id, blocks, adr_index,
+                    channel_id, message_ts, thread_ts,
+                )
+        elif action_type == "delete":
+            await _delete_single_decision(
+                client, say, channel_id, message_ts, thread_ts, user_id, blocks, adr_index,
+            )
+
     @app.action(DECISION_PREVIEW_PATTERN)
     async def handle_decision_preview_action(ack, body: dict, action: dict, client, say) -> None:
-        """Handle Record All / Edit / Cancel buttons on decision previews."""
+        """Handle Record All Remaining / Cancel All buttons on decision previews."""
         await ack()
 
         action_id = action.get("action_id", "")
@@ -492,11 +754,6 @@ def register_action_handlers(app: AsyncApp) -> None:
         if "record_all" in action_id:
             await _record_all_decisions(
                 client, say, channel_id, message_ts, thread_ts, user_id, original_blocks,
-            )
-        elif "edit" in action_id:
-            await say(
-                text=f"<@{user_id}> Describe your changes in this thread. I'll re-extract the decisions.",
-                thread_ts=thread_ts,
             )
         elif "cancel" in action_id:
             updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]

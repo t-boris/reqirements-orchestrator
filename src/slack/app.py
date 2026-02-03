@@ -41,11 +41,13 @@ def _register_handlers(app: AsyncApp) -> None:
         register_event_handlers,
         register_action_handlers,
         register_command_handlers,
+        register_view_handlers,
     )
 
     register_event_handlers(app)
     register_action_handlers(app)
     register_command_handlers(app)
+    register_view_handlers(app)
 
 
 def get_bolt_app() -> AsyncApp:
