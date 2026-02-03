@@ -1,71 +1,91 @@
 # Phase 5: Process Orchestration - Context
 
-**Gathered:** 2026-02-02
+**Gathered:** 2026-02-02 (Updated)
 **Status:** Ready for planning
 
 <vision>
 ## How This Should Work
 
-Follow the spec (maro_2_0.md Part 7) exactly. Processes are multi-stage workflows that guide users through complex tasks like architecture reviews or work item creation.
+**Updated model:** Task-based orchestration instead of linear ProcessExecutor.
 
-**The flow:**
-1. User triggers a process (e.g., starts architecture review)
-2. ProcessExecutor runs through stages (discovery → analysis → decisions → planning)
-3. Each stage asks questions, gathers info, iterates until requirements met
-4. Stage outputs accumulate into process.outputs
-5. When process completes, PlanGenerator creates executable Plan
-6. Plan items execute sequentially (create decisions, create work items, sync to Jira)
+The bot converts conversations into Jira artifacts through flexible, entity-centric workflows:
 
-**Two process types from spec:**
-- `architecture_review` - 4 stages: discovery, analysis, decisions, planning
-- `work_item_creation` - 3 stages: understand, refine, validate
+1. User starts a conversation (mentions work item, asks for architecture review, etc.)
+2. Orchestrator detects intent, creates a Task with a goal
+3. Task gathers context through questions (flexible, not rigid stages)
+4. Entities emerge during conversation (decisions, work items) — captured in real-time
+5. User can revisit earlier topics, switch focus between tasks
+6. When ready, user approves → entities go through lifecycle → sync to Jira
+
+**Key scenarios:**
+- **Simple:** "Create a login story" → single Task, single Entity
+- **Parallel:** "Create stories for each epic" → parent Task fans out to children
+- **Emergent:** Architecture discussion → decisions captured as they're mentioned
+- **Multi-user:** Alice starts, Bob contributes, Carol approves
 
 </vision>
 
 <essential>
 ## What Must Be Nailed
 
-All three are equally important — they form the complete flow:
+All equally important — they enable the flexible model:
 
-- **Stage progression logic** — Moving through stages, tracking iteration count, handling max_iterations, stage skipping. StageStatus and ProcessStatus state machines.
+- **Orchestrator routing** — Routes every message to the right Task (or creates new). Detects task-switch intent ("let's go back to..."). Single entry point for all conversation handling.
 
-- **LLM question generation** — Context-aware questions based on stage definition and gathered info. Follow-up questions when requirements not yet met.
+- **Task lifecycle** — Tasks gather context toward goals, spawn children for fan-out, track contributors, complete when requirements met. Not rigid stages — flexible context accumulation.
 
-- **Process → Plan flow** — Converting process outputs into executable Plans with PlanItems. Plan execution with status tracking.
+- **Entity emergence** — Detect when conversation contains decisions/work items. Capture during discussion, not just at end. Confirm with user to avoid false positives.
+
+- **Integration with Phase 1-4** — Task events in EventStore, routing through existing PreGates, entities flow through ChannelAggregate, LLM from Phase 3.
 
 </essential>
 
 <specifics>
 ## Specific Ideas
 
-Follow spec Part 7 as-is:
+**New components (from 05-MODEL-PROPOSAL.md):**
+- `Task` — Unit of work with goal, context, status, parent/child hierarchy
+- `Workspace` — Channel/thread state, tracks active tasks and focus
+- `Orchestrator` — Routes input, manages task lifecycle, detects intent
+- `FlowTemplate` — Guides (not enforces) what context to gather
 
-- **ProcessDefinition** and **StageDefinition** dataclasses exactly as specified
-- **Process** and **StageState** for runtime state
-- **ProcessExecutor** with `start()` and `handle_input()` methods
-- **Plan**, **PlanItem**, **PlanGenerator** for execution
-- **ProcessProjection** for read model
-- Two predefined processes: `ARCHITECTURE_REVIEW_PROCESS` and `WORK_ITEM_CREATION_PROCESS`
+**Flow templates to implement:**
+- `create_work_item` — Single item creation
+- `create_decision` — Capture architectural decision
+- `architecture_review` — Multi-entity discussion with fan-out
+- `batch_create` — Parallel item creation ("for each X")
+- `review` — Review and refine existing entities
 
-No external statechart library needed — the spec defines a simple, purpose-built state machine.
+**Phase 1-4 updates needed:**
+- Phase 1: Add Task events (TaskCreated, TaskCompleted, TaskCancelled, etc.)
+- Phase 3: Update PreGates to route to Orchestrator (Gate 3 check for active workspace)
+- Keep existing entity lifecycle (Phase 4) — Tasks create entities through ChannelAggregate
 
 </specifics>
 
 <notes>
 ## Additional Context
 
-This phase connects to:
-- **Phase 3 (Intent)** — PreGates Gate 3 routes to process_handler when thread has active process
-- **Phase 4 (Entities)** — Process outputs become entity content (decisions, work items)
-- **Phase 6 (Jira)** — Plan items include sync_jira actions
+**Evolution from spec:**
+The original maro_2_0.md Part 7 defined linear ProcessExecutor with fixed stages. After discussion, we evolved to Task-based model because:
+- Real conversations are non-linear
+- "Create stories for each epic" needs parallelism
+- Decisions emerge during discussion, not at end
+- Multi-user collaboration is natural in Slack
 
-The PreGates already check for active processes in threads. ProcessExecutor will be invoked when that gate matches.
+**Documentation updates required:**
+- `docs/architecture/BOT_DESIGN.md` — Add Task-based orchestration section
+- Potentially new `docs/architecture/ORCHESTRATION.md` — Detailed orchestration design
 
-**Documentation update required:** Update `docs/architecture/*.md` (especially BOT_DESIGN.md) to document the process orchestration implementation, stage progression, and Plan execution flow.
+**Connection points:**
+- Phase 3 PreGates → Orchestrator (instead of ProcessExecutor)
+- Phase 4 ChannelAggregate → Tasks create entities through it
+- Phase 6 Jira → Plan execution still applies for bulk sync
 
 </notes>
 
 ---
 
 *Phase: 05-process-orchestration*
-*Context gathered: 2026-02-02*
+*Context updated: 2026-02-02*
+*Model: Task-based orchestration (evolved from spec's ProcessExecutor)*
