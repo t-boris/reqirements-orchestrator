@@ -9,6 +9,7 @@ Based on:
 - 01-RESEARCH.md patterns (outbox pattern, asyncpg)
 """
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -74,7 +75,7 @@ class EventStore:
         Raises:
             ConcurrencyError: If version conflict (another writer already used this version)
         """
-        payload = serialize_event(event)
+        payload = json.dumps(serialize_event(event))
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -85,7 +86,7 @@ class EventStore:
                         INSERT INTO channel_events
                         (event_id, event_type, schema_version, aggregate_id, version,
                          actor_id, correlation_id, causation_id, payload)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                         """,
                         UUID(event.event_id),
                         event.event_type,
@@ -104,7 +105,7 @@ class EventStore:
                         """
                         INSERT INTO outbox_events
                         (event_id, aggregate_id, event_type, payload, status)
-                        VALUES ($1, $2, $3, $4, 'pending')
+                        VALUES ($1, $2, $3, $4::jsonb, 'pending')
                         """,
                         UUID(event.event_id),
                         event.aggregate_id,
@@ -135,14 +136,14 @@ class EventStore:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 for event in events:
-                    payload = serialize_event(event)
+                    payload = json.dumps(serialize_event(event))
                     try:
                         await conn.execute(
                             """
                             INSERT INTO channel_events
                             (event_id, event_type, schema_version, aggregate_id, version,
                              actor_id, correlation_id, causation_id, payload)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                             """,
                             UUID(event.event_id),
                             event.event_type,
@@ -159,7 +160,7 @@ class EventStore:
                             """
                             INSERT INTO outbox_events
                             (event_id, aggregate_id, event_type, payload, status)
-                            VALUES ($1, $2, $3, $4, 'pending')
+                            VALUES ($1, $2, $3, $4::jsonb, 'pending')
                             """,
                             UUID(event.event_id),
                             event.aggregate_id,
