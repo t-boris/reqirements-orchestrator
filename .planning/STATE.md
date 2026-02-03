@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-02)
 
 **Core value:** Thread -> Channel -> Jira flow must work flawlessly
-**Current focus:** Phase 5 - Process Orchestration (Planning)
+**Current focus:** Phase 5 - Process Orchestration (Executing)
 
 ## Current Position
 
 Phase: 5 of 7 (Process Orchestration)
-Plan: 7 plans created (05-01 through 05-07)
-Status: Planned, ready for execution
-Last activity: 2026-02-02 - Created Phase 5 plans
+Plan: 1 of 7 in current phase
+Status: In progress
+Last activity: 2026-02-03 - Completed 05-01-PLAN.md
 
-Progress: ████████░░ 77% (23/30 plans)
+Progress: ████████░░ 80% (24/30 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
-- Average duration: 2.2 min
-- Total execution time: 48 min
+- Total plans completed: 23
+- Average duration: 2.1 min
+- Total execution time: 49 min
 
 **By Phase:**
 
@@ -93,6 +93,12 @@ Progress: ████████░░ 77% (23/30 plans)
 | 04-05 | Decision type inference from keywords | Architecture, scope, constraint, priority keywords for RECORD mode |
 | 04-06 | Functional API over class-based SafetyEvaluator | Simpler interface, no singleton management needed |
 | 04-06 | Direct entity types in ActionContext | Use domain Entity types directly instead of intermediate EntityContext |
+| 05-01 | str for EntityId/UserId in orchestration | Avoid circular imports between orchestration and domain packages |
+| 05-01 | ConfigDict(frozen=False) for orchestration | Task/Workspace are mutable state containers |
+| 05-01 | Flat context dict for Task | Flexible context accumulation, not stage-indexed |
+| 05-03 | Flows are guides not enforcers | Suggested context is a hint, only required_context must be present |
+| 05-03 | Frozen dataclass for FlowTemplate | Immutable and hashable flow definitions |
+| 05-03 | CONVERSE as default fallback | Unknown flow types default to CONVERSE for flexible conversation
 
 ### Deferred Issues
 
@@ -104,7 +110,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02
-Stopped at: Created Phase 5 plans (05-01 through 05-07)
+Last session: 2026-02-03
+Stopped at: Completed 05-01-PLAN.md (orchestration models)
 Resume file: None
-Next action: Execute Phase 5 (/gsd:execute-phase 5)
+Next action: Execute 05-02-PLAN.md (flow templates)

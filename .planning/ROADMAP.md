@@ -133,6 +133,6 @@ Key deliverables:
 | 2. Slack Integration | 5/5 | Complete | 2026-02-02 |
 | 3. Intent & Modes | 6/6 | Complete | 2026-02-02 |
 | 4. Entity Lifecycle | 7/7 | Complete | 2026-02-02 |
-| 5. Process Orchestration | 0/7 | Planned | - |
+| 5. Process Orchestration | 1/7 | In progress | - |
 | 6. Jira Projection | 0/TBD | Not started | - |
 | 7. Polish & Deploy | 0/TBD | Not started | - |
