@@ -89,13 +89,18 @@ class ChannelAggregate:
 
     channel_id: ChannelId
     entities: dict[EntityId, Entity] = field(default_factory=dict)
-    version: int = 0
+    version: int = -1
     pending_events: list[DomainEvent] = field(default_factory=list)
 
     def _emit(self, event: DomainEvent) -> None:
-        """Record event to pending list."""
-        self.pending_events.append(event)
+        """Record event to pending list.
+
+        Increments version first, then assigns it to the event,
+        so the next event after replay always gets version = last + 1.
+        """
         self.version += 1
+        event.version = self.version
+        self.pending_events.append(event)
 
     def clear_pending_events(self) -> list[DomainEvent]:
         """Clear and return pending events (after persistence)."""
