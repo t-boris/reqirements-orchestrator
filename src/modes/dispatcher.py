@@ -6,13 +6,16 @@ Ref: BOT_DESIGN.md - Four SuperModes
 import logging
 from functools import lru_cache
 
-from src.intent.schemas import SuperMode, IntentClassification, SafetyCheckResult
+from src.domain.channel import ChannelAggregate
+from src.domain.entities import Entity
+from src.domain.types import ChannelId, EntityId
+from src.intent.schemas import IntentClassification, SafetyCheckResult, SuperMode
 from src.intent.safety import ActionContext, evaluate_safety
-from src.modes.base import ModeHandler, ModeContext, ModeResult
+from src.modes.base import ModeContext, ModeHandler, ModeResult
+from src.modes.converse import ConverseModeHandler
 from src.modes.create import CreateModeHandler
 from src.modes.modify import ModifyModeHandler
 from src.modes.record import RecordModeHandler
-from src.modes.converse import ConverseModeHandler
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,8 @@ class ModeDispatcher:
         *,
         thread_messages: list[dict] | None = None,
         entity_data: dict | None = None,
+        channel_aggregate: ChannelAggregate | None = None,
+        target_entity: Entity | None = None,
     ) -> ModeResult:
         """Dispatch an intent to the appropriate handler.
 
@@ -53,6 +58,8 @@ class ModeDispatcher:
             intent: Classified intent from router
             thread_messages: Thread context (optional)
             entity_data: Target entity data for MODIFY (optional)
+            channel_aggregate: Channel aggregate for entity operations
+            target_entity: Target entity for MODIFY mode
 
         Returns:
             ModeResult from the handler
@@ -62,7 +69,7 @@ class ModeDispatcher:
             user_id=user_id,
             channel_id=channel_id,
             intent=intent,
-            target_entity=None,  # Will be populated in Phase 4
+            target_entity=target_entity,
         )
         safety_result = evaluate_safety(safety_context)
 
@@ -82,6 +89,8 @@ class ModeDispatcher:
             safety_check=safety_result,
             thread_messages=thread_messages or [],
             entity_data=entity_data,
+            channel_aggregate=channel_aggregate,
+            target_entity=target_entity,
         )
 
         # Get handler and dispatch
@@ -90,7 +99,8 @@ class ModeDispatcher:
 
         logger.info(
             f"Handler {handler.mode_name} returned: "
-            f"requires_confirmation={result.requires_confirmation}"
+            f"requires_confirmation={result.requires_confirmation}, "
+            f"entity_created={result.entity_created}"
         )
 
         return result
