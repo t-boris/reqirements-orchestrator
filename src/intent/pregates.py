@@ -42,6 +42,7 @@ def check_pregates(
     bot_id: str | None = None,
     message_bot_id: str | None = None,
     thread_ts: str | None = None,
+    active_workspace_threads: set[str] | None = None,
     active_process_threads: set[str] | None = None,
 ) -> PreGateOutput:
     """Check PreGates for deterministic routing before LLM.
@@ -52,13 +53,15 @@ def check_pregates(
         bot_id: Our bot's ID
         message_bot_id: Bot ID from the message (if it's from a bot)
         thread_ts: Thread timestamp (if in a thread)
-        active_process_threads: Set of thread_ts values with active processes
+        active_workspace_threads: Set of thread_ts values with active workspaces (new model)
+        active_process_threads: Set of thread_ts values with active processes (legacy)
 
     Returns:
         PreGateOutput with result and optional data
 
     Ref: RESEARCH.md - Pattern 1: PreGates
     """
+    active_workspace_threads = active_workspace_threads or set()
     active_process_threads = active_process_threads or set()
 
     # Gate 1: Bot message - ignore
@@ -82,7 +85,15 @@ def check_pregates(
             data={"command": command, "args": args}
         )
 
-    # Gate 4: Known process thread - route to process
+    # Gate 4: Known workspace thread - route to Orchestrator
+    if thread_ts and thread_ts in active_workspace_threads:
+        logger.debug(f"PreGate: WORKSPACE (thread_ts={thread_ts})")
+        return PreGateOutput(
+            result=PreGateResult.WORKSPACE,
+            data={"thread_ts": thread_ts}
+        )
+
+    # Gate 4b: Legacy - Known process thread (for backwards compatibility)
     if thread_ts and thread_ts in active_process_threads:
         logger.debug(f"PreGate: PROCESS (thread_ts={thread_ts})")
         return PreGateOutput(
