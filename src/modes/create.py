@@ -6,13 +6,53 @@ Ref: BOT_DESIGN.md - CREATE Mode
 import logging
 from datetime import datetime
 
+from pydantic import BaseModel, Field
+
 from src.domain.channel import ChannelAggregate
 from src.domain.content import Attribution, IssueType, WorkItemContent
 from src.domain.entities import DraftEntity
 from src.domain.types import ChannelId, EntityId, EntityType, ThreadTs, UserId, Version
+from src.llm.client import structured_completion
 from src.modes.base import ModeContext, ModeHandler, ModeResult
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractedWorkItem(BaseModel):
+    """LLM-extracted work item content from user message."""
+
+    title: str = Field(description="Clear, concise title for the work item (5-15 words)")
+    issue_type: str = Field(
+        default="story",
+        description="Issue type: story, task, bug, or spike"
+    )
+    description: str = Field(description="Detailed description of what needs to be done")
+    acceptance_criteria: list[str] = Field(
+        default_factory=list,
+        description="Measurable acceptance criteria"
+    )
+    constraints: list[str] = Field(
+        default_factory=list,
+        description="Technical constraints or requirements"
+    )
+
+
+EXTRACT_WORK_ITEM_SYSTEM = """You are extracting a structured work item from a Slack message.
+
+The user wants to create a work item (ticket/story/task). Extract:
+- A clear, concise TITLE (not the raw message - summarize the intent in 5-15 words)
+- The appropriate issue type (story for features, task for chores, bug for defects, spike for research)
+- A well-written description expanding on the user's intent
+- Acceptance criteria if inferable from the message
+- Technical constraints if mentioned
+
+Be professional and concise. The title should read like a Jira ticket title."""
+
+EXTRACT_WORK_ITEM_USER = """Extract a work item from this message:
+
+"{message}"
+
+Context: This was posted in a Slack channel for project work tracking."""
 
 
 class CreateModeHandler(ModeHandler):
@@ -46,31 +86,50 @@ class CreateModeHandler(ModeHandler):
         return await self._create_entity(context)
 
     async def _create_preview(self, context: ModeContext) -> ModeResult:
-        """Extract content and show preview for confirmation."""
-        # TODO: Use LLM to extract structured content from message
-        # For now, use basic extraction
-
+        """Extract content using LLM and show preview for confirmation."""
         entity_type = context.intent.entity_type or "work_item"
 
         if entity_type == "work_item":
-            # Basic title extraction from message
-            title = context.message[:80].strip()
-            if len(context.message) > 80:
-                title = title[:77] + "..."
+            # Use LLM to extract structured work item content
+            try:
+                extracted = await structured_completion(
+                    response_model=ExtractedWorkItem,
+                    messages=[
+                        {"role": "system", "content": EXTRACT_WORK_ITEM_SYSTEM},
+                        {"role": "user", "content": EXTRACT_WORK_ITEM_USER.format(
+                            message=context.message
+                        )},
+                    ],
+                )
 
-            preview_content = {
-                "issue_type": "story",
-                "title": title,
-                "description": context.message,
-                "acceptance_criteria": [],
-                "constraints": [],
-            }
+                preview_content = {
+                    "issue_type": extracted.issue_type,
+                    "title": extracted.title,
+                    "description": extracted.description,
+                    "acceptance_criteria": extracted.acceptance_criteria,
+                    "constraints": extracted.constraints,
+                }
+            except Exception as e:
+                logger.warning(f"LLM extraction failed, using raw message: {e}")
+                preview_content = {
+                    "issue_type": "story",
+                    "title": context.message,
+                    "description": context.message,
+                    "acceptance_criteria": [],
+                    "constraints": [],
+                }
+
+            ac_text = ""
+            if preview_content["acceptance_criteria"]:
+                ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
+                ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
 
             preview_text = (
                 f"*Draft Work Item*\n\n"
-                f"*Type:* Story\n"
-                f"*Title:* {title}\n"
-                f"*Description:* {context.message[:200]}...\n\n"
+                f"*Type:* {preview_content['issue_type'].title()}\n"
+                f"*Title:* {preview_content['title']}\n"
+                f"*Description:* {preview_content['description']}"
+                f"{ac_text}\n\n"
                 "_Click 'Propose' to submit for team approval_"
             )
 
@@ -87,7 +146,7 @@ class CreateModeHandler(ModeHandler):
         # Decision type
         preview_content = {
             "decision_type": "architecture",
-            "title": context.message[:80],
+            "title": context.message,
             "description": context.message,
             "rationale": "",
         }

@@ -52,6 +52,11 @@ def register_event_handlers(app: AsyncApp) -> None:
             logger.debug(f"Ignoring bot message from {message_bot_id}")
             return
 
+        # Skip @mentions - they're handled by handle_app_mention to avoid duplicates
+        if "<@" in text:
+            logger.debug("Skipping @mention in message handler (handled by app_mention)")
+            return
+
         logger.info(f"Message in {channel_id} from {user_id}: {text[:50]}...")
 
         # Build router context
