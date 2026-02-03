@@ -10,8 +10,18 @@ Based on:
 """
 
 import json
+from datetime import datetime
 from typing import Any
 from uuid import UUID
+
+
+def _json_default(obj: Any) -> Any:
+    """Handle non-standard types for json.dumps."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, UUID):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 import asyncpg
 
@@ -75,7 +85,7 @@ class EventStore:
         Raises:
             ConcurrencyError: If version conflict (another writer already used this version)
         """
-        payload = json.dumps(serialize_event(event))
+        payload = json.dumps(serialize_event(event), default=_json_default)
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -136,7 +146,7 @@ class EventStore:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 for event in events:
-                    payload = json.dumps(serialize_event(event))
+                    payload = json.dumps(serialize_event(event), default=_json_default)
                     try:
                         await conn.execute(
                             """
