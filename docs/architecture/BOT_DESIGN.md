@@ -192,6 +192,155 @@ Every entity (WorkItem or Decision) follows this lifecycle:
 
 ---
 
+## Entity Lifecycle Implementation
+
+### Sum Types Pattern
+
+Entities use sum types (tagged unions) to make illegal states unrepresentable. Each lifecycle state is a distinct class:
+
+| Type | State | Key Properties |
+|------|-------|----------------|
+| `DraftEntity` | Being formed | thread_ts, no canonical message |
+| `ProposedEntity` | Awaiting approval | canonical_message_ts, approvals[], objections[] |
+| `ApprovedEntity` | Ready for Jira | attribution.approved_by set |
+| `CommittedEntity` | In Jira | jira_link (required, not optional!) |
+| `DeprecatedEntity` | Superseded | deprecated_at, superseded_by |
+
+**Key insight:** A `CommittedEntity` always has a `JiraLink`. Not "maybe has" or "optionally has" — the type system guarantees it.
+
+```python
+# This is how we express "committed means has Jira link"
+class CommittedEntity(BaseModel):
+    jira_link: JiraLink  # Required, not Optional[JiraLink]
+```
+
+### Transition Functions
+
+All state transitions are pure functions in `src/domain/transitions.py`:
+
+```
+propose(draft) -> proposed
+add_approval(proposed, user) -> proposed (with approval)
+raise_objection(proposed, user, reason) -> proposed (with objection)
+resolve_objection(proposed, index, resolution) -> proposed
+approve(proposed) -> approved
+commit(approved, jira_key) -> committed
+deprecate(committed) -> deprecated
+```
+
+Each function:
+1. Takes an entity in state A
+2. Returns an entity in state B
+3. Raises `TransitionError` for illegal transitions
+
+### Channel Aggregate Root
+
+The `ChannelAggregate` coordinates all entity mutations:
+
+```
+ChannelAggregate
+├── entities: dict[EntityId, Entity]
+├── pending_events: list[DomainEvent]
+├── version: int
+│
+├── draft_work_item() -> DraftEntity
+├── propose_work_item() -> ProposedEntity
+├── approve_work_item() -> ProposedEntity | ApprovedEntity
+├── commit_work_item() -> CommittedEntity
+│
+├── record_decision() -> DraftEntity
+├── propose_decision() -> ProposedEntity
+├── approve_decision() -> ProposedEntity | ApprovedEntity
+├── commit_decision() -> CommittedEntity
+├── deprecate_decision() -> DeprecatedEntity
+│
+├── raise_entity_objection() -> ProposedEntity
+├── resolve_entity_objection() -> ProposedEntity
+└── withdraw_entity_objection() -> ProposedEntity
+```
+
+**Pattern:** Every mutation:
+1. Validates current state
+2. Applies transition function
+3. Emits domain event
+4. Updates local state
+5. Returns new entity
+
+### Approval/Objection Flow
+
+```
+┌────────────────────────────────────────────────────────┐
+│                    PROPOSED                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌───────────┐  │
+│  │  approvals  │    │  objections │    │  actions  │  │
+│  │  ─────────  │    │  ──────────  │    │  ───────  │  │
+│  │  user_id    │    │  user_id    │    │  Approve  │  │
+│  │  timestamp  │    │  reason     │    │  Object   │  │
+│  │  comment?   │    │  status     │    │  Discuss  │  │
+│  └─────────────┘    │  resolution │    └───────────┘  │
+│                     └─────────────┘                    │
+└────────────────────────────────────────────────────────┘
+
+Objection Status Flow:
+  ACTIVE -> RESOLVED (by anyone, with resolution text)
+  ACTIVE -> WITHDRAWN (only by original objector)
+
+Approval Rules:
+  - Cannot approve if you already approved
+  - Cannot approve if there are ACTIVE objections
+  - When approvals >= min_required AND no active objections -> APPROVED
+```
+
+### Mode Handler Integration
+
+Mode handlers use the entity lifecycle:
+
+| Mode | Entity Operations |
+|------|-------------------|
+| CREATE | `draft_work_item()` / `record_decision()` |
+| MODIFY | Update draft/proposed content |
+| RECORD | `record_decision()` |
+| CONVERSE | None (no entity operations) |
+
+The `SafetyEvaluator` checks entity state before allowing operations:
+
+```python
+# In safety.py
+can_mod, reason = can_modify(entity)  # Only Draft/Proposed
+can_app, reason = can_approve(entity)  # Only Proposed, no active objections
+can_com, reason = can_commit(entity)   # Only Approved
+```
+
+### Event Sourcing Integration
+
+Entity events feed into the event store:
+
+```
+User Action -> ChannelAggregate -> Domain Event -> Event Store -> Projection
+                    │
+                    └── Returns updated Entity
+```
+
+Events for entity lifecycle:
+- `WorkItemDrafted`, `WorkItemProposed`, `WorkItemApproved`, `WorkItemCommitted`, `WorkItemUpdated`
+- `DecisionRecorded`, `DecisionProposed`, `DecisionApproved`, `DecisionCommitted`, `DecisionDeprecated`
+- `ApprovalAdded`, `ObjectionRaised`, `ObjectionResolved`, `ObjectionWithdrawn`
+
+### Module Structure
+
+```
+src/domain/
+├── types.py          # EntityId, ChannelId, EntityLifecycle, etc.
+├── content.py        # WorkItemContent, DecisionContent, Approval, Objection
+├── entities.py       # Sum types: DraftEntity, ProposedEntity, etc.
+├── transitions.py    # Pure transition functions
+├── channel.py        # ChannelAggregate (aggregate root)
+├── events.py         # Domain events
+└── __init__.py       # Exports
+```
+
+---
+
 ## Decision-Making Rules
 
 ### When to Create an Entity
