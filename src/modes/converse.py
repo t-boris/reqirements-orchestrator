@@ -6,6 +6,7 @@ Ref: BOT_DESIGN.md - CONVERSE Mode
 """
 
 import logging
+from typing import Literal
 
 from src.llm.client import structured_completion
 from src.modes.base import ModeHandler, ModeContext, ModeResult
@@ -41,7 +42,15 @@ CRITICAL formatting rules (Slack mrkdwn, NOT standard markdown):
 - Bullet points: • or - at line start
 - NEVER use **double asterisks** - Slack renders them literally
 - NEVER use # headings - Slack doesn't support them
-- NEVER use --- horizontal rules"""
+- NEVER use --- horizontal rules
+
+When you have questions for the user:
+- If there are 2-4 clear options, use question_type="choice" with options
+- If it's a yes/no or confirm/deny, use question_type="confirmation" with options [{"label": "Yes", "description": "..."}, {"label": "No", "description": "..."}]
+- Only use question_type="open_ended" when no reasonable options can be predicted
+- Keep option labels under 75 characters
+- Always include the most likely option first
+- Maximum 2 follow-up questions per response"""
 
 CONVERSE_USER = """Thread context:
 {thread_context}
@@ -52,10 +61,39 @@ Latest message from user:
 Respond helpfully based on the full conversation context."""
 
 
+class FollowUpOption(BaseModel):
+    """An option for a follow-up question button."""
+
+    label: str = Field(description="Short button label, max 75 chars")
+    description: str = Field(description="What this option means")
+
+
+class FollowUpQuestion(BaseModel):
+    """A structured follow-up question for the user."""
+
+    question_text: str = Field(description="The question to ask the user")
+    question_type: Literal["choice", "confirmation", "open_ended"] = Field(
+        description="choice = buttons, confirmation = yes/no, open_ended = free text"
+    )
+    options: list[FollowUpOption] = Field(
+        default_factory=list,
+        description="Options for choice/confirmation types. Empty for open_ended.",
+    )
+    priority: int = Field(
+        default=0,
+        description="Higher priority questions should be asked first",
+    )
+
+
 class ConverseLLMResponse(BaseModel):
     """LLM response for conversation mode."""
 
     response: str = Field(description="The response message to send to the user")
+    follow_up_questions: list[FollowUpQuestion] = Field(
+        default_factory=list,
+        description="Questions to ask the user. Use 'choice' when there are 2-4 clear options. "
+        "Use 'confirmation' for yes/no. Use 'open_ended' only when no reasonable options exist.",
+    )
 
 
 class ConverseModeHandler(ModeHandler):
@@ -109,14 +147,29 @@ class ConverseModeHandler(ModeHandler):
                 ],
             )
             response = result.response
+            follow_up_questions = result.follow_up_questions
         except Exception as e:
             logger.warning(f"LLM conversation failed: {e}")
             response = (
                 "I'm having trouble processing that right now. "
                 "Could you rephrase or try again?"
             )
+            follow_up_questions = []
+
+        # Build Slack blocks with buttons if there are follow-up questions
+        response_blocks = None
+        if follow_up_questions:
+            from src.slack.blocks.questions import build_question_blocks
+
+            thread_ts = context.thread_ts or ""
+            response_blocks = build_question_blocks(
+                response_text=response,
+                questions=follow_up_questions,
+                thread_ts=thread_ts,
+            )
 
         return ModeResult(
             response_text=response,
+            response_blocks=response_blocks,
             requires_confirmation=False,  # CONVERSE never needs confirmation
         )

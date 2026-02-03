@@ -6,6 +6,7 @@ from src.slack.blocks.builders import (
     build_error_blocks,
     build_help_blocks,
 )
+from src.slack.blocks.questions import build_question_blocks
 
 __all__ = [
     "build_approval_blocks",
@@ -13,4 +14,5 @@ __all__ = [
     "build_dashboard_blocks",
     "build_error_blocks",
     "build_help_blocks",
+    "build_question_blocks",
 ]
