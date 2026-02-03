@@ -72,6 +72,7 @@ async def structured_completion(
         max_retries=retries,
         temperature=temp,
         messages=messages,
+        api_key=settings.llm_api_key,  # Explicitly pass API key for LiteLLM
     )
 
     logger.debug(f"LLM response: {response}")
