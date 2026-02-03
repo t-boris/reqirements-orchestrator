@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 4 of 7 (Entity Lifecycle)
-Plan: 2 of 7 in current phase
+Plan: 4 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 04-02-PLAN.md
+Last activity: 2026-02-02 - Completed 04-04-PLAN.md
 
-Progress: ██████░░░░ 60% (18/30 plans)
+Progress: ███████░░░ 67% (20/30 plans)
 
 ## Performance Metrics
 
@@ -32,7 +32,7 @@ Progress: ██████░░░░ 60% (18/30 plans)
 | 3. Intent & Modes | 6 | 12 min | 2.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-04 (2 min), 03-05 (4 min), 03-06 (3 min), 04-01 (1 min), 04-02 (2 min)
+- Last 5 plans: 03-06 (3 min), 04-01 (1 min), 04-02 (2 min), 04-03 (2 min), 04-04 (1 min)
 - Trend: Stable
 
 ## Accumulated Context
@@ -84,6 +84,8 @@ Progress: ██████░░░░ 60% (18/30 plans)
 | 04-01 | Objection events use index-based reference | Matches spec 3.9 pattern where objections are stored as list on ProposedEntity |
 | 04-02 | Version increment on every transition | Event sourcing compatibility for replay |
 | 04-02 | Objections indexed by position | Simpler than ID-based lookup, matches spec pattern |
+| 04-04 | Reuse _add_approval for ApprovalAdded | DRY - method already handles JSONB append pattern |
+| 04-04 | String interpolation for resolution JSON | Dynamic construction of resolution field in jsonb_set |
 
 ### Deferred Issues
 
@@ -96,6 +98,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 04-02-PLAN.md
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
-Next action: Execute 04-03-PLAN.md
+Next action: Execute 04-05-PLAN.md
