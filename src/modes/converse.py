@@ -31,9 +31,17 @@ Rules:
 - If the user is brainstorming, engage with the ideas and help refine them.
 - If the user asks a question, answer it directly.
 - If the conversation naturally leads to creating a work item, suggest it: "Want me to create a ticket for this?"
-- Use Slack markdown (*bold*, _italic_, bullet points with •)
-- Do NOT use headings or horizontal rules
-- Keep responses under 300 words"""
+- Keep responses under 300 words
+
+CRITICAL formatting rules (Slack mrkdwn, NOT standard markdown):
+- Bold: *text* (single asterisks, NEVER **double**)
+- Italic: _text_ (underscores)
+- Strikethrough: ~text~
+- Code: `text` or ```block```
+- Bullet points: • or - at line start
+- NEVER use **double asterisks** - Slack renders them literally
+- NEVER use # headings - Slack doesn't support them
+- NEVER use --- horizontal rules"""
 
 CONVERSE_USER = """Thread context:
 {thread_context}
