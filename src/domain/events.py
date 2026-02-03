@@ -349,45 +349,52 @@ class PlanCompleted(DomainEvent):
 # Event Registry - All event types for serialization
 # =============================================================================
 
+# Core domain event types (defined in this module)
+_CORE_EVENT_TYPES: list[type[DomainEvent]] = [
+    # Work Item Events
+    WorkItemDrafted,
+    WorkItemProposed,
+    WorkItemApproved,
+    WorkItemCommitted,
+    WorkItemUpdated,
+    # Decision Events
+    DecisionRecorded,
+    DecisionProposed,
+    DecisionApproved,
+    DecisionCommitted,
+    DecisionDeprecated,
+    # Approval/Objection Events
+    ApprovalAdded,
+    ObjectionRaised,
+    ObjectionResolved,
+    ObjectionWithdrawn,
+    # Conflict Events
+    ConflictDetected,
+    ConflictResolved,
+    # Process/Plan Events
+    ProcessStarted,
+    ProcessStageCompleted,
+    ProcessCompleted,
+    PlanCreated,
+    PlanItemCompleted,
+    PlanCompleted,
+]
 
-def _get_all_event_types() -> list[type[DomainEvent]]:
-    """Build complete event registry including orchestration events.
 
-    Uses deferred import to avoid circular dependency between
-    src.domain.events and src.orchestration.events.
+def get_all_event_types() -> list[type[DomainEvent]]:
+    """Get complete event registry including orchestration events.
+
+    This function uses deferred import to avoid circular dependency between
+    src.domain.events and src.orchestration.events. Call this function
+    when you need all event types (e.g., for deserialization).
+
+    Returns:
+        Complete list of all domain event types including Task/Workspace events.
     """
-    # Core domain events
-    events: list[type[DomainEvent]] = [
-        # Work Item Events
-        WorkItemDrafted,
-        WorkItemProposed,
-        WorkItemApproved,
-        WorkItemCommitted,
-        WorkItemUpdated,
-        # Decision Events
-        DecisionRecorded,
-        DecisionProposed,
-        DecisionApproved,
-        DecisionCommitted,
-        DecisionDeprecated,
-        # Approval/Objection Events
-        ApprovalAdded,
-        ObjectionRaised,
-        ObjectionResolved,
-        ObjectionWithdrawn,
-        # Conflict Events
-        ConflictDetected,
-        ConflictResolved,
-        # Process/Plan Events
-        ProcessStarted,
-        ProcessStageCompleted,
-        ProcessCompleted,
-        PlanCreated,
-        PlanItemCompleted,
-        PlanCompleted,
-    ]
+    # Start with core events
+    events = list(_CORE_EVENT_TYPES)
 
-    # Task/Workspace Events (deferred import to avoid circular dependency)
+    # Add Task/Workspace Events (deferred import to avoid circular dependency)
     from src.orchestration.events import (
         TaskBlocked,
         TaskCancelled,
@@ -414,5 +421,5 @@ def _get_all_event_types() -> list[type[DomainEvent]]:
     return events
 
 
-# All event types in the system, for use by serialization module
-ALL_EVENT_TYPES: list[type[DomainEvent]] = _get_all_event_types()
+# All core event types (use get_all_event_types() for complete registry including Task events)
+ALL_EVENT_TYPES: list[type[DomainEvent]] = _CORE_EVENT_TYPES
