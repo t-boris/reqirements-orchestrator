@@ -37,22 +37,76 @@ class ExtractedWorkItem(BaseModel):
     )
 
 
-EXTRACT_WORK_ITEM_SYSTEM = """You are extracting a structured work item from a Slack message.
+class ExtractedDecision(BaseModel):
+    """A single architectural decision extracted from thread."""
+
+    title: str = Field(description="Clear decision title, e.g. 'Use Monolith Architecture'")
+    decision_type: str = Field(
+        default="architecture",
+        description="Decision type: architecture, technology, process, scope"
+    )
+    context: str = Field(description="What problem or question prompted this decision")
+    decision: str = Field(description="The actual decision that was made")
+    rationale: str = Field(description="Why this decision was made, based on the discussion")
+    alternatives_considered: list[str] = Field(
+        default_factory=list,
+        description="Alternatives that were discussed but not chosen"
+    )
+
+
+class ExtractedDecisions(BaseModel):
+    """Multiple decisions extracted from a thread conversation."""
+
+    decisions: list[ExtractedDecision] = Field(
+        description="All decisions found in the conversation, from initial requirements and discussion"
+    )
+
+
+EXTRACT_WORK_ITEM_SYSTEM = """You are extracting a structured work item from a Slack conversation.
 
 The user wants to create a work item (ticket/story/task). Extract:
 - A clear, concise TITLE (not the raw message - summarize the intent in 5-15 words)
 - The appropriate issue type (story for features, task for chores, bug for defects, spike for research)
 - A well-written description expanding on the user's intent
-- Acceptance criteria if inferable from the message
+- Acceptance criteria if inferable from the conversation
 - Technical constraints if mentioned
 
+Use the FULL THREAD CONTEXT to understand what was discussed, not just the last message.
 Be professional and concise. The title should read like a Jira ticket title."""
 
-EXTRACT_WORK_ITEM_USER = """Extract a work item from this message:
+EXTRACT_WORK_ITEM_USER = """Thread conversation:
+{thread_context}
 
+User's latest message requesting creation:
 "{message}"
 
-Context: This was posted in a Slack channel for project work tracking."""
+Extract a work item based on the full conversation context."""
+
+EXTRACT_DECISION_SYSTEM = """You are extracting ALL architectural decisions from a Slack thread discussion.
+
+A thread often contains MULTIPLE decisions - from the initial requirements message AND from the conversation.
+Extract EVERY decision as a separate ADR (Architecture Decision Record).
+
+Examples of decisions to look for:
+- Technology choices ("PostgreSQL for storage", "S3 for blobs")
+- Architecture patterns ("Monolith", "Serverless", "Microservices")
+- Design choices ("DB as source of truth", "webhooks for Slack communication")
+- Scope decisions ("simple multi-option quizzes", "no specific latency requirements")
+
+Use the FULL THREAD CONTEXT. Decisions come from:
+1. The initial requirements/message (explicit tech choices, stated preferences)
+2. Answers during the discussion (user confirming or choosing options)
+3. Bot proposals that were accepted (if user agreed with a suggestion)
+
+Each title should read like an ADR title, e.g. "Use Monolith Architecture for Initial Release"."""
+
+EXTRACT_DECISION_USER = """Thread conversation:
+{thread_context}
+
+User's request:
+"{message}"
+
+Extract ALL architectural decisions from this entire conversation."""
 
 
 class CreateModeHandler(ModeHandler):
@@ -85,79 +139,137 @@ class CreateModeHandler(ModeHandler):
         # User confirmed - create the entity
         return await self._create_entity(context)
 
+    def _build_thread_context(self, context: ModeContext) -> str:
+        """Build a text summary of the thread for LLM context."""
+        if not context.thread_messages:
+            return f"(No thread history)\nMessage: {context.message}"
+        return "\n".join(
+            f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content']}"
+            for m in context.thread_messages
+        )
+
     async def _create_preview(self, context: ModeContext) -> ModeResult:
         """Extract content using LLM and show preview for confirmation."""
         entity_type = context.intent.entity_type or "work_item"
+        thread_context = self._build_thread_context(context)
 
         if entity_type == "work_item":
-            # Use LLM to extract structured work item content
-            try:
-                extracted = await structured_completion(
-                    response_model=ExtractedWorkItem,
-                    messages=[
-                        {"role": "system", "content": EXTRACT_WORK_ITEM_SYSTEM},
-                        {"role": "user", "content": EXTRACT_WORK_ITEM_USER.format(
-                            message=context.message
-                        )},
-                    ],
-                )
+            return await self._create_work_item_preview(context, thread_context)
 
-                preview_content = {
-                    "issue_type": extracted.issue_type,
-                    "title": extracted.title,
-                    "description": extracted.description,
-                    "acceptance_criteria": extracted.acceptance_criteria,
-                    "constraints": extracted.constraints,
-                }
-            except Exception as e:
-                logger.warning(f"LLM extraction failed, using raw message: {e}")
-                preview_content = {
-                    "issue_type": "story",
-                    "title": context.message,
-                    "description": context.message,
-                    "acceptance_criteria": [],
-                    "constraints": [],
-                }
+        return await self._create_decision_preview(context, thread_context)
 
-            ac_text = ""
-            if preview_content["acceptance_criteria"]:
-                ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
-                ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
-
-            preview_text = (
-                f"*Draft Work Item*\n\n"
-                f"*Type:* {preview_content['issue_type'].title()}\n"
-                f"*Title:* {preview_content['title']}\n"
-                f"*Description:* {preview_content['description']}"
-                f"{ac_text}\n\n"
-                "_Click 'Propose' to submit for team approval_"
+    async def _create_work_item_preview(
+        self, context: ModeContext, thread_context: str
+    ) -> ModeResult:
+        """Extract and preview a work item using LLM."""
+        try:
+            extracted = await structured_completion(
+                response_model=ExtractedWorkItem,
+                messages=[
+                    {"role": "system", "content": EXTRACT_WORK_ITEM_SYSTEM},
+                    {"role": "user", "content": EXTRACT_WORK_ITEM_USER.format(
+                        thread_context=thread_context,
+                        message=context.message,
+                    )},
+                ],
             )
 
-            return ModeResult(
-                response_text=preview_text,
-                requires_confirmation=True,
-                confirmation_data={
-                    "action": "create_work_item",
-                    "content": preview_content,
-                },
-                response_blocks=self._build_preview_blocks(preview_content),
-            )
+            preview_content = {
+                "issue_type": extracted.issue_type,
+                "title": extracted.title,
+                "description": extracted.description,
+                "acceptance_criteria": extracted.acceptance_criteria,
+                "constraints": extracted.constraints,
+            }
+        except Exception as e:
+            logger.warning(f"LLM extraction failed, using raw message: {e}")
+            preview_content = {
+                "issue_type": "story",
+                "title": context.message,
+                "description": context.message,
+                "acceptance_criteria": [],
+                "constraints": [],
+            }
 
-        # Decision type
-        preview_content = {
-            "decision_type": "architecture",
-            "title": context.message,
-            "description": context.message,
-            "rationale": "",
-        }
+        ac_text = ""
+        if preview_content["acceptance_criteria"]:
+            ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
+            ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
+
+        preview_text = (
+            f"*Draft Work Item*\n\n"
+            f"*Type:* {preview_content['issue_type'].title()}\n"
+            f"*Title:* {preview_content['title']}\n"
+            f"*Description:* {preview_content['description']}"
+            f"{ac_text}\n\n"
+            "_Click 'Propose' to submit for team approval_"
+        )
 
         return ModeResult(
-            response_text=f"Draft Decision: {preview_content['title']}",
+            response_text=preview_text,
             requires_confirmation=True,
             confirmation_data={
-                "action": "create_decision",
+                "action": "create_work_item",
                 "content": preview_content,
             },
+            response_blocks=self._build_preview_blocks(preview_content),
+        )
+
+    async def _create_decision_preview(
+        self, context: ModeContext, thread_context: str
+    ) -> ModeResult:
+        """Extract and preview multiple decisions using LLM with thread context."""
+        try:
+            extracted = await structured_completion(
+                response_model=ExtractedDecisions,
+                messages=[
+                    {"role": "system", "content": EXTRACT_DECISION_SYSTEM},
+                    {"role": "user", "content": EXTRACT_DECISION_USER.format(
+                        thread_context=thread_context,
+                        message=context.message,
+                    )},
+                ],
+            )
+            decisions = [d.model_dump() for d in extracted.decisions]
+        except Exception as e:
+            logger.warning(f"LLM decision extraction failed: {e}")
+            decisions = [{
+                "decision_type": "architecture",
+                "title": context.message,
+                "context": "",
+                "decision": context.message,
+                "rationale": "",
+                "alternatives_considered": [],
+            }]
+
+        # Build preview text for all decisions
+        decision_blocks = []
+        for i, d in enumerate(decisions, 1):
+            alts = ""
+            if d.get("alternatives_considered"):
+                alts = "\n  _Alternatives: " + ", ".join(d["alternatives_considered"]) + "_"
+
+            decision_blocks.append(
+                f"*{i}. {d['title']}*\n"
+                f"  {d['decision']}\n"
+                f"  _Rationale: {d['rationale']}_"
+                f"{alts}"
+            )
+
+        preview_text = (
+            f"*Draft Decision Records* ({len(decisions)} found)\n\n"
+            + "\n\n".join(decision_blocks)
+            + "\n\n_Click 'Record All' to capture these decisions_"
+        )
+
+        return ModeResult(
+            response_text=preview_text,
+            requires_confirmation=True,
+            confirmation_data={
+                "action": "create_decisions",
+                "content": {"decisions": decisions},
+            },
+            response_blocks=self._build_decisions_preview_blocks(decisions),
         )
 
     async def _create_entity(self, context: ModeContext) -> ModeResult:
@@ -242,6 +354,61 @@ class CreateModeHandler(ModeHandler):
                 ],
             },
         ]
+
+    def _build_decisions_preview_blocks(self, decisions: list[dict]) -> list[dict]:
+        """Build Slack blocks for multiple decision previews."""
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"Draft Decision Records ({len(decisions)} found)",
+                },
+            },
+        ]
+
+        for i, d in enumerate(decisions, 1):
+            alts = ""
+            if d.get("alternatives_considered"):
+                alts = f"\n_Alternatives: {', '.join(d['alternatives_considered'])}_"
+
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{i}. {d['title']}*\n"
+                        f"{d['decision']}\n"
+                        f"_Rationale: {d['rationale']}_"
+                        f"{alts}"
+                    ),
+                },
+            })
+            blocks.append({"type": "divider"})
+
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Record All"},
+                    "style": "primary",
+                    "action_id": "record_all_decisions",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Edit"},
+                    "action_id": "edit_decisions",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "action_id": "cancel_decisions",
+                },
+            ],
+        })
+
+        return blocks
 
     def _build_draft_blocks(self, draft: DraftEntity) -> list[dict]:
         """Build Slack blocks for created draft."""

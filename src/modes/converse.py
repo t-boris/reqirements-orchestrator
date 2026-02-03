@@ -35,10 +35,13 @@ Rules:
 - Do NOT use headings or horizontal rules
 - Keep responses under 300 words"""
 
-CONVERSE_USER = """Message from user:
+CONVERSE_USER = """Thread context:
+{thread_context}
+
+Latest message from user:
 "{message}"
 
-Respond helpfully."""
+Respond helpfully based on the full conversation context."""
 
 
 class ConverseLLMResponse(BaseModel):
@@ -77,6 +80,14 @@ class ConverseModeHandler(ModeHandler):
                 requires_confirmation=False,
             )
 
+        # Build thread context for LLM
+        thread_context = "(No thread history)"
+        if context.thread_messages:
+            thread_context = "\n".join(
+                f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content']}"
+                for m in context.thread_messages
+            )
+
         # Use LLM for intelligent conversation
         try:
             result = await structured_completion(
@@ -84,7 +95,8 @@ class ConverseModeHandler(ModeHandler):
                 messages=[
                     {"role": "system", "content": CONVERSE_SYSTEM},
                     {"role": "user", "content": CONVERSE_USER.format(
-                        message=context.message
+                        thread_context=thread_context,
+                        message=context.message,
                     )},
                 ],
             )

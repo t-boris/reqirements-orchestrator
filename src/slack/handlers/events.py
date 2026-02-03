@@ -119,10 +119,11 @@ def register_event_handlers(app: AsyncApp) -> None:
             )
 
     @app.event("app_mention")
-    async def handle_app_mention(event: dict, say) -> None:
+    async def handle_app_mention(event: dict, say, client) -> None:
         """Handle @mentions of the bot.
 
         @mentions are treated like regular messages but always get a response.
+        Fetches thread history for context when in a thread.
         """
         user_id = event.get("user", "")
         channel_id = event.get("channel", "")
@@ -132,12 +133,37 @@ def register_event_handlers(app: AsyncApp) -> None:
 
         logger.info(f"App mention in {channel_id} from {user_id}")
 
+        # Fetch thread history for context
+        thread_messages = []
+        if thread_ts:
+            try:
+                replies = await client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    limit=50,
+                )
+                thread_messages = [
+                    {"role": "assistant" if msg.get("bot_id") else "user",
+                     "content": msg.get("text", "")}
+                    for msg in replies.get("messages", [])
+                ]
+            except Exception as e:
+                logger.warning(f"Failed to fetch thread history: {e}")
+
+        # Build thread summary from messages for intent classification
+        thread_summary = ""
+        if thread_messages:
+            thread_summary = "\n".join(
+                f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content'][:200]}"
+                for m in thread_messages[-10:]  # Last 10 messages
+            )
+
         # Build context
         context = RouterContext(
             channel_id=channel_id,
             channel_name=channel_id,
             thread_ts=thread_ts,
-            thread_summary="",
+            thread_summary=thread_summary,
             entity_summaries="",
             active_process_threads=_active_process_threads,
         )
@@ -151,13 +177,14 @@ def register_event_handlers(app: AsyncApp) -> None:
                 message_bot_id=message_bot_id,
             )
 
-            # Dispatch to mode handler
+            # Dispatch to mode handler with thread context
             result = await dispatch_mode(
                 message=text,
                 user_id=user_id,
                 channel_id=channel_id,
                 thread_ts=thread_ts,
                 intent=intent,
+                thread_messages=thread_messages,
             )
 
             # Send response
