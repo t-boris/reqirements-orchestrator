@@ -16,6 +16,11 @@ from src.jira.sync_service import (
     DuplicateDetectedError,
     ConflictDetectedError,
 )
+from src.jira.commit_handler import (
+    CommitHandler,
+    CommitResult,
+    CommitStatus,
+)
 
 __all__ = [
     # Client
@@ -34,4 +39,8 @@ __all__ = [
     "JiraSyncError",
     "DuplicateDetectedError",
     "ConflictDetectedError",
+    # Handler
+    "CommitHandler",
+    "CommitResult",
+    "CommitStatus",
 ]
