@@ -21,6 +21,11 @@ from src.jira.commit_handler import (
     CommitResult,
     CommitStatus,
 )
+from src.jira.reconciliation import (
+    ReconciliationService,
+    ReconciliationReport,
+    ResolutionChoice,
+)
 
 __all__ = [
     # Client
@@ -43,4 +48,8 @@ __all__ = [
     "CommitHandler",
     "CommitResult",
     "CommitStatus",
+    # Reconciliation
+    "ReconciliationService",
+    "ReconciliationReport",
+    "ResolutionChoice",
 ]
