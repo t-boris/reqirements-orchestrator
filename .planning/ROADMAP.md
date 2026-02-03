@@ -99,17 +99,24 @@ Key deliverables:
 ### Phase 6: Jira Projection
 **Goal**: Sync approved entities to Jira, handle conflicts
 **Depends on**: Phase 5
-**Research**: Likely (current Jira API, webhook patterns)
-**Research topics**: Jira REST API v3, webhook handling, conflict resolution patterns
-**Plans**: TBD
+**Research**: Complete (06-RESEARCH.md)
+**Plans**: 5 (06-01 through 06-05)
+
+Wave structure:
+- Wave 1: 06-01 (JiraClient, models)
+- Wave 2: 06-02 (PreflightService, JiraSyncService)
+- Wave 3: 06-03, 06-04 (CommitHandler, /maro sync command) - parallel
+- Wave 4: 06-05 (Documentation update)
 
 Key deliverables:
-- JiraLink model
-- Sync service
-- Issue creation/update
-- Decision projection to Jira fields
-- Conflict detection
-- Sync status tracking
+- JiraClient async wrapper (atlassian-python-api + tenacity)
+- Field ownership model (JIRA_OWNED, SLACK_OWNED, SHARED)
+- PreflightService for mandatory duplicate detection
+- JiraSyncService for commit and reconcile
+- CommitHandler for commit flow orchestration
+- ReconciliationService for sync status
+- /maro sync command with conflict resolution UI
+- BOT_DESIGN.md Jira section
 
 ### Phase 7: Polish & Deploy
 **Goal**: Production-ready system deployed to existing infrastructure
@@ -134,5 +141,5 @@ Key deliverables:
 | 3. Intent & Modes | 6/6 | Complete | 2026-02-02 |
 | 4. Entity Lifecycle | 7/7 | Complete | 2026-02-02 |
 | 5. Process Orchestration | 7/7 | Complete | 2026-02-02 |
-| 6. Jira Projection | 0/TBD | Not started | - |
+| 6. Jira Projection | 0/5 | Planned | - |
 | 7. Polish & Deploy | 0/TBD | Not started | - |
