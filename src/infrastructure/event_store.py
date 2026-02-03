@@ -186,7 +186,7 @@ class EventStore:
     async def get_events(
         self,
         aggregate_id: str,
-        after_version: int = 0,
+        after_version: int = -1,
     ) -> list[DomainEvent]:
         """Get all events for an aggregate after a given version.
 
@@ -195,7 +195,7 @@ class EventStore:
 
         Args:
             aggregate_id: The aggregate (channel) ID
-            after_version: Only return events after this version (default: 0 = all events)
+            after_version: Only return events after this version (default: -1 = all events including version 0)
 
         Returns:
             List of domain events in version order
