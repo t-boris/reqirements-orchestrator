@@ -3,6 +3,35 @@
 ## Milestones
 
 - [x] **v2.0 MARO 2.0** - Phases 1-7 (shipped 2026-02-02)
+- [ ] **v2.1 Smart UX & Observability** - Phase 8+
+
+## Current Milestone: v2.1 Smart UX & Observability
+
+Address UX friction and operational gaps identified in improvement review (docs/improvement-1.rtf).
+
+### Phase 8: Smart UX Layer
+
+**Goal:** Simplify bot interaction with Simple Mode UX, structured button-based questions from LLM, intent audit logging, and observability tooling.
+
+**Source:** docs/improvement-1.rtf + user feedback from production testing
+
+**Scope:**
+1. **Simple Mode UX** — Hide complex domain model (entities, lifecycle, processes) behind clean conversational UX. User should never feel "the bot is holding a philosophy congress"
+2. **LLM Questions → Buttons** — When the LLM asks the user a question (choices, options, confirmations), the bot MUST render them as Slack buttons, not free-form text
+3. **Intent Audit Log** — Persist message → intent → confidence → mode → action for every classification. Enables debugging "why did the bot do that?"
+4. **Deterministic Post-Filters** — Entity reference must exist for MODIFY, otherwise downgrade to CONVERSE. Prevent entity_id hallucination
+5. **Observability** — Event timeline viewer, entity state inspector (via `/maro inspect` slash command)
+
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 8 to break down)
+
+**Details:**
+[To be added during planning]
+
+---
 
 ## Completed Milestones
 

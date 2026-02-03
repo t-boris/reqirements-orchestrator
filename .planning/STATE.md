@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-02)
 
 **Core value:** Thread -> Channel -> Jira flow must work flawlessly
-**Current focus:** v2.0 milestone complete - ready for deployment
+**Current focus:** v2.1 Smart UX & Observability
 
 ## Current Position
 
-Phase: 7 of 7 (Polish & Deploy)
-Plan: 4 of 4 in current phase
-Status: Milestone complete
-Last activity: 2026-02-02 - v2.0 milestone shipped
+Phase: 8 (Smart UX Layer) — v2.1 milestone
+Plan: 0 of 0 in current phase (not yet planned)
+Status: Phase added, awaiting planning
+Last activity: 2026-02-03 - Phase 8 added from improvement review
 
-Progress: ██████████ 100% (39/39 plans complete)
+Progress: █░░░░░░░░░ 0% (v2.1)
 
 ## Performance Metrics
 
@@ -48,9 +48,13 @@ Key accomplishments:
 - Jira projection with duplicate detection and conflict resolution
 - Production deployment ready (Docker, Cloud Build, GCE)
 
+## Roadmap Evolution
+
+- Phase 8 added: Smart UX Layer (from docs/improvement-1.rtf review + production testing feedback)
+
 ## Session Continuity
 
-Last session: 2026-02-02
-Stopped at: v2.0 milestone complete
+Last session: 2026-02-03
+Stopped at: Phase 8 added to roadmap
 Resume file: None
-Next action: Deploy to production or plan v2.1 features
+Next action: Plan Phase 8 (/gsd:plan-phase 8)
