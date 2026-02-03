@@ -239,6 +239,14 @@ class Orchestrator:
         # Simplified - in production, use LLM
         message_lower = message_text.lower()
 
+        # Check more specific patterns first (batch before single item)
+        if "for each" in message_lower or "batch" in message_lower:
+            return {
+                "should_create_task": True,
+                "flow_type": "batch_create",
+                "goal": message_text,
+            }
+
         # Pattern matching for common intents
         if any(kw in message_lower for kw in ["create", "add", "new"]):
             if any(kw in message_lower for kw in ["story", "task", "epic", "bug"]):
@@ -253,13 +261,6 @@ class Orchestrator:
                     "flow_type": "create_decision",
                     "goal": message_text,
                 }
-
-        if "for each" in message_lower or "batch" in message_lower:
-            return {
-                "should_create_task": True,
-                "flow_type": "batch_create",
-                "goal": message_text,
-            }
 
         if any(kw in message_lower for kw in ["review", "discuss", "architecture"]):
             return {
