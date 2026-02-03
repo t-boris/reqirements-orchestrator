@@ -341,6 +341,143 @@ src/domain/
 
 ---
 
+## Task-Based Orchestration
+
+### Evolution from ProcessExecutor
+
+The original spec (maro_2_0.md Part 7) defined a linear ProcessExecutor with fixed stages. After analysis, this was found too rigid for real conversations:
+- Users revisit topics and decisions emerge organically
+- "Create stories for each epic" requires parallelism
+- Multi-user collaboration is natural in Slack
+
+The Task-based model replaces linear stages with flexible, entity-centric workflows.
+
+### Core Concepts
+
+```
+Conversation Thread
+  └─ Workspace (channel/thread state)
+       ├─ Task A: "Create login story" → Entity[WorkItem]
+       ├─ Task B: "Capture API decisions" → Entity[Decision], Entity[Decision]
+       └─ Task C: "Review sprint" → Entity[WorkItem]×N
+```
+
+| Concept | Purpose |
+|---------|---------|
+| **Workspace** | State container for a channel/thread — tracks active tasks and entities |
+| **Task** | Unit of work with a goal, can spawn children, can cycle |
+| **FlowTemplate** | Template/pattern for common task types (not a rigid stage machine) |
+| **Orchestrator** | Routes user input to tasks, manages lifecycle, detects new intents |
+
+### Task Lifecycle
+
+```
+         ┌─────────────────────────────────────────┐
+         │              TaskStatus                  │
+         │  ┌────────┐   ┌─────────┐   ┌─────────┐ │
+         │  │ ACTIVE │ → │ WAITING │ → │COMPLETED│ │
+         │  └────────┘   └─────────┘   └─────────┘ │
+         │       │            │             ↑      │
+         │       │            │             │      │
+         │       ↓            ↓             │      │
+         │  ┌────────┐   ┌─────────┐        │      │
+         │  │BLOCKED │   │CANCELLED│        │      │
+         │  └────────┘   └─────────┘        │      │
+         │       │                          │      │
+         │       └──────────────────────────┘      │
+         └─────────────────────────────────────────┘
+
+ACTIVE    → Working, gathering context
+WAITING   → Asked question, awaiting response
+BLOCKED   → Waiting on child tasks to complete
+COMPLETED → Goal achieved, entities created
+CANCELLED → Abandoned before completion
+```
+
+### Flow Templates
+
+Templates guide (don't enforce) what context to gather:
+
+| Flow | Purpose | Required | Fan-Out |
+|------|---------|----------|---------|
+| `create_work_item` | Single item creation | "what" | No |
+| `create_decision` | Capture decision | "decision" | No |
+| `architecture_review` | Multi-entity discussion | "goal" | Yes |
+| `batch_create` | Parallel item creation | "targets" | Yes |
+| `review` | Review existing entities | "entities" | No |
+
+### Orchestrator Routing
+
+```python
+async def handle_message(workspace, message, user_id):
+    # 1. Check for task-switch intent
+    if switch := detect_task_switch(workspace, message):
+        workspace.focus_task_id = switch
+
+    # 2. Route to focus task or create new
+    if workspace.focus_task_id:
+        return process_task_input(task, message)
+    else:
+        intent = detect_intent(message)
+        if intent.should_create_task:
+            task = create_task(intent, workspace)
+            return start_task(task)
+```
+
+### Fan-Out Pattern
+
+For "Create stories for each epic":
+
+```
+Parent Task (batch_create, BLOCKED)
+  ├─ Child Task: Story for Epic 1 (ACTIVE)
+  ├─ Child Task: Story for Epic 2 (ACTIVE)
+  └─ Child Task: Story for Epic 3 (ACTIVE)
+        ↓ all complete
+Parent Task (ACTIVE) → Aggregate → Review → Approve
+```
+
+### Integration with Entity Lifecycle
+
+Tasks create entities through the existing ChannelAggregate:
+
+```
+Orchestrator                    ChannelAggregate
+    │                                  │
+    │ Task complete with context       │
+    ├──────────────────────────────────→
+    │                                  │ draft_work_item(content)
+    │                                  │ propose_work_item(entity_id)
+    │                                  │
+    │ DomainEvents                     │
+    ←──────────────────────────────────┤
+```
+
+### PreGates Integration
+
+PreGates Gate 4 now checks for active workspaces:
+
+```python
+# Gate 4: Known workspace thread - route to Orchestrator
+if thread_ts in active_workspace_threads:
+    return PreGateOutput(result=PreGateResult.WORKSPACE)
+```
+
+### Module Structure
+
+```
+src/orchestration/
+├── models.py          # Task, Workspace, Question, TaskStatus
+├── flows.py           # FlowTemplate definitions
+├── orchestrator.py    # Main Orchestrator class
+├── actions.py         # OrchestratorAction types
+├── events.py          # TaskCreated, TaskCompleted, etc.
+├── projection.py      # WorkspaceProjection for read model
+└── __init__.py        # Exports
+```
+
+---
+
 ## Decision-Making Rules
 
 ### When to Create an Entity
