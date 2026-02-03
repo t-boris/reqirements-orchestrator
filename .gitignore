@@ -48,6 +48,7 @@ coverage.xml
 
 # Environments
 .env
+.deploy.env
 .venv
 env/
 venv/
@@ -73,3 +74,6 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
