@@ -60,6 +60,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Database pool initialization failed (will retry on demand): {e}")
 
+    # Initialize intent audit log table
+    try:
+        from src.infrastructure.audit_log import ensure_audit_table
+        await ensure_audit_table()
+        logger.info("Intent audit log table initialized")
+    except Exception as e:
+        logger.warning(f"Audit log table init failed (will retry on demand): {e}")
+
     yield
 
     # Shutdown

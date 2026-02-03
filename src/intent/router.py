@@ -6,9 +6,11 @@ Ref: BOT_DESIGN.md - Stage 2: LLM Router
 """
 
 import logging
+import time
 from dataclasses import dataclass
 
 from src.config import get_settings
+from src.infrastructure.audit_log import IntentAuditEntry, log_intent_audit
 from src.intent.schemas import (
     SuperMode,
     IntentClassification,
@@ -52,6 +54,9 @@ async def classify_intent(
 
     Stage 1: PreGates (deterministic)
     Stage 2: LLM Router (if PreGates pass through)
+    Stage 3: Post-filters (validate entity references)
+
+    Every classification is audit-logged for debugging (fire-and-forget).
 
     Args:
         message: Message text
@@ -65,6 +70,8 @@ async def classify_intent(
 
     Ref: BOT_DESIGN.md - Two-Stage Intent Classification
     """
+    start_ms = int(time.time() * 1000)
+
     # Stage 1: PreGates
     pregate_result = check_pregates(
         message=message,
@@ -75,15 +82,64 @@ async def classify_intent(
         active_process_threads=context.active_process_threads,
     )
 
+    pregate_result_str = (
+        pregate_result.result.value
+        if pregate_result.result != PreGateResult.PASS_THROUGH
+        else None
+    )
+    pregate_data = pregate_result.data
+
     # Handle deterministic routing
     if pregate_result.result != PreGateResult.PASS_THROUGH:
-        return _pregate_to_classification(pregate_result)
+        result = _pregate_to_classification(pregate_result)
+        elapsed_ms = int(time.time() * 1000) - start_ms
 
-    # Stage 2: LLM Router
-    result = await _llm_classify(message, context)
+        log_intent_audit(IntentAuditEntry(
+            channel_id=context.channel_id,
+            thread_ts=context.thread_ts,
+            message_text=message[:500],
+            pregate_result=pregate_result_str,
+            pregate_data=pregate_data,
+            raw_mode=result.mode.value,
+            raw_confidence=result.confidence,
+            classified_mode=result.mode.value,
+            classified_confidence=result.confidence,
+            entity_type=result.entity_type.value if result.entity_type else None,
+            target_entity_id=result.target_entity_id,
+            entities_mentioned=result.entities_mentioned,
+            reasoning=result.reasoning,
+            classification_ms=elapsed_ms,
+        ))
+        return result
+
+    # Stage 2: LLM Router (returns raw result before threshold adjustment)
+    raw_result = await _llm_classify_raw(message, context)
+
+    # Apply confidence thresholds (raw -> classified)
+    result = _apply_confidence_thresholds(raw_result)
 
     # Stage 3: Post-filters (validate entity references)
     result = await apply_postfilters(result, context.channel_id)
+
+    elapsed_ms = int(time.time() * 1000) - start_ms
+
+    # Log with both raw and final classification
+    log_intent_audit(IntentAuditEntry(
+        channel_id=context.channel_id,
+        thread_ts=context.thread_ts,
+        message_text=message[:500],
+        pregate_result=pregate_result_str,
+        pregate_data=pregate_data,
+        raw_mode=raw_result.mode.value,
+        raw_confidence=raw_result.confidence,
+        classified_mode=result.mode.value,
+        classified_confidence=result.confidence,
+        entity_type=result.entity_type.value if result.entity_type else None,
+        target_entity_id=result.target_entity_id,
+        entities_mentioned=result.entities_mentioned,
+        reasoning=result.reasoning,
+        classification_ms=elapsed_ms,
+    ))
 
     return result
 
@@ -139,8 +195,11 @@ def _pregate_to_classification(pregate: PreGateOutput) -> IntentClassification:
             )
 
 
-async def _llm_classify(message: str, context: RouterContext) -> IntentClassification:
+async def _llm_classify_raw(message: str, context: RouterContext) -> IntentClassification:
     """Classify intent using LLM with structured output.
+
+    Returns the raw LLM result BEFORE confidence threshold adjustment.
+    Callers should apply _apply_confidence_thresholds() separately.
 
     Ref: RESEARCH.md - Pattern 2: Structured LLM Classification
     """
@@ -161,8 +220,8 @@ async def _llm_classify(message: str, context: RouterContext) -> IntentClassific
             ],
         )
 
-        # Apply confidence thresholds
-        return _apply_confidence_thresholds(result)
+        # Return raw result without threshold adjustment
+        return result
 
     except Exception as e:
         logger.warning(f"LLM classification failed: {e}, falling back to CONVERSE")
