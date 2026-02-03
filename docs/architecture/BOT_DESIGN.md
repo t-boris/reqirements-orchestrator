@@ -15,6 +15,7 @@ This document explains the cognitive architecture of MARO — how it processes m
 7. [Process Orchestration](#process-orchestration)
 8. [Prompts Overview](#prompts-overview)
 9. [Safety Guardrails](#safety-guardrails)
+10. [Jira Projection](#jira-projection)
 
 ---
 
