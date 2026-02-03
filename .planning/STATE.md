@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 Phase: 5 of 7 (Process Orchestration)
 Plan: 3 of 7 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 05-03-PLAN.md (FlowTemplate definitions)
+Last activity: 2026-02-02 - Completed 05-02-PLAN.md (Task domain events)
 
 Progress: ████████░░ 83% (25/30 plans)
 
@@ -96,6 +96,8 @@ Progress: ████████░░ 83% (25/30 plans)
 | 05-01 | str for EntityId/UserId in orchestration | Avoid circular imports between orchestration and domain packages |
 | 05-01 | ConfigDict(frozen=False) for orchestration | Task/Workspace are mutable state containers |
 | 05-01 | Flat context dict for Task | Flexible context accumulation, not stage-indexed |
+| 05-02 | Deferred import in get_all_event_types() | Avoids circular import between domain and orchestration modules |
+| 05-02 | Keep ALL_EVENT_TYPES as core only | Preserves backward compatibility, get_all_event_types() provides complete registry |
 | 05-03 | Flows are guides not enforcers | Suggested context is a hint, only required_context must be present |
 | 05-03 | Frozen dataclass for FlowTemplate | Immutable and hashable flow definitions |
 | 05-03 | CONVERSE as default fallback | Unknown flow types default to CONVERSE for flexible conversation
@@ -111,6 +113,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 05-03-PLAN.md (FlowTemplate definitions)
+Stopped at: Completed 05-02-PLAN.md (Task domain events)
 Resume file: None
 Next action: Execute 05-04-PLAN.md
