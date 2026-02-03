@@ -16,6 +16,10 @@ This document explains the cognitive architecture of MARO — how it processes m
 8. [Prompts Overview](#prompts-overview)
 9. [Safety Guardrails](#safety-guardrails)
 10. [Jira Projection](#jira-projection)
+11. [Structured Questions (Smart UX)](#structured-questions-smart-ux)
+12. [Intent Audit Logging](#intent-audit-logging)
+13. [Deterministic Post-Filters](#deterministic-post-filters)
+14. [Observability Tools](#observability-tools)
 
 ---
 
@@ -737,6 +741,166 @@ src/
 
 ---
 
+## Deterministic Post-Filters
+
+The classification pipeline is now **three stages**, adding a deterministic validation layer after the LLM:
+
+```
+Message arrives
+    │
+┌───────────────────────────────────────────┐
+│ Stage 1: PreGates (Deterministic)         │
+│   Rule-based pre-routing                  │
+│   (button clicks, commands, bot msgs)     │
+└───────────────────┬───────────────────────┘
+                    │ PASS_THROUGH
+┌───────────────────┴───────────────────────┐
+│ Stage 2: LLM Router                       │
+│   Structured classification               │
+│   (mode, confidence, entity references)   │
+└───────────────────┬───────────────────────┘
+                    │
+┌───────────────────┴───────────────────────┐
+│ Stage 3: Post-Filters (Deterministic)     │  ← NEW
+│   Validate LLM output against real data   │
+│   (entity existence, reference cleanup)   │
+└───────────────────┬───────────────────────┘
+                    │
+            Final classification
+```
+
+### Why Post-Filters Exist
+
+The LLM may hallucinate entity references. When it classifies a message as MODIFY with a `target_entity_id`, that entity must actually exist in the channel. Post-filters catch this before the mode handler acts on invalid data.
+
+### Filter: Entity Existence Check
+
+**Applies to:** MODIFY classifications with `target_entity_id`
+
+```
+LLM says: MODIFY entity abc-123
+    │
+Post-filter checks: Does abc-123 exist in this channel?
+    ├── Yes → Pass through (MODIFY confirmed)
+    └── No  → Downgrade to CONVERSE
+              (respond helpfully, don't attempt modification)
+```
+
+**Behavior:**
+1. Load the channel aggregate to get current entities
+2. Check if `target_entity_id` exists
+3. If entity not found: downgrade `mode` to CONVERSE, clear `target_entity_id`
+4. Log the downgrade in the audit trail for debugging
+
+### Filter: Invalid Entity Mention Cleanup
+
+If the LLM includes entity references in `entities_mentioned` that don't exist, the post-filter removes them silently. This prevents downstream handlers from attempting lookups on nonexistent entities.
+
+### Graceful Degradation
+
+If the channel aggregate fails to load (database error, timeout), post-filters **pass through** without filtering. The principle is: filtering is a safety enhancement, not a hard gate. A temporary inability to validate should not block the user from getting a response.
+
+### Source Files
+
+- `src/intent/post_filters.py` — Post-filter pipeline and entity existence check
+- `src/intent/router.py` — Integration point (post-filters applied after LLM classification)
+
+---
+
+## Intent Audit Logging
+
+Every intent classification is persisted for debugging and threshold tuning. The audit trail captures the full journey: message → pregate → raw LLM output → threshold-adjusted mode → final classification.
+
+### What Gets Logged
+
+Each message that passes through the classification pipeline produces one audit entry:
+
+| Field | Description |
+|-------|-------------|
+| `channel_id`, `thread_ts`, `message_ts` | Message location |
+| `user_id`, `message_text` | Who said what |
+| `pregate_result` | PreGate outcome (PASS_THROUGH, BOT_MESSAGE, COMMAND, etc.) |
+| `raw_mode`, `raw_confidence` | LLM's original classification before thresholds |
+| `classified_mode`, `classified_confidence` | Final mode after threshold adjustment and post-filters |
+| `entity_type`, `target_entity_id` | Entity references from classification |
+| `reasoning` | LLM's reasoning text |
+| `classification_ms` | End-to-end classification latency |
+
+The distinction between `raw_mode`/`raw_confidence` and `classified_mode`/`classified_confidence` is critical: it enables tuning confidence thresholds without losing the original LLM output.
+
+### Storage
+
+```sql
+CREATE TABLE intent_audit_log (
+    id              BIGSERIAL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    channel_id      TEXT NOT NULL,
+    thread_ts       TEXT,
+    message_ts      TEXT NOT NULL,
+    user_id         TEXT NOT NULL,
+    message_text    TEXT NOT NULL,
+    pregate_result  TEXT,
+    pregate_data    JSONB,
+    raw_mode        TEXT,
+    raw_confidence  FLOAT,
+    classified_mode TEXT NOT NULL,
+    classified_confidence FLOAT NOT NULL,
+    entity_type     TEXT,
+    target_entity_id TEXT,
+    entities_mentioned JSONB,
+    reasoning       TEXT,
+    classification_ms INTEGER,
+    PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+```
+
+**Monthly partitions** with 90-day retention. Old partitions are dropped (not deleted row-by-row), keeping cleanup fast and efficient.
+
+### Write Pattern
+
+Audit writes use **fire-and-forget** with strong reference tracking:
+
+```python
+_background_tasks: set[asyncio.Task] = set()  # Prevents garbage collection
+
+async def log_intent_audit(entry: IntentAuditEntry) -> None:
+    task = asyncio.create_task(_write_audit_entry(entry))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+```
+
+This ensures:
+- Classification latency is not affected by database writes
+- Tasks are not garbage collected before completion
+- Failed writes log a warning but never block the user's response
+
+### Query Patterns
+
+```sql
+-- Why did the bot do X for this message?
+SELECT * FROM intent_audit_log WHERE message_ts = $1;
+
+-- Classification distribution (last 7 days)
+SELECT classified_mode, COUNT(*), AVG(classified_confidence)
+FROM intent_audit_log
+WHERE created_at > now() - interval '7 days'
+GROUP BY classified_mode;
+
+-- Threshold downgrades (tuning signal)
+SELECT raw_mode, classified_mode, raw_confidence, reasoning
+FROM intent_audit_log
+WHERE raw_mode != classified_mode
+ORDER BY created_at DESC LIMIT 50;
+```
+
+### Source Files
+
+- `src/intent/audit.py` — IntentAuditEntry model and async write logic
+- `src/intent/router.py` — Audit logging integration point
+- `migrations/` — Table and partition creation
+
+---
+
 ## Prompts Overview
 
 ### Intent Classification Prompt
@@ -858,6 +1022,90 @@ Every action produces an event that captures:
 - What changed
 
 Events are immutable. The audit trail is complete.
+
+---
+
+## Structured Questions (Smart UX)
+
+MARO's CONVERSE mode generates intelligent follow-up questions with structured options, rendered as interactive Slack buttons. This replaces free-form text questions with a guided experience that feels natural.
+
+### How It Works
+
+The `ConverseLLMResponse` model includes an optional `follow_up_questions` field. The LLM generates structured questions alongside its conversational response, using field descriptions as prompt guidance:
+
+```python
+# In src/modes/converse.py (extended response model)
+class ConverseLLMResponse(BaseModel):
+    response_text: str
+    follow_up_questions: list[FollowUpQuestion] = Field(
+        default_factory=list,
+        description="Questions to ask the user. Use 'choice' when there are 2-4 clear options. "
+                    "Use 'confirmation' for yes/no. Use 'open_ended' only when no reasonable options exist."
+    )
+```
+
+### Question Types
+
+| Type | Rendering | When to Use |
+|------|-----------|-------------|
+| `choice` | 2-4 buttons + "Something else" | User picks from clear options |
+| `confirmation` | Yes/No buttons | Simple yes/no or confirm/deny |
+| `open_ended` | No buttons (free text) | No reasonable options to predict |
+
+### Schema
+
+```python
+class FollowUpOption(BaseModel):
+    label: str = Field(description="Short button label, max 75 chars")
+    description: str = Field(description="What this option means")
+
+class FollowUpQuestion(BaseModel):
+    question_text: str = Field(description="The question to ask the user")
+    question_type: Literal["choice", "confirmation", "open_ended"]
+    options: list[FollowUpOption] = Field(default_factory=list)
+    priority: int = Field(default=0, description="Higher = ask first")
+```
+
+### Slack Rendering
+
+Questions are rendered as Slack Block Kit actions blocks:
+
+- **`choice`** — Each option becomes a button. A "Something else" escape hatch button is always appended.
+- **`confirmation`** — Rendered as Yes / No buttons.
+- **`open_ended`** — No buttons; the question text is posted as a regular message.
+
+**Post-selection behavior:**
+1. User clicks a button
+2. Original message is updated via `chat.update` to show the selected option (buttons removed)
+3. The user's answer is posted as a thread reply
+
+This prevents double-clicks and provides a clear record of what was chosen.
+
+### Slack Block Kit Constraints
+
+| Constraint | Limit |
+|------------|-------|
+| Button label text | 75 characters max |
+| Elements per `actions` block | 25 max |
+| `value` payload per button | 255 characters max |
+| Blocks per message | 50 max |
+
+### LLM Prompt Guidance
+
+The system prompt instructs the LLM:
+- Use `question_type="choice"` when 2-4 clear options exist
+- Use `question_type="confirmation"` for yes/no scenarios
+- Use `question_type="open_ended"` only when no reasonable options can be predicted
+- Keep option labels under 75 characters
+- Place the most likely option first
+
+**Graceful degradation:** If `follow_up_questions` is empty, the response falls back to plain text — zero change from pre-Phase 8 behavior.
+
+### Source Files
+
+- `src/modes/converse.py` — ConverseLLMResponse model with follow-up questions
+- `src/slack/blocks/questions.py` — Slack Block Kit rendering for questions
+- `src/slack/handlers/questions.py` — Button click handler for question answers
 
 ---
 
@@ -1038,6 +1286,58 @@ src/slack/
 
 ---
 
+## Observability Tools
+
+The `/maro inspect` slash command provides a debug toolkit for understanding bot behavior. All output is **ephemeral** (visible only to the invoking user) to avoid cluttering channels.
+
+### Commands
+
+| Command | Description | Data Source |
+|---------|-------------|-------------|
+| `/maro inspect` | Recent classifications (last 10) | `intent_audit_log` |
+| `/maro inspect thread <ts>` | Full audit trail for a specific thread | `intent_audit_log` filtered by `thread_ts` |
+| `/maro inspect stats` | Classification distribution (last 7 days) | Aggregated `intent_audit_log` |
+| `/maro inspect downgrades` | Recent threshold downgrades | `intent_audit_log` where `raw_mode != classified_mode` |
+
+### Example Output
+
+**`/maro inspect`** — Shows the 10 most recent classifications:
+
+```
+Recent Classifications:
+─────────────────────
+12:34 PM  "Can we add login?" → CREATE (0.91)
+12:33 PM  "sounds good"       → CONVERSE (0.95)
+12:31 PM  "update the title"  → MODIFY (0.87) → entity abc-123
+12:30 PM  "what's the status" → CONVERSE (0.82)
+```
+
+**`/maro inspect downgrades`** — Shows where thresholds changed the LLM's classification:
+
+```
+Threshold Downgrades (last 50):
+───────────────────────────────
+12:31 PM  CREATE (0.72) → CONVERSE  "maybe we should add..."
+12:15 PM  MODIFY (0.68) → CONVERSE  "could we change the..."
+11:45 AM  CREATE (0.81) → CONVERSE  "thinking about a new..."
+```
+
+This is the primary tool for tuning confidence thresholds — if too many legitimate intents are being downgraded, thresholds may be too aggressive.
+
+### Design Principles
+
+1. **Ephemeral output** — Debug info never clutters the channel
+2. **Read-only** — Inspect never modifies state
+3. **Fast** — Queries hit indexed audit log partitions
+4. **Self-service** — Any user can debug "why did the bot do that?" without admin access
+
+### Source Files
+
+- `src/slack/commands/inspect.py` — Command handler and subcommand routing
+- `src/intent/audit.py` — Query functions for audit log data
+
+---
+
 ## Summary
 
 MARO thinks in terms of:
@@ -1047,6 +1347,7 @@ MARO thinks in terms of:
 3. **Modes** — What to do with a message (CREATE/MODIFY/RECORD/CONVERSE)
 4. **Lifecycle** — Where an entity is in its journey (Draft → Approved → Committed)
 5. **Processes** — Multi-step workflows for complex actions
+6. **Smart UX** — Structured questions, audit logging, and observability for a polished experience
 
 The bot's job is to:
 - Listen to conversations
