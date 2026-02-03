@@ -1,5 +1,17 @@
 # Orchestration layer - task-based process orchestration
 
-# Exports will be populated as models are created
+from src.orchestration.models import (
+    Question,
+    QuestionType,
+    Task,
+    TaskStatus,
+    Workspace,
+)
 
-__all__: list[str] = []
+__all__ = [
+    "Question",
+    "QuestionType",
+    "Task",
+    "TaskStatus",
+    "Workspace",
+]
