@@ -19,12 +19,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Socket Mode handler (module-level for cleanup)
+_socket_handler = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler.
 
     Startup and shutdown events.
     """
+    global _socket_handler
+
     # Startup
     settings = get_settings()
     logger.info("MARO 2.0 starting...")
@@ -33,12 +39,25 @@ async def lifespan(app: FastAPI):
     # Initialize Bolt app (this registers handlers)
     from src.slack.app import get_bolt_app
 
-    get_bolt_app()
+    bolt_app = get_bolt_app()
     logger.info("Slack Bolt app initialized")
+
+    # Start Socket Mode if app token is configured
+    if settings.slack_app_token:
+        from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+
+        _socket_handler = AsyncSocketModeHandler(bolt_app, settings.slack_app_token)
+        await _socket_handler.connect_async()
+        logger.info("Socket Mode connected to Slack")
+    else:
+        logger.warning("No SLACK_APP_TOKEN - Socket Mode disabled, using HTTP mode only")
 
     yield
 
     # Shutdown
+    if _socket_handler:
+        await _socket_handler.close_async()
+        logger.info("Socket Mode disconnected")
     logger.info("MARO 2.0 shutting down...")
 
 
