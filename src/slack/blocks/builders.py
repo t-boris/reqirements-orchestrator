@@ -131,6 +131,7 @@ def build_dashboard_blocks(
     decisions_count: int = 0,
     pending_items: list[dict[str, str]] | None = None,
     committed_items: list[dict[str, str]] | None = None,
+    decision_items: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Build channel status dashboard blocks.
 
@@ -179,6 +180,15 @@ def build_dashboard_blocks(
             "type": "section",
             "text": {"type": "mrkdwn", "text": f"*Active Decisions ({decisions_count})*"},
         })
+        if decision_items:
+            for item in decision_items[:5]:
+                title = item.get("title", "Untitled")
+                link = item.get("link")
+                text = f"* <{link}|{title}>" if link else f"* {title}"
+                blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": text}],
+                })
 
     blocks.append({"type": "divider"})
 

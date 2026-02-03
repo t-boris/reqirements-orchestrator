@@ -15,6 +15,7 @@ from src.domain.types import EntityId, ThreadTs, UserId
 from src.infrastructure.aggregate_loader import load_aggregate, save_events
 from src.intent import classify_intent, RouterContext
 from src.modes import dispatch_mode
+from src.slack.blocks.decisions import build_adr_post_blocks
 from src.slack.client import SlackClient
 from src.slack.dashboard import DashboardManager
 
@@ -31,6 +32,44 @@ DECISION_PREVIEW_PATTERN = re.compile(r"^(record_all|cancel)_decisions$")
 
 # Pattern for per-ADR action buttons: adr_record_0, adr_edit_1, adr_delete_2
 ADR_ACTION_PATTERN = re.compile(r"^adr_(record|edit|delete)_(\d+)$")
+
+
+def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
+    """Build a Slack deep-link URL from channel ID and message timestamp."""
+    ts_no_dot = message_ts.replace(".", "")
+    return f"https://slack.com/archives/{channel_id}/p{ts_no_dot}"
+
+
+async def _post_and_pin_adr(client, channel_id: str, decision: dict, user_id: str) -> str | None:
+    """Post a formatted ADR message to the channel and pin it.
+
+    Returns the message timestamp on success, or None on failure.
+    """
+    blocks = build_adr_post_blocks(
+        title=decision.get("title", "Untitled"),
+        decision_type=decision.get("decision_type", "architecture"),
+        decision=decision.get("decision", ""),
+        rationale=decision.get("rationale", ""),
+        alternatives=decision.get("alternatives_considered"),
+        recorded_by=user_id,
+    )
+
+    try:
+        result = await client.chat_postMessage(
+            channel=channel_id,
+            blocks=blocks,
+            text=f"ADR: {decision.get('title', 'Untitled')}",
+        )
+        adr_ts = result.get("ts")
+        if adr_ts:
+            try:
+                await client.pins_add(channel=channel_id, timestamp=adr_ts)
+            except Exception as e:
+                logger.warning(f"Failed to pin ADR message in {channel_id}: {e}")
+        return adr_ts
+    except Exception as e:
+        logger.warning(f"Failed to post ADR message in {channel_id}: {e}")
+        return None
 
 
 def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
@@ -118,11 +157,18 @@ async def _record_all_decisions(
                 thread_ts=ThreadTs(thread_ts or ""),
                 content=content,
             )
-            created.append((str(draft.id), content.title))
+            created.append((str(draft.id), content.title, d))
 
         await save_events(aggregate)
 
         logger.info(f"Recorded {len(created)} decisions in {channel_id} by {user_id}")
+
+        # Post and pin ADR messages
+        adr_links: dict[str, str] = {}
+        for draft_id, _title, decision_dict in created:
+            adr_ts = await _post_and_pin_adr(client, channel_id, decision_dict, user_id)
+            if adr_ts:
+                adr_links[draft_id] = adr_ts
 
         # Update original message — replace buttons with confirmation
         updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]
@@ -140,40 +186,7 @@ async def _record_all_decisions(
             text=f"{len(created)} decisions recorded",
         )
 
-        # Update channel dashboard with current entity counts
-        try:
-            counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
-            pending_items = []
-            for entity in aggregate.entities.values():
-                if entity.entity_type.value == "decision":
-                    counts["decisions"] += 1
-                    if isinstance(entity, (DraftEntity, ProposedEntity)):
-                        pending_items.append({
-                            "title": getattr(entity.content, "title", str(entity.id)[:8]),
-                            "id": str(entity.id),
-                        })
-                else:
-                    lifecycle = get_lifecycle(entity)
-                    lc = lifecycle.value
-                    if lc in ("draft", "proposed"):
-                        counts["pending"] += 1
-                    elif lc == "approved":
-                        counts["approved"] += 1
-                    elif lc == "committed":
-                        counts["committed"] += 1
-
-            slack_client = SlackClient(client)
-            dashboard_mgr = DashboardManager(slack_client)
-            await dashboard_mgr.create_or_update(
-                channel_id=channel_id,
-                pending_count=counts["pending"],
-                approved_count=counts["approved"],
-                committed_count=counts["committed"],
-                decisions_count=counts["decisions"],
-                pending_items=pending_items,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to update dashboard after recording decisions: {e}")
+        await _update_dashboard_after_decision(client, channel_id, aggregate, adr_links=adr_links)
 
     except Exception as e:
         logger.error(f"Error recording decisions: {e}", exc_info=True)
@@ -258,24 +271,32 @@ def _replace_adr_blocks(blocks: list[dict], section_idx: int, replacement_block:
     return updated
 
 
-async def _update_dashboard_after_decision(client, channel_id: str, aggregate) -> None:
+async def _update_dashboard_after_decision(
+    client, channel_id: str, aggregate, *, adr_links: dict[str, str] | None = None,
+) -> None:
     """Update the channel dashboard after a decision change."""
     try:
         counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
         pending_items = []
+        decision_items = []
         for entity in aggregate.entities.values():
             if entity.entity_type.value == "decision":
                 counts["decisions"] += 1
-                if isinstance(entity, (DraftEntity, ProposedEntity)):
-                    pending_items.append({
-                        "title": getattr(entity.content, "title", str(entity.id)[:8]),
-                        "id": str(entity.id),
-                    })
+                entity_id = str(entity.id)
+                title = getattr(entity.content, "title", entity_id[:8])
+                item: dict[str, str] = {"title": title, "id": entity_id}
+                if adr_links and entity_id in adr_links:
+                    item["link"] = _build_slack_permalink(channel_id, adr_links[entity_id])
+                decision_items.append(item)
             else:
                 lifecycle = get_lifecycle(entity)
                 lc = lifecycle.value
                 if lc in ("draft", "proposed"):
                     counts["pending"] += 1
+                    pending_items.append({
+                        "title": getattr(entity.content, "title", str(entity.id)[:8]),
+                        "id": str(entity.id),
+                    })
                 elif lc == "approved":
                     counts["approved"] += 1
                 elif lc == "committed":
@@ -290,6 +311,7 @@ async def _update_dashboard_after_decision(client, channel_id: str, aggregate) -
             committed_count=counts["committed"],
             decisions_count=counts["decisions"],
             pending_items=pending_items,
+            decision_items=decision_items,
         )
     except Exception as e:
         logger.warning(f"Failed to update dashboard: {e}")
@@ -323,7 +345,7 @@ async def _record_single_decision(
             alternatives_considered=decision.get("alternatives_considered", []),
         )
 
-        aggregate.record_decision(
+        draft = aggregate.record_decision(
             actor_id=UserId(user_id),
             thread_ts=ThreadTs(thread_ts or ""),
             content=content,
@@ -331,6 +353,12 @@ async def _record_single_decision(
         await save_events(aggregate)
 
         logger.info(f"Recorded single decision '{decision['title']}' in {channel_id} by {user_id}")
+
+        # Post and pin ADR to channel
+        adr_ts = await _post_and_pin_adr(client, channel_id, decision, user_id)
+        adr_links: dict[str, str] = {}
+        if adr_ts:
+            adr_links[str(draft.id)] = adr_ts
 
         confirmation = {
             "type": "context",
@@ -344,7 +372,7 @@ async def _record_single_decision(
             text=f"Decision '{decision['title']}' recorded",
         )
 
-        await _update_dashboard_after_decision(client, channel_id, aggregate)
+        await _update_dashboard_after_decision(client, channel_id, aggregate, adr_links=adr_links)
 
     except Exception as e:
         logger.error(f"Error recording single decision: {e}", exc_info=True)

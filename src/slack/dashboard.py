@@ -46,6 +46,7 @@ class DashboardManager:
         decisions_count: int = 0,
         pending_items: list[dict[str, str]] | None = None,
         committed_items: list[dict[str, str]] | None = None,
+        decision_items: list[dict[str, str]] | None = None,
     ) -> None:
         """Create or update channel dashboard.
 
@@ -58,6 +59,7 @@ class DashboardManager:
             decisions_count=decisions_count,
             pending_items=pending_items,
             committed_items=committed_items,
+            decision_items=decision_items,
         )
 
         existing = self._dashboards.get(channel_id)

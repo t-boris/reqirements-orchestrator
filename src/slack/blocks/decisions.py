@@ -1,6 +1,8 @@
 """Block builders for decision-related modals and views."""
 
 import json
+import time
+from typing import Any
 
 
 # Decision type options matching domain DecisionType enum values
@@ -13,6 +15,59 @@ DECISION_TYPE_OPTIONS = [
     {"text": {"type": "plain_text", "text": "Priority"}, "value": "priority"},
     {"text": {"type": "plain_text", "text": "Structure"}, "value": "structure"},
 ]
+
+
+def build_adr_post_blocks(
+    title: str,
+    decision_type: str,
+    decision: str,
+    rationale: str,
+    alternatives: list[str] | None = None,
+    recorded_by: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build blocks for a pinned ADR channel post.
+
+    This is the formatted message posted to the channel when a decision is recorded.
+    """
+    now = int(time.time())
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f":memo: *ADR: {title}*"},
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"Type: {decision_type}"}],
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": decision},
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"_Rationale: {rationale}_"},
+        },
+    ]
+
+    if alternatives:
+        alts_text = ", ".join(alternatives)
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"_Alternatives: {alts_text}_"}],
+        })
+
+    blocks.append({"type": "divider"})
+
+    footer_parts = []
+    if recorded_by:
+        footer_parts.append(f"Recorded by <@{recorded_by}>")
+    footer_parts.append(f"<!date^{now}^{{date_short}} {{time}}|now>")
+    blocks.append({
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": " | ".join(footer_parts)}],
+    })
+
+    return blocks
 
 
 def build_edit_adr_modal(
