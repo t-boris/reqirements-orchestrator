@@ -16,6 +16,7 @@ from src.intent.schemas import (
     PreGateOutput,
 )
 from src.intent.pregates import check_pregates
+from src.intent.postfilters import apply_postfilters
 from src.intent.prompts import INTENT_CLASSIFICATION_SYSTEM, INTENT_CLASSIFICATION_USER
 from src.llm.client import structured_completion
 
@@ -79,7 +80,12 @@ async def classify_intent(
         return _pregate_to_classification(pregate_result)
 
     # Stage 2: LLM Router
-    return await _llm_classify(message, context)
+    result = await _llm_classify(message, context)
+
+    # Stage 3: Post-filters (validate entity references)
+    result = await apply_postfilters(result, context.channel_id)
+
+    return result
 
 
 def _pregate_to_classification(pregate: PreGateOutput) -> IntentClassification:
