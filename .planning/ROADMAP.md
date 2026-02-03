@@ -82,18 +82,19 @@ Key deliverables:
 - Architecture documentation update (04-07)
 
 ### Phase 5: Process Orchestration
-**Goal**: Multi-stage process, plan execution, workflow coordination
+**Goal**: Task-based workflow orchestration (evolved from spec's linear ProcessExecutor)
 **Depends on**: Phase 4
-**Research**: Likely (statechart library selection)
-**Research topics**: Python statechart libraries, xstate patterns in Python, process executor design
-**Plans**: TBD
+**Research**: Complete (05-RESEARCH.md, 05-MODEL-PROPOSAL.md)
+**Plans**: 7 (05-01 through 05-07)
 
 Key deliverables:
-- Process definitions (architecture_review, work_item_creation)
-- ProcessExecutor with stage handling
-- Plan generation and execution
-- Workflow orchestration (Process → Plan flow)
-- Stage iteration and completion logic
+- Task/Workspace/Orchestrator models (Task-based, not linear stages)
+- FlowTemplate definitions (create_work_item, batch_create, architecture_review)
+- Task events for event sourcing
+- Orchestrator routing and task lifecycle
+- PreGates integration (WORKSPACE result)
+- WorkspaceProjection for read model
+- Architecture documentation update
 
 ### Phase 6: Jira Projection
 **Goal**: Sync approved entities to Jira, handle conflicts
@@ -132,6 +133,6 @@ Key deliverables:
 | 2. Slack Integration | 5/5 | Complete | 2026-02-02 |
 | 3. Intent & Modes | 6/6 | Complete | 2026-02-02 |
 | 4. Entity Lifecycle | 7/7 | Complete | 2026-02-02 |
-| 5. Process Orchestration | 0/TBD | Not started | - |
+| 5. Process Orchestration | 0/7 | Planned | - |
 | 6. Jira Projection | 0/TBD | Not started | - |
 | 7. Polish & Deploy | 0/TBD | Not started | - |
