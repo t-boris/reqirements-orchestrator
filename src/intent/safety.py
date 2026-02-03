@@ -1,53 +1,28 @@
-"""Safety Evaluator - Validates actions before execution.
+"""Safety evaluator for intent actions.
 
-Sits between Router and Action execution to ensure:
-- Lifecycle state allows the action
-- Required approvals are in place
-- User has permission
-- No conflicts exist
+Determines whether an action is allowed based on:
+- User permissions
+- Entity lifecycle state
+- Mode-specific rules
 
-Ref: CONTEXT.md - Section 4: Intent -> Action Safety Layer
 Ref: BOT_DESIGN.md - Safety Guardrails
 """
 
-import logging
 from dataclasses import dataclass
-from enum import Enum
+from typing import Any
 
-from src.intent.schemas import (
-    SuperMode,
-    IntentClassification,
-    SafetyCheckResult,
-    EntityType,
+from src.domain.entities import (
+    ApprovedEntity,
+    CommittedEntity,
+    DeprecatedEntity,
+    DraftEntity,
+    Entity,
+    ProposedEntity,
+    get_lifecycle,
 )
-
-logger = logging.getLogger(__name__)
-
-
-class LifecycleState(str, Enum):
-    """Entity lifecycle states.
-
-    Ref: BOT_DESIGN.md - Entity Lifecycle State Machine
-    """
-
-    DRAFT = "draft"
-    PROPOSED = "proposed"
-    BLOCKED = "blocked"
-    APPROVED = "approved"
-    COMMITTED = "committed"
-    DEPRECATED = "deprecated"
-
-
-@dataclass
-class EntityContext:
-    """Context about an entity for safety checks."""
-
-    entity_id: str
-    entity_type: EntityType
-    lifecycle_state: LifecycleState
-    owner_id: str | None = None
-    approvals: list[str] | None = None  # User IDs who approved
-    objections: list[str] | None = None  # User IDs who objected
+from src.domain.transitions import can_approve, can_commit, can_modify
+from src.domain.types import EntityLifecycle
+from src.intent.schemas import IntentClassification, SafetyCheckResult, SuperMode
 
 
 @dataclass
@@ -57,154 +32,171 @@ class ActionContext:
     user_id: str
     channel_id: str
     intent: IntentClassification
-    target_entity: EntityContext | None = None
-
-
-class SafetyEvaluator:
-    """Evaluates if an action is safe to execute.
-
-    Ref: CONTEXT.md - Safety Evaluator checks:
-    - Lifecycle state
-    - Approvals
-    - Object locks
-    - Permissions
-    - Dry-run result
-    """
-
-    def evaluate(self, context: ActionContext) -> SafetyCheckResult:
-        """Evaluate if the action is safe to execute.
-
-        Args:
-            context: Action context with user, channel, intent, and entity info
-
-        Returns:
-            SafetyCheckResult indicating if action is allowed
-        """
-        warnings: list[str] = []
-
-        # Check based on mode
-        match context.intent.mode:
-            case SuperMode.CREATE:
-                return self._check_create(context, warnings)
-            case SuperMode.MODIFY:
-                return self._check_modify(context, warnings)
-            case SuperMode.RECORD:
-                return self._check_record(context, warnings)
-            case SuperMode.CONVERSE:
-                # CONVERSE is always safe - no side effects
-                return SafetyCheckResult(
-                    allowed=True,
-                    reason="CONVERSE mode has no side effects",
-                    requires_confirmation=False,
-                    warnings=warnings,
-                )
-
-    def _check_create(
-        self, context: ActionContext, warnings: list[str]
-    ) -> SafetyCheckResult:
-        """Check safety for CREATE mode.
-
-        CREATE requires:
-        - User is in the channel (assumed if they sent a message)
-        - Confirmation before creating (requires_confirmation=True)
-        """
-        # CREATE always requires confirmation per BOT_DESIGN.md
-        # "All approvals require human action via button click"
-        return SafetyCheckResult(
-            allowed=True,
-            reason="CREATE allowed with confirmation",
-            requires_confirmation=True,
-            warnings=warnings,
-        )
-
-    def _check_modify(
-        self, context: ActionContext, warnings: list[str]
-    ) -> SafetyCheckResult:
-        """Check safety for MODIFY mode.
-
-        MODIFY requires:
-        - Target entity exists
-        - Entity is in modifiable state (DRAFT or PROPOSED)
-        - For state transitions: specific rules apply
-
-        Ref: BOT_DESIGN.md - Transition Rules
-        """
-        if not context.target_entity:
-            return SafetyCheckResult(
-                allowed=False,
-                reason="No target entity specified for MODIFY",
-                requires_confirmation=False,
-                warnings=warnings,
-            )
-
-        entity = context.target_entity
-
-        # Check lifecycle state allows modification
-        modifiable_states = {
-            LifecycleState.DRAFT,
-            LifecycleState.PROPOSED,
-        }
-
-        if entity.lifecycle_state not in modifiable_states:
-            return SafetyCheckResult(
-                allowed=False,
-                reason=f"Entity in {entity.lifecycle_state} state cannot be modified",
-                requires_confirmation=False,
-                warnings=warnings,
-            )
-
-        # Check for objections (BLOCKED state)
-        if entity.lifecycle_state == LifecycleState.PROPOSED:
-            if entity.objections:
-                warnings.append(
-                    f"Entity has {len(entity.objections)} objection(s) that need resolution"
-                )
-
-        # MODIFY allowed with confirmation
-        return SafetyCheckResult(
-            allowed=True,
-            reason="MODIFY allowed for entity in modifiable state",
-            requires_confirmation=True,
-            warnings=warnings,
-        )
-
-    def _check_record(
-        self, context: ActionContext, warnings: list[str]
-    ) -> SafetyCheckResult:
-        """Check safety for RECORD mode.
-
-        RECORD (decision capture) requires:
-        - User made a commitment (handled by intent classification)
-        - Confirmation before recording
-        """
-        # RECORD creates a Decision entity, requires confirmation
-        return SafetyCheckResult(
-            allowed=True,
-            reason="RECORD allowed with confirmation",
-            requires_confirmation=True,
-            warnings=warnings,
-        )
-
-
-# Module-level evaluator instance
-_evaluator: SafetyEvaluator | None = None
-
-
-def get_safety_evaluator() -> SafetyEvaluator:
-    """Get the safety evaluator instance."""
-    global _evaluator
-    if _evaluator is None:
-        _evaluator = SafetyEvaluator()
-    return _evaluator
+    target_entity: Entity | None = None
 
 
 def evaluate_safety(context: ActionContext) -> SafetyCheckResult:
-    """Convenience function to evaluate action safety.
+    """Evaluate whether an action is safe to perform.
 
     Args:
-        context: Action context
+        context: Action context with user, channel, intent, and target entity
+
+    Returns:
+        SafetyCheckResult with allowed status and any restrictions
+    """
+    mode = context.intent.mode
+
+    # CONVERSE mode is always allowed (no side effects)
+    if mode == SuperMode.CONVERSE:
+        return SafetyCheckResult(
+            allowed=True,
+            requires_confirmation=False,
+        )
+
+    # CREATE mode - always requires confirmation
+    if mode == SuperMode.CREATE:
+        return SafetyCheckResult(
+            allowed=True,
+            requires_confirmation=True,
+            confirmation_prompt="Create this entity?",
+        )
+
+    # RECORD mode - always requires confirmation
+    if mode == SuperMode.RECORD:
+        return SafetyCheckResult(
+            allowed=True,
+            requires_confirmation=True,
+            confirmation_prompt="Record this decision?",
+        )
+
+    # MODIFY mode - check entity lifecycle
+    if mode == SuperMode.MODIFY:
+        return _evaluate_modify_safety(context)
+
+    # Unknown mode - deny
+    return SafetyCheckResult(
+        allowed=False,
+        reason=f"Unknown mode: {mode}",
+    )
+
+
+def _evaluate_modify_safety(context: ActionContext) -> SafetyCheckResult:
+    """Evaluate safety for MODIFY mode.
+
+    Per BOT_DESIGN.md: Only DRAFT and PROPOSED entities can be modified.
+    """
+    entity = context.target_entity
+
+    # No target entity specified
+    if not entity:
+        return SafetyCheckResult(
+            allowed=True,
+            requires_confirmation=True,
+            confirmation_prompt="Which entity do you want to modify?",
+        )
+
+    # Check lifecycle allows modification
+    can_mod, reason = can_modify(entity)
+
+    if not can_mod:
+        lifecycle = get_lifecycle(entity)
+        return SafetyCheckResult(
+            allowed=False,
+            reason=f"Cannot modify entity in {lifecycle.value} state. {reason}",
+        )
+
+    # Entity can be modified - require confirmation
+    return SafetyCheckResult(
+        allowed=True,
+        requires_confirmation=True,
+        confirmation_prompt="Apply these changes?",
+    )
+
+
+def evaluate_approval_safety(
+    entity: Entity,
+    user_id: str,
+) -> SafetyCheckResult:
+    """Evaluate safety for approval action.
+
+    Args:
+        entity: Entity to approve
+        user_id: User attempting approval
 
     Returns:
         SafetyCheckResult
     """
-    return get_safety_evaluator().evaluate(context)
+    can_app, reason = can_approve(entity)
+
+    if not can_app:
+        return SafetyCheckResult(
+            allowed=False,
+            reason=reason,
+        )
+
+    # Check if user already approved
+    if isinstance(entity, ProposedEntity):
+        if any(a.user_id == user_id for a in entity.approvals):
+            return SafetyCheckResult(
+                allowed=False,
+                reason="You have already approved this entity",
+            )
+
+    return SafetyCheckResult(
+        allowed=True,
+        requires_confirmation=False,  # Button click is the confirmation
+    )
+
+
+def evaluate_commit_safety(
+    entity: Entity,
+    user_id: str,
+) -> SafetyCheckResult:
+    """Evaluate safety for commit action.
+
+    Args:
+        entity: Entity to commit
+        user_id: User attempting commit
+
+    Returns:
+        SafetyCheckResult
+    """
+    can_com, reason = can_commit(entity)
+
+    if not can_com:
+        return SafetyCheckResult(
+            allowed=False,
+            reason=reason,
+        )
+
+    return SafetyCheckResult(
+        allowed=True,
+        requires_confirmation=True,
+        confirmation_prompt="Sync this entity to Jira?",
+    )
+
+
+def evaluate_objection_safety(
+    entity: Entity,
+    user_id: str,
+) -> SafetyCheckResult:
+    """Evaluate safety for objection action.
+
+    Args:
+        entity: Entity to object to
+        user_id: User raising objection
+
+    Returns:
+        SafetyCheckResult
+    """
+    if not isinstance(entity, ProposedEntity):
+        lifecycle = get_lifecycle(entity)
+        return SafetyCheckResult(
+            allowed=False,
+            reason=f"Cannot object to entity in {lifecycle.value} state",
+        )
+
+    return SafetyCheckResult(
+        allowed=True,
+        requires_confirmation=False,  # Button click triggers modal for reason
+    )
