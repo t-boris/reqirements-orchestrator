@@ -1,5 +1,10 @@
 # Domain layer - aggregates, events, value objects
 
+from .channel import (
+    ChannelAggregate,
+    EntityNotFoundError,
+    InvalidStateError,
+)
 from .content import (
     Approval,
     Attribution,
@@ -94,4 +99,8 @@ __all__ = [
     "can_commit",
     "can_modify",
     "has_active_objections",
+    # Channel aggregate
+    "ChannelAggregate",
+    "EntityNotFoundError",
+    "InvalidStateError",
 ]
