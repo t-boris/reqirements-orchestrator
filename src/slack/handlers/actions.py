@@ -3,6 +3,7 @@
 Ref: RESEARCH.md - Pattern 2: Action Handler with ack()
 Ref: RESEARCH.md - Pitfall 1: Not Acknowledging Actions Fast Enough
 """
+import json
 import logging
 import re
 from slack_bolt.async_app import AsyncApp
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 # Pattern for entity action buttons: approve_{entity_id}, object_{entity_id}, discuss_{entity_id}
 ENTITY_ACTION_PATTERN = re.compile(r"^(approve|object|discuss)_(.+)$")
+
+# Pattern for follow-up question answer buttons: answer_q_{uuid}_{index}
+QUESTION_ANSWER_PATTERN = re.compile(r"^answer_q_.+$")
 
 
 def register_action_handlers(app: AsyncApp) -> None:
@@ -155,7 +159,72 @@ def register_action_handlers(app: AsyncApp) -> None:
                 thread_ts=thread_ts,
             )
 
-    # Catch-all for any unhandled actions
+    @app.action(QUESTION_ANSWER_PATTERN)
+    async def handle_question_answer(ack, body: dict, action: dict, client, say) -> None:
+        """Handle follow-up question answer button clicks.
+
+        Updates original message to show selected answer (disables buttons),
+        then posts the answer as a thread message for continued conversation.
+        """
+        await ack()
+
+        value = json.loads(action.get("value", "{}"))
+        answer = value.get("answer", "")
+        question = value.get("question_text", "")
+        thread_ts = value.get("thread_ts")
+
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+
+        logger.info(
+            f"Question answer by {user_id}: Q='{question[:50]}' A='{answer[:50]}'"
+        )
+
+        # Update original message to show selection (replace buttons with Q/A text)
+        if message_ts and channel_id:
+            try:
+                # Get original message text to preserve it
+                original_text = body.get("message", {}).get("text", "")
+                original_blocks = body.get("message", {}).get("blocks", [])
+
+                # Keep non-actions blocks, replace actions with Q/A summary
+                updated_blocks = [
+                    block for block in original_blocks
+                    if block.get("type") != "actions"
+                ]
+                updated_blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Q:* {question}\n*A:* {answer if answer != '__freeform__' else '(typing...)'}"
+                    },
+                })
+
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    blocks=updated_blocks,
+                    text=f"Q: {question} A: {answer}",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update message with answer: {e}")
+
+        # If "Something else" was clicked, prompt for free-form input
+        if answer == "__freeform__":
+            await say(
+                text=f"<@{user_id}> Go ahead, type your answer:",
+                thread_ts=thread_ts,
+            )
+            return
+
+        # Post the answer as a thread message so intent classification picks it up
+        await say(
+            text=answer,
+            thread_ts=thread_ts,
+        )
+
+    # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
     async def handle_unknown_action(ack, action: dict, logger) -> None:
         """Handle any unmatched action (fallback)."""
