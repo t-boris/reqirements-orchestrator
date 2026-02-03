@@ -42,7 +42,8 @@ class PreGateResult(str, Enum):
     COMMAND = "command"        # Slash command detected (/maro)
     ACTION = "action"          # Button click detected (block_actions event)
     APPROVAL = "approval"      # Explicit approve/object keyword
-    PROCESS = "process"        # Message in known process thread
+    WORKSPACE = "workspace"    # Thread has active workspace, route to Orchestrator
+    PROCESS = "process"        # Message in known process thread (legacy)
     BOT_MESSAGE = "bot"        # Message from bot (ignore)
     PASS_THROUGH = "pass"      # Needs LLM classification
 
