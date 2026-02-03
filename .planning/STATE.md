@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-02)
 
 **Core value:** Thread -> Channel -> Jira flow must work flawlessly
-**Current focus:** Phase 5 - Process Orchestration (Executing)
+**Current focus:** Phase 5 - Process Orchestration (Complete)
 
 ## Current Position
 
 Phase: 5 of 7 (Process Orchestration)
-Plan: 3 of 7 in current phase
-Status: In progress
-Last activity: 2026-02-02 - Completed 05-02-PLAN.md (Task domain events)
+Plan: 7 of 7 in current phase
+Status: Complete
+Last activity: 2026-02-02 - Completed Phase 5 (all 7 plans)
 
-Progress: ████████░░ 83% (25/30 plans)
+Progress: █████████░ 90% (30/33 plans estimated)
 
 ## Performance Metrics
 
@@ -100,7 +100,11 @@ Progress: ████████░░ 83% (25/30 plans)
 | 05-02 | Keep ALL_EVENT_TYPES as core only | Preserves backward compatibility, get_all_event_types() provides complete registry |
 | 05-03 | Flows are guides not enforcers | Suggested context is a hint, only required_context must be present |
 | 05-03 | Frozen dataclass for FlowTemplate | Immutable and hashable flow definitions |
-| 05-03 | CONVERSE as default fallback | Unknown flow types default to CONVERSE for flexible conversation
+| 05-03 | CONVERSE as default fallback | Unknown flow types default to CONVERSE for flexible conversation |
+| 05-04 | Protocol type for LLM dependency | Optional LLM injection via Protocol for flexibility |
+| 05-04 | Actions are immutable dataclasses | Orchestrator returns commands, caller executes |
+| 05-05 | WORKSPACE before PROCESS in PreGates | New model takes precedence, backwards compat maintained |
+| 05-06 | Dual data structures in projection | Workspace dict + thread-to-channel lookup for O(1) checks |
 
 ### Deferred Issues
 
@@ -113,6 +117,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 05-02-PLAN.md (Task domain events)
+Stopped at: Completed Phase 5 (Process Orchestration)
 Resume file: None
-Next action: Execute 05-04-PLAN.md
+Next action: Research Phase 6 (Jira Projection)
