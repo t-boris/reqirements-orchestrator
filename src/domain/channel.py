@@ -92,15 +92,15 @@ class ChannelAggregate:
     version: int = -1
     pending_events: list[DomainEvent] = field(default_factory=list)
 
-    def _emit(self, event: DomainEvent) -> None:
-        """Record event to pending list.
+    @property
+    def next_version(self) -> int:
+        """Return the version number for the next event to be emitted."""
+        return self.version + 1
 
-        Increments version first, then assigns it to the event,
-        so the next event after replay always gets version = last + 1.
-        """
-        self.version += 1
-        event.version = self.version
+    def _emit(self, event: DomainEvent) -> None:
+        """Record event to pending list."""
         self.pending_events.append(event)
+        self.version += 1
 
     def clear_pending_events(self) -> list[DomainEvent]:
         """Clear and return pending events (after persistence)."""
@@ -153,7 +153,7 @@ class ChannelAggregate:
             WorkItemDrafted(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 thread_ts=thread_ts,
                 content=content.model_dump(),
@@ -199,7 +199,7 @@ class ChannelAggregate:
             WorkItemProposed(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 canonical_message_ts=canonical_message_ts,
             )
@@ -247,7 +247,7 @@ class ChannelAggregate:
             ApprovalAdded(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 approved_by=actor_id,
                 comment=comment,
@@ -263,7 +263,7 @@ class ChannelAggregate:
                 WorkItemApproved(
                     aggregate_id=self.channel_id,
                     actor_id=actor_id,
-                    version=self.version,
+                    version=self.next_version,
                     entity_id=entity_id,
                     approved_by=actor_id,
                 )
@@ -310,7 +310,7 @@ class ChannelAggregate:
             WorkItemCommitted(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 jira_key=jira_key,
             )
@@ -363,7 +363,7 @@ class ChannelAggregate:
             DecisionRecorded(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 thread_ts=thread_ts,
                 content=content.model_dump(),
@@ -393,7 +393,7 @@ class ChannelAggregate:
             DecisionProposed(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 canonical_message_ts=canonical_message_ts,
             )
@@ -422,7 +422,7 @@ class ChannelAggregate:
             ApprovalAdded(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 approved_by=actor_id,
                 comment=comment,
@@ -436,7 +436,7 @@ class ChannelAggregate:
                 DecisionApproved(
                     aggregate_id=self.channel_id,
                     actor_id=actor_id,
-                    version=self.version,
+                    version=self.next_version,
                     entity_id=entity_id,
                     approved_by=actor_id,
                 )
@@ -469,7 +469,7 @@ class ChannelAggregate:
             DecisionCommitted(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 jira_key=jira_key,
                 field_path=field_path,
@@ -500,7 +500,7 @@ class ChannelAggregate:
             DecisionDeprecated(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 superseded_by=superseded_by,
                 reason=reason,
@@ -543,7 +543,7 @@ class ChannelAggregate:
             ObjectionRaised(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 objected_by=actor_id,
                 reason=reason,
@@ -574,7 +574,7 @@ class ChannelAggregate:
             ObjectionResolved(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 objection_index=objection_index,
                 resolved_by=actor_id,
@@ -605,7 +605,7 @@ class ChannelAggregate:
             ObjectionWithdrawn(
                 aggregate_id=self.channel_id,
                 actor_id=actor_id,
-                version=self.version,
+                version=self.next_version,
                 entity_id=entity_id,
                 objection_index=objection_index,
                 withdrawn_by=actor_id,
