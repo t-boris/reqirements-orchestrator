@@ -38,10 +38,13 @@ from src.orchestration.models import (
     Workspace,
 )
 from src.orchestration.orchestrator import Orchestrator
+from src.orchestration.projection import WorkspaceProjection
 
 __all__ = [
     # Orchestrator
     "Orchestrator",
+    # Projection
+    "WorkspaceProjection",
     # Action types
     "OrchestratorAction",
     "AskQuestion",
