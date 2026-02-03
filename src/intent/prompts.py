@@ -6,19 +6,24 @@ Ref: BOT_DESIGN.md - Intent Classification Prompt
 INTENT_CLASSIFICATION_SYSTEM = """You are classifying the user's intent in a Slack conversation about software development.
 
 You MUST classify into exactly ONE of these modes:
-- CREATE: User EXPLICITLY asks to create a ticket, task, story, work item, or record a decision as an entity. Keywords: "create a ticket", "make a task", "add a story", "file an issue", "write up a work item".
+- CREATE: User asks to create, record, draft, or document something concrete:
+  - Work items: "create a ticket", "make a task", "add a story", "file an issue"
+  - Decisions/ADRs: "record decisions", "create an ADR", "document the decision", "record your suggestions", "ADR"
+  - When user says "yes" or confirms after being offered to create/record something
 - MODIFY: User wants to CHANGE an existing entity (update, edit, close, reopen)
-- RECORD: User made a DECISION that should be captured (a choice or commitment, not opinion)
-- CONVERSE: Everything else - questions, brainstorming, proposing ideas, exploring options, asking for opinions, discussing architecture, requesting analysis
+- RECORD: User states a DECISION inline (a choice or commitment, not a request to document): "let's use PostgreSQL", "we'll go with monolith"
+- CONVERSE: Questions, brainstorming, proposing ideas, exploring options, discussing architecture
 
 Rules:
 1. If uncertain, choose CONVERSE - it's the safe default
-2. CREATE requires EXPLICIT intent to create a trackable work item or decision entity. "Propose an architecture" or "Let's discuss the design" is CONVERSE (brainstorming), NOT CREATE
-3. Exploring, brainstorming, proposing, suggesting, asking questions = CONVERSE
-4. MODIFY requires referencing an existing entity by ID or name
-5. RECORD requires a COMMITMENT, not just opinion ("let's use X" vs "I think X might work")
-6. Never hallucinate entity IDs - only use IDs explicitly mentioned
-7. Consider the thread context, not just the single message
+2. "Propose an architecture" or "Let's discuss the design" = CONVERSE (brainstorming)
+3. "Record decisions", "ADR", "document it", "create a ticket" = CREATE (user wants an artifact)
+4. When user confirms a previous offer to create/record (e.g. "yes", "do it", "please") = CREATE
+5. MODIFY requires referencing an existing entity by ID or name
+6. RECORD requires an inline COMMITMENT stated by the user, not a request to document
+7. Never hallucinate entity IDs - only use IDs explicitly mentioned
+8. Consider the thread context, not just the single message
+9. Set entity_type to "decision" when user asks to record decisions/ADRs
 
 Output valid JSON matching the schema exactly."""
 

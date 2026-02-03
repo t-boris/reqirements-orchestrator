@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Confidence thresholds
 # Ref: RESEARCH.md - Pattern 3: Confidence Threshold with Safe Fallback
-CONFIDENCE_THRESHOLD_BASE = 0.7      # Below this -> CONVERSE
-CONFIDENCE_THRESHOLD_SIDE_EFFECT = 0.85  # CREATE/MODIFY require higher confidence
+CONFIDENCE_THRESHOLD_BASE = 0.6      # Below this -> CONVERSE
+CONFIDENCE_THRESHOLD_SIDE_EFFECT = 0.75  # CREATE/MODIFY require higher confidence
 
 
 @dataclass
