@@ -860,6 +860,183 @@ Events are immutable. The audit trail is complete.
 
 ---
 
+## Jira Projection
+
+### Philosophy: Jira as Deployment Artifact
+
+**"Jira is not the source of truth — it's a deployment artifact built from the source (conversation)."**
+
+This mental model is key:
+- Slack conversations are the source of truth for **content** (descriptions, acceptance criteria)
+- Jira is the source of truth for **workflow** (status, assignee, sprint)
+- MARO projects approved content to Jira, not the reverse
+
+The relationship mirrors Git → CI/CD:
+| Git Concept | MARO Equivalent |
+|-------------|-----------------|
+| Source code | Slack conversation |
+| CI build | Jira issue creation |
+| Deployment | Issue in board |
+| Hotfix | Manual Jira edit (needs sync) |
+
+### Field Ownership Model
+
+Not all fields are equal. The ownership model determines who can modify what:
+
+| Field | Owner | Meaning |
+|-------|-------|---------|
+| summary | SLACK_OWNED | Slack is source of truth |
+| description | SLACK_OWNED | Slack is source of truth |
+| acceptance_criteria | SLACK_OWNED | Slack is source of truth |
+| status | JIRA_OWNED | Jira is source of truth |
+| assignee | JIRA_OWNED | Jira is source of truth |
+| reporter | JIRA_OWNED | Jira is source of truth |
+| priority | SHARED | Both can modify, needs conflict resolution |
+| labels | SHARED | Both can modify, needs conflict resolution |
+| components | SHARED | Both can modify, needs conflict resolution |
+
+**Conflict resolution rules:**
+- SLACK_OWNED: If Jira differs, ask user (Jira edit may be intentional)
+- JIRA_OWNED: Always defer to Jira value
+- SHARED: Always ask user to choose
+
+### Duplicate Detection (Mandatory)
+
+**Before creating any Jira issue, MARO MUST check for duplicates.**
+
+This is not optional. The PreflightService searches for issues with similar summaries:
+
+```
+User approves work item
+    ↓
+PreflightService.check_create()
+    ↓ searches JQL: project = X AND summary ~ "..."
+    ↓
+Duplicates found?
+    ├── Yes → Show user the duplicates
+    │         ├── "Link to PROJ-123" (use existing)
+    │         └── "Create anyway" (explicit choice)
+    │
+    └── No → Create new issue
+```
+
+This prevents the common problem of duplicate Jira issues from similar conversations.
+
+### Commit Flow
+
+When an approved entity is committed to Jira:
+
+```
+ApprovedEntity
+    ↓
+CommitHandler.commit_work_item()
+    ├── Check for duplicates (PreflightService)
+    ├── If duplicates: return for user choice
+    ├── If clean: create issue (JiraSyncService)
+    └── Return jira_key
+    ↓
+ChannelAggregate.commit_work_item(entity_id, jira_key)
+    ├── Transition: Approved → Committed
+    ├── Emit: WorkItemCommitted event
+    └── Entity now has JiraLink (required, not optional)
+    ↓
+CommittedEntity (with JiraLink)
+```
+
+**Decisions are different:**
+- Decisions don't create their own Jira issues
+- They append to a linked work item's issue as comments
+- `commit_decision(entity, target_jira_key)` adds comment to existing issue
+
+### Sync/Reconciliation Flow
+
+Two triggers for sync:
+
+1. **`/maro sync`** — Bulk check all committed entities
+2. **"Refresh from Jira" button** — Single entity check
+
+```
+/maro sync
+    ↓
+Load all CommittedEntities in channel
+    ↓
+ReconciliationService.check_sync_status()
+    ↓
+For each entity:
+    ├── Fetch current Jira state
+    ├── Compare fields by ownership
+    └── Record discrepancies
+    ↓
+Build sync report
+    ├── In sync: ✅ confirmation
+    └── Discrepancies: Show diff + resolution buttons
+        ├── "Use Jira" — Update entity to match Jira
+        ├── "Keep Slack" — Push Slack values to Jira
+        └── "Skip" — Leave as-is for now
+```
+
+### Rate Limiting
+
+Jira Cloud uses points-based rate limiting (65,000 points/hour standard, enforced March 2026).
+
+MARO handles this with:
+- **Tenacity** for exponential backoff with jitter
+- **Retry on 429** responses
+- **Warning logs** when rate limited
+
+```python
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential_jitter(initial=1, max=60),
+    retry=retry_if_exception_type(RateLimitError),
+)
+async def _retry_impl(self, func, *args, **kwargs):
+    # Wrap sync atlassian-python-api with asyncio.to_thread()
+```
+
+### Module Structure
+
+```
+src/jira/
+├── client.py           # JiraClient - async wrapper for atlassian-python-api
+├── models.py           # FieldOwnership, PreflightCheck, SyncDiscrepancy
+├── preflight.py        # PreflightService - duplicate detection
+├── sync_service.py     # JiraSyncService - create/update/reconcile
+├── commit_handler.py   # CommitHandler - orchestrates commit flow
+├── reconciliation.py   # ReconciliationService - sync status checks
+└── __init__.py         # Exports
+
+src/slack/
+├── handlers/jira.py    # Jira button handlers (commit, duplicate selection)
+├── commands/sync.py    # /maro sync command handler
+└── blocks/sync.py      # Slack blocks for sync UI
+```
+
+### Key Types
+
+| Type | Purpose |
+|------|---------|
+| `JiraKey` | Jira issue key (e.g., "PROJ-123") |
+| `JiraLink` | Link to Jira with key and field_path |
+| `FieldOwnership` | JIRA_OWNED, SLACK_OWNED, SHARED |
+| `PreflightCheck` | Result of pre-commit check |
+| `SyncDiscrepancy` | Difference between Slack and Jira |
+| `CommitResult` | Result of commit operation |
+| `ReconciliationReport` | Summary of sync status |
+
+### Integration Points
+
+| Component | Jira Integration |
+|-----------|------------------|
+| ChannelAggregate | `commit_work_item()`, `commit_decision()` accept JiraKey |
+| CommittedEntity | Has required `jira_link: JiraLink` |
+| WorkItemApproved event | Triggers commit flow |
+| DecisionApproved event | Triggers decision projection |
+| Slack buttons | "Commit to Jira", "Refresh from Jira" |
+| /maro sync | Bulk reconciliation check |
+
+---
+
 ## Summary
 
 MARO thinks in terms of:
