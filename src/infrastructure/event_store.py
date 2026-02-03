@@ -210,7 +210,13 @@ class EventStore:
                 aggregate_id,
                 after_version,
             )
-            return [deserialize_event(dict(row["payload"])) for row in rows]
+            return [
+                deserialize_event(
+                    row["payload"] if isinstance(row["payload"], dict)
+                    else json.loads(row["payload"])
+                )
+                for row in rows
+            ]
 
     async def get_latest_version(self, aggregate_id: str) -> int:
         """Get the current version for an aggregate.
@@ -264,4 +270,10 @@ class EventStore:
                 limit,
                 offset,
             )
-            return [deserialize_event(dict(row["payload"])) for row in rows]
+            return [
+                deserialize_event(
+                    row["payload"] if isinstance(row["payload"], dict)
+                    else json.loads(row["payload"])
+                )
+                for row in rows
+            ]
