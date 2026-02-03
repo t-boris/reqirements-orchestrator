@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: 6 of 7 (Jira Projection)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-02 - Completed 06-01-PLAN.md
+Last activity: 2026-02-02 - Completed 06-02-PLAN.md
 
-Progress: █████████░ 91% (31/34 plans estimated)
+Progress: █████████░ 94% (32/34 plans estimated)
 
 ## Performance Metrics
 
@@ -108,6 +108,9 @@ Progress: █████████░ 91% (31/34 plans estimated)
 | 06-01 | asyncio.to_thread() for JiraClient | Wrap sync atlassian-python-api for async compatibility |
 | 06-01 | tenacity for rate limit handling | Exponential backoff with jitter for Jira 429 responses |
 | 06-01 | Frozen dataclasses for Jira models | Immutable models for thread safety |
+| 06-02 | Duplicate detection MANDATORY before create | Per user requirement to prevent duplicate Jira issues |
+| 06-02 | Decisions project as comments | Decisions append to linked work item's Jira issue |
+| 06-02 | Field ownership determines conflict behavior | JIRA_OWNED/SHARED trigger conflicts; SLACK_OWNED always updatable |
 
 ### Deferred Issues
 
@@ -120,6 +123,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 06-01-PLAN.md (JiraClient and Models)
+Stopped at: Completed 06-02-PLAN.md (PreflightService, JiraSyncService)
 Resume file: None
-Next action: Execute 06-02-PLAN.md (PreflightService, JiraSyncService)
+Next action: Execute 06-03-PLAN.md
