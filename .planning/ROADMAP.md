@@ -141,5 +141,5 @@ Key deliverables:
 | 3. Intent & Modes | 6/6 | Complete | 2026-02-02 |
 | 4. Entity Lifecycle | 7/7 | Complete | 2026-02-02 |
 | 5. Process Orchestration | 7/7 | Complete | 2026-02-02 |
-| 6. Jira Projection | 0/5 | Planned | - |
+| 6. Jira Projection | 1/5 | In progress | - |
 | 7. Polish & Deploy | 0/TBD | Not started | - |

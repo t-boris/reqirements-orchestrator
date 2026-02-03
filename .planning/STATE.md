@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-02)
 
 **Core value:** Thread -> Channel -> Jira flow must work flawlessly
-**Current focus:** Phase 5 - Process Orchestration (Complete)
+**Current focus:** Phase 6 - Jira Projection (In Progress)
 
 ## Current Position
 
-Phase: 5 of 7 (Process Orchestration)
-Plan: 7 of 7 in current phase
-Status: Complete
-Last activity: 2026-02-02 - Completed Phase 5 (all 7 plans)
+Phase: 6 of 7 (Jira Projection)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-02-02 - Completed 06-01-PLAN.md
 
-Progress: █████████░ 90% (30/33 plans estimated)
+Progress: █████████░ 91% (31/34 plans estimated)
 
 ## Performance Metrics
 
@@ -105,6 +105,9 @@ Progress: █████████░ 90% (30/33 plans estimated)
 | 05-04 | Actions are immutable dataclasses | Orchestrator returns commands, caller executes |
 | 05-05 | WORKSPACE before PROCESS in PreGates | New model takes precedence, backwards compat maintained |
 | 05-06 | Dual data structures in projection | Workspace dict + thread-to-channel lookup for O(1) checks |
+| 06-01 | asyncio.to_thread() for JiraClient | Wrap sync atlassian-python-api for async compatibility |
+| 06-01 | tenacity for rate limit handling | Exponential backoff with jitter for Jira 429 responses |
+| 06-01 | Frozen dataclasses for Jira models | Immutable models for thread safety |
 
 ### Deferred Issues
 
@@ -117,6 +120,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed Phase 5 (Process Orchestration)
+Stopped at: Completed 06-01-PLAN.md (JiraClient and Models)
 Resume file: None
-Next action: Research Phase 6 (Jira Projection)
+Next action: Execute 06-02-PLAN.md (PreflightService, JiraSyncService)
