@@ -53,6 +53,7 @@ def propose(draft: DraftEntity, canonical_message_ts: str) -> ProposedEntity:
         attribution=draft.attribution,
         version=Version(draft.version + 1),
         canonical_message_ts=canonical_message_ts,
+        adr_message_ts=getattr(draft, 'adr_message_ts', None),
         approvals=[],
         objections=[],
     )
@@ -100,6 +101,7 @@ def add_approval(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         approvals=[*entity.approvals, new_approval],
         objections=entity.objections,
     )
@@ -136,6 +138,7 @@ def raise_objection(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         approvals=entity.approvals,
         objections=[*entity.objections, new_objection],
     )
@@ -188,6 +191,7 @@ def resolve_objection(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         approvals=entity.approvals,
         objections=new_objections,
     )
@@ -241,6 +245,7 @@ def withdraw_objection(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         approvals=entity.approvals,
         objections=new_objections,
     )
@@ -300,6 +305,7 @@ def approve(
         attribution=new_attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
     )
 
 
@@ -340,6 +346,7 @@ def commit(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         jira_link=jira_link,
     )
 
@@ -370,6 +377,7 @@ def deprecate(
         attribution=entity.attribution,
         version=Version(entity.version + 1),
         canonical_message_ts=entity.canonical_message_ts,
+        adr_message_ts=getattr(entity, 'adr_message_ts', None),
         jira_link=entity.jira_link,
         deprecated_at=datetime.utcnow(),
         superseded_by=superseded_by,

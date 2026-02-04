@@ -51,6 +51,7 @@ class DraftEntity(BaseModel):
     content: EntityContent
     attribution: Attribution
     version: Version = Version(1)
+    adr_message_ts: str | None = None
 
 
 class ProposedEntity(BaseModel):
@@ -65,6 +66,7 @@ class ProposedEntity(BaseModel):
     attribution: Attribution
     version: Version
     canonical_message_ts: str
+    adr_message_ts: str | None = None
     approvals: list[Approval] = Field(default_factory=list)
     objections: list[Objection] = Field(default_factory=list)
 
@@ -81,6 +83,7 @@ class ApprovedEntity(BaseModel):
     attribution: Attribution  # Now has approved_by
     version: Version
     canonical_message_ts: str
+    adr_message_ts: str | None = None
 
 
 class CommittedEntity(BaseModel):
@@ -95,6 +98,7 @@ class CommittedEntity(BaseModel):
     attribution: Attribution
     version: Version
     canonical_message_ts: str
+    adr_message_ts: str | None = None
     jira_link: JiraLink  # Required, not optional!
 
 
@@ -109,6 +113,7 @@ class DeprecatedEntity(BaseModel):
     attribution: Attribution
     version: Version
     canonical_message_ts: str
+    adr_message_ts: str | None = None
     jira_link: JiraLink | None = None
     deprecated_at: datetime
     superseded_by: EntityId | None = None
