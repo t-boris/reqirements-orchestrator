@@ -23,6 +23,7 @@ from .entities import (
 )
 from .events import (
     ApprovalAdded,
+    DecisionAmended,
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
@@ -42,6 +43,7 @@ from .transitions import (
     TransitionError,
     add_approval,
     approve,
+    can_modify,
     commit,
     deprecate,
     has_active_objections,
@@ -330,6 +332,7 @@ class ChannelAggregate:
         thread_ts: ThreadTs,
         content: DecisionContent,
         entity_id: EntityId | None = None,
+        adr_message_ts: str | None = None,
     ) -> DraftEntity:
         """Record a decision from conversation.
 
@@ -338,6 +341,7 @@ class ChannelAggregate:
             thread_ts: Thread where decision was made
             content: Decision content
             entity_id: Optional entity ID
+            adr_message_ts: Optional timestamp of the pinned ADR message
 
         Returns:
             Draft decision entity
@@ -357,6 +361,7 @@ class ChannelAggregate:
                 proposed_at=datetime.utcnow(),
             ),
             version=Version(1),
+            adr_message_ts=adr_message_ts,
         )
 
         self._emit(
@@ -367,11 +372,93 @@ class ChannelAggregate:
                 entity_id=entity_id,
                 thread_ts=thread_ts,
                 content=content.model_dump(),
+                adr_message_ts=adr_message_ts,
             )
         )
 
         self.entities[entity_id] = draft
         return draft
+
+    def amend_decision(
+        self,
+        entity_id: EntityId,
+        actor_id: UserId,
+        new_content: DecisionContent,
+        reason: str,
+        new_adr_message_ts: str | None = None,
+    ) -> DraftEntity | ProposedEntity:
+        """Amend a decision's content in-place while preserving event history.
+
+        Works for Draft and Proposed entities. Creates a new entity instance
+        with updated content and incremented version (entities are frozen).
+
+        Args:
+            entity_id: ID of the decision to amend
+            actor_id: User amending the decision
+            new_content: Updated decision content
+            reason: Reason for the amendment
+            new_adr_message_ts: Optional new ADR message timestamp
+
+        Returns:
+            Updated entity (same type as input)
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+            InvalidStateError: If entity is not Draft or Proposed
+        """
+        entity = self.entities.get(entity_id)
+        if not entity:
+            raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+        modifiable, err = can_modify(entity)
+        if not modifiable:
+            raise InvalidStateError(err)
+
+        previous_content = entity.content
+
+        if isinstance(entity, DraftEntity):
+            updated = DraftEntity(
+                id=entity.id,
+                entity_type=entity.entity_type,
+                channel_id=entity.channel_id,
+                thread_ts=entity.thread_ts,
+                content=new_content,
+                attribution=entity.attribution,
+                version=Version(entity.version + 1),
+                adr_message_ts=new_adr_message_ts if new_adr_message_ts else entity.adr_message_ts,
+            )
+        elif isinstance(entity, ProposedEntity):
+            updated = ProposedEntity(
+                id=entity.id,
+                entity_type=entity.entity_type,
+                channel_id=entity.channel_id,
+                thread_ts=entity.thread_ts,
+                content=new_content,
+                attribution=entity.attribution,
+                version=Version(entity.version + 1),
+                canonical_message_ts=entity.canonical_message_ts,
+                adr_message_ts=new_adr_message_ts if new_adr_message_ts else entity.adr_message_ts,
+                approvals=entity.approvals,
+                objections=entity.objections,
+            )
+        else:
+            raise InvalidStateError(f"Entity is {type(entity).__name__}, only Draft/Proposed can be amended")
+
+        self._emit(
+            DecisionAmended(
+                aggregate_id=self.channel_id,
+                actor_id=actor_id,
+                version=self.next_version,
+                entity_id=entity_id,
+                previous_content=previous_content,
+                new_content=new_content,
+                reason=reason,
+                new_adr_message_ts=new_adr_message_ts,
+            )
+        )
+
+        self.entities[entity_id] = updated
+        return updated
 
     def propose_decision(
         self,
@@ -715,7 +802,36 @@ class ChannelAggregate:
                         proposed_at=event.timestamp,
                     ),
                     version=Version(1),
+                    adr_message_ts=getattr(event, 'adr_message_ts', None),
                 )
+
+            case DecisionAmended():
+                existing = self.entities.get(EntityId(event.entity_id))
+                if isinstance(existing, DraftEntity):
+                    self.entities[EntityId(event.entity_id)] = DraftEntity(
+                        id=existing.id,
+                        entity_type=existing.entity_type,
+                        channel_id=existing.channel_id,
+                        thread_ts=existing.thread_ts,
+                        content=DecisionContent(**event.new_content) if isinstance(event.new_content, dict) else event.new_content,
+                        attribution=existing.attribution,
+                        version=Version(existing.version + 1),
+                        adr_message_ts=event.new_adr_message_ts if event.new_adr_message_ts else existing.adr_message_ts,
+                    )
+                elif isinstance(existing, ProposedEntity):
+                    self.entities[EntityId(event.entity_id)] = ProposedEntity(
+                        id=existing.id,
+                        entity_type=existing.entity_type,
+                        channel_id=existing.channel_id,
+                        thread_ts=existing.thread_ts,
+                        content=DecisionContent(**event.new_content) if isinstance(event.new_content, dict) else event.new_content,
+                        attribution=existing.attribution,
+                        version=Version(existing.version + 1),
+                        canonical_message_ts=existing.canonical_message_ts,
+                        adr_message_ts=event.new_adr_message_ts if event.new_adr_message_ts else existing.adr_message_ts,
+                        approvals=existing.approvals,
+                        objections=existing.objections,
+                    )
 
             case DecisionProposed():
                 draft = self.entities[EntityId(event.entity_id)]

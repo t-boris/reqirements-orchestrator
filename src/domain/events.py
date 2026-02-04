@@ -144,6 +144,7 @@ class DecisionRecorded(DomainEvent):
     entity_id: EntityId
     thread_ts: ThreadTs
     content: DecisionContent
+    adr_message_ts: str | None = None
 
 
 class DecisionProposed(DomainEvent):
@@ -176,6 +177,20 @@ class DecisionCommitted(DomainEvent):
     entity_id: EntityId
     jira_key: JiraKey
     field_path: str
+
+
+class DecisionAmended(DomainEvent):
+    """Decision content updated after recording.
+
+    Emitted when a decision's content is modified (e.g., team changed their mind
+    in a thread discussion). Preserves the full previous content for audit trail.
+    """
+
+    entity_id: EntityId
+    previous_content: DecisionContent  # Snapshot for audit
+    new_content: DecisionContent
+    reason: str
+    new_adr_message_ts: str | None = None  # If ADR message was re-posted
 
 
 class DecisionDeprecated(DomainEvent):
@@ -362,6 +377,7 @@ _CORE_EVENT_TYPES: list[type[DomainEvent]] = [
     DecisionProposed,
     DecisionApproved,
     DecisionCommitted,
+    DecisionAmended,
     DecisionDeprecated,
     # Approval/Objection Events
     ApprovalAdded,
