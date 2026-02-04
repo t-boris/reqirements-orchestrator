@@ -210,6 +210,20 @@ def build_dashboard_blocks(
                     "elements": [{"type": "mrkdwn", "text": text}],
                 })
 
+            # Overflow indicators
+            if len(active_items) > 5:
+                overflow = len(active_items) - 5
+                blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"_...and {overflow} more active decisions_"}],
+                })
+            if len(deprecated_items) > 2:
+                overflow = len(deprecated_items) - 2
+                blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"_...and {overflow} more deprecated_"}],
+                })
+
     blocks.append({"type": "divider"})
 
     # Footer with timestamp
