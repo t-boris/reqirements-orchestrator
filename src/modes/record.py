@@ -3,13 +3,15 @@
 Ref: BOT_DESIGN.md - RECORD Mode
 """
 
+import json
 import logging
 
 from pydantic import BaseModel, Field
 
 from src.domain.channel import ChannelAggregate
 from src.domain.content import DecisionContent, DecisionType
-from src.domain.types import ChannelId, ThreadTs, UserId
+from src.domain.types import ChannelId, EntityType, ThreadTs, UserId
+from src.infrastructure.aggregate_loader import load_aggregate
 from src.llm.client import structured_completion
 from src.modes.base import ModeContext, ModeHandler, ModeResult
 
@@ -130,6 +132,43 @@ class RecordModeHandler(ModeHandler):
                 "alternatives_considered": [],
             }
 
+        # Check for existing decisions in this thread
+        existing_decision = None
+        if context.thread_ts:
+            try:
+                aggregate = await load_aggregate(context.channel_id)
+                existing = aggregate.get_entities_in_thread(ThreadTs(context.thread_ts))
+                existing_decisions = [
+                    e for e in existing if e.entity_type == EntityType.DECISION
+                ]
+                if existing_decisions:
+                    # Use the most recent one (last in list)
+                    existing_decision = existing_decisions[-1]
+            except Exception as e:
+                logger.warning(f"Failed to check for existing decisions: {e}")
+
+        if existing_decision is not None:
+            # Show amendment preview instead of new decision preview
+            return ModeResult(
+                response_text=(
+                    f"*Amend Existing Decision*\n\n"
+                    f"Found existing decision: *{getattr(existing_decision.content, 'title', 'Untitled')}*\n\n"
+                    f"New content:\n"
+                    f"*Title:* {preview_content['title']}\n"
+                    f"*Description:* {preview_content['description'][:300]}\n\n"
+                    "_Choose to amend the existing decision, record as new, or cancel_"
+                ),
+                requires_confirmation=True,
+                confirmation_data={
+                    "action": "amend_decision",
+                    "existing_entity_id": str(existing_decision.id),
+                    "content": preview_content,
+                },
+                response_blocks=self._build_amendment_preview_blocks(
+                    existing_decision, preview_content
+                ),
+            )
+
         alts = ""
         if preview_content["alternatives_considered"]:
             alts = "\n*Alternatives:* " + ", ".join(preview_content["alternatives_considered"])
@@ -230,6 +269,72 @@ class RecordModeHandler(ModeHandler):
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Edit"},
                         "action_id": "edit_decision",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Cancel"},
+                        "action_id": "cancel_decision",
+                    },
+                ],
+            },
+        ]
+
+    def _build_amendment_preview_blocks(self, existing, new_content: dict) -> list[dict]:
+        """Build Slack blocks for amendment preview.
+
+        Shows current decision content, a divider, then proposed new content,
+        with Amend/Record as New/Cancel buttons.
+        """
+        existing_title = getattr(existing.content, "title", "Untitled")
+        existing_desc = getattr(existing.content, "description", "")[:200]
+
+        new_alts_text = ""
+        if new_content.get("alternatives_considered"):
+            new_alts_text = (
+                f"\n_Alternatives: {', '.join(new_content['alternatives_considered'])}_"
+            )
+
+        return [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Amend Existing Decision*\n\n"
+                        f"_Current:_ *{existing_title}*\n"
+                        f"{existing_desc}"
+                    ),
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Proposed Update:*\n\n"
+                        f"*Type:* {new_content['decision_type'].title()}\n"
+                        f"*Title:* {new_content['title']}\n\n"
+                        f"*Description:*\n{new_content['description'][:500]}\n\n"
+                        f"*Rationale:*\n{new_content.get('rationale', 'N/A')[:300]}"
+                        f"{new_alts_text}"
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Amend Decision"},
+                        "style": "primary",
+                        "action_id": "confirm_amend_decision",
+                        "value": json.dumps({"entity_id": str(existing.id)}),
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Record as New"},
+                        "action_id": "confirm_record_decision",
                     },
                     {
                         "type": "button",
