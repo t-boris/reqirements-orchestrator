@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from src.domain.content import WorkItemContent, DecisionContent, JiraLink
-from src.domain.entities import ApprovedEntity, CommittedEntity
+from src.domain.entities import ApprovedEntity, CommittedEntity, DeprecatedEntity, Entity
 from src.domain.types import JiraKey, SyncStatus
 from src.jira.client import JiraClient
 from src.jira.models import (
@@ -238,6 +238,120 @@ class JiraSyncService:
                 ))
 
         return discrepancies
+
+    async def notify_decision_deprecated(
+        self,
+        entity: DeprecatedEntity,
+        superseding_entity: Entity | None = None,
+    ) -> None:
+        """Post deprecation notice to Jira when a decision is superseded.
+
+        If the deprecated decision has a jira_link, posts a comment to the
+        linked Jira issue noting the decision was superseded.
+
+        Args:
+            entity: Deprecated decision entity
+            superseding_entity: Optional entity that supersedes this one
+        """
+        if entity.jira_link is None:
+            return
+
+        superseding_content: DecisionContent | None = None
+        if (
+            superseding_entity is not None
+            and isinstance(superseding_entity.content, DecisionContent)
+        ):
+            superseding_content = superseding_entity.content
+
+        content = entity.content
+        if not isinstance(content, DecisionContent):
+            return
+
+        comment = self._format_deprecation_comment(content, superseding_content)
+
+        try:
+            await self.jira.add_comment(entity.jira_link.jira_key, comment)
+            logger.info(
+                f"Posted deprecation notice for decision {entity.id} "
+                f"to {entity.jira_link.jira_key}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to post deprecation notice for decision {entity.id} "
+                f"to {entity.jira_link.jira_key}: {e}"
+            )
+
+    async def notify_decision_amended(
+        self,
+        jira_key: str,
+        old_content: DecisionContent,
+        new_content: DecisionContent,
+        reason: str,
+    ) -> None:
+        """Post amendment notice to Jira when a decision is amended.
+
+        Args:
+            jira_key: Jira issue key to post comment to
+            old_content: Previous decision content
+            new_content: Updated decision content
+            reason: Reason for the amendment
+        """
+        comment = self._format_amendment_comment(old_content, new_content, reason)
+
+        try:
+            await self.jira.add_comment(jira_key, comment)
+            logger.info(
+                f"Posted amendment notice for decision '{new_content.title}' "
+                f"to {jira_key}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to post amendment notice for decision "
+                f"'{new_content.title}' to {jira_key}: {e}"
+            )
+
+    def _format_deprecation_comment(
+        self,
+        content: DecisionContent,
+        superseding_content: DecisionContent | None = None,
+    ) -> str:
+        """Format deprecation notice as Jira comment."""
+        lines = [
+            f"**Decision Superseded: {content.title}**",
+            "",
+            "This decision has been deprecated.",
+        ]
+
+        if superseding_content is not None:
+            lines.extend([
+                f"Replaced by: **{superseding_content.title}**",
+                superseding_content.description[:200],
+            ])
+
+        lines.extend(["", "---", "_Updated via MARO_"])
+
+        return "\n".join(lines)
+
+    def _format_amendment_comment(
+        self,
+        old_content: DecisionContent,
+        new_content: DecisionContent,
+        reason: str,
+    ) -> str:
+        """Format amendment notice as Jira comment."""
+        lines = [
+            f"**Decision Amended: {new_content.title}**",
+            "",
+            f"Reason: {reason}",
+            "",
+            f"Previous: {old_content.description[:200]}",
+            f"Updated: {new_content.description[:200]}",
+            "",
+            "---",
+            "_Updated via MARO_",
+        ]
+
+        return "\n".join(lines)
 
     def _map_issue_type(self, issue_type) -> str:
         """Map internal issue type to Jira issue type name."""
