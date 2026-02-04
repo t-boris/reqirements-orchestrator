@@ -420,10 +420,17 @@ async def _update_dashboard_after_decision(
                 counts["decisions"] += 1
                 entity_id = str(entity.id)
                 title = getattr(entity.content, "title", entity_id[:8])
-                item: dict[str, str] = {"title": title, "id": entity_id}
+                lifecycle = get_lifecycle(entity)
+                item: dict[str, str] = {
+                    "title": title,
+                    "id": entity_id,
+                    "status": lifecycle.value,
+                }
                 adr_ts = getattr(entity, 'adr_message_ts', None)
                 if adr_ts:
                     item["link"] = _build_slack_permalink(channel_id, adr_ts)
+                if isinstance(entity, DeprecatedEntity) and entity.superseded_by:
+                    item["superseded_by"] = str(entity.superseded_by)
                 decision_items.append(item)
             else:
                 lifecycle = get_lifecycle(entity)

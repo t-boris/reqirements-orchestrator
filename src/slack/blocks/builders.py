@@ -176,15 +176,33 @@ def build_dashboard_blocks(
 
     # Active decisions section
     if decisions_count > 0:
+        active_count = sum(1 for d in (decision_items or []) if d.get("status") != "deprecated")
+        deprecated_count = sum(1 for d in (decision_items or []) if d.get("status") == "deprecated")
+        header = f"*Active Decisions ({active_count})*"
+        if deprecated_count:
+            header += f" · {deprecated_count} deprecated"
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*Active Decisions ({decisions_count})*"},
+            "text": {"type": "mrkdwn", "text": header},
         })
         if decision_items:
-            for item in decision_items[:5]:
+            # Show active decisions first (max 5), then deprecated (max 2)
+            active_items = [d for d in decision_items if d.get("status") != "deprecated"]
+            deprecated_items = [d for d in decision_items if d.get("status") == "deprecated"]
+            display_items = active_items[:5] + deprecated_items[:2]
+            for item in display_items:
                 title = item.get("title", "Untitled")
                 link = item.get("link")
-                text = f"* <{link}|{title}>" if link else f"* {title}"
+                status = item.get("status", "draft")
+
+                if status == "deprecated":
+                    display = f"~{title}~ _(deprecated)_"
+                elif status == "committed":
+                    display = f":white_check_mark: {title}"
+                else:
+                    display = title
+
+                text = f"* <{link}|{display}>" if link else f"* {display}"
                 blocks.append({
                     "type": "context",
                     "elements": [{"type": "mrkdwn", "text": text}],
