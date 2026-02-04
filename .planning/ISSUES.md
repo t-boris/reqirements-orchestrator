@@ -12,31 +12,43 @@ Deferred issues discovered during code review and development.
 
 `adr_message_ts` was added to all 5 entity types (DraftEntity, ProposedEntity, etc.) but is only meaningful for decisions. Work item entities always have `adr_message_ts = None`. Consider moving to `DecisionContent` or a decision-specific entity variant.
 
+### ISS-009: `handle_message` doesn't fetch thread history — breaks RECORD and CONVERSE in threads
+
+**Source:** Production testing (2026-02-04)
+**Severity:** Critical / functional gap
+**Phase:** Next
+
+`handle_message` in `events.py` does not call `conversations_replies()` to fetch thread context. Only `handle_app_mention` fetches thread history. This causes two failures:
+
+1. **RECORD/CREATE mode**: User says "record all decisions" as a regular message in a thread with rich discussion. LLM receives `"(No thread history)"` — extracts 0 decisions. User sees "Draft Decision Records (0 found)".
+2. **CONVERSE mode in ADR threads**: User replies to a pinned ADR message asking "list advantages and disadvantages of this decision". Bot has no thread context, doesn't know what decision is being discussed, responds with generic "I don't have context" message.
+
+Both work correctly when using `@MARO` (app_mention), because that handler fetches thread history.
+
+**Root cause:** Asymmetry between `handle_message` (lines ~65-133) and `handle_app_mention` (lines ~160-231) in `src/slack/handlers/events.py`. The message handler skips `conversations_replies()` — likely for performance (avoids extra API call per message).
+
+**Suggested fix:**
+- Fetch thread history in `handle_message` when `thread_ts` is present (message is in a thread)
+- Or: fetch lazily — only when the classified intent needs thread context (CREATE+decision, RECORD, CONVERSE in thread)
+- Cost: one extra Slack API call per in-thread message, but thread context is essential for correct behavior
+
+## Closed
+
 ### ISS-003: Block parsers are brittle — coupled to mrkdwn format
 
 **Source:** Code review (2026-02-04)
 **Severity:** Fragility / maintainability
-**Phase:** Future
+**Closed:** 2026-02-04 (Plan 10-01)
 
-`_parse_record_mode_preview` and `_parse_amend_preview` in `actions.py` extract decision data by parsing mrkdwn text from Slack Block Kit sections. They are tightly coupled to the exact output format of `_build_decision_preview_blocks` and `_build_amendment_preview_blocks` in `record.py`. Any change to the block format silently breaks the parsers.
-
-**Suggested fix:**
-- Store decision data as JSON in `private_metadata` of the message or in `action.value` (Slack limit: 2000 chars — sufficient for most decisions)
-- Parsers become `json.loads()` instead of string manipulation
-- Single source of truth for data, blocks become purely presentational
+Fixed: Deleted `_parse_record_mode_preview()` and `_parse_amend_preview()`. Decision data now stored as JSON in `action.value`. Handlers use `json.loads()` instead of mrkdwn string parsing.
 
 ### ISS-004: Entity IDs embedded in action_id instead of value
 
 **Source:** Code review (2026-02-04)
 **Severity:** Minor / convention
-**Phase:** Future
+**Closed:** 2026-02-04 (Plan 10-01)
 
-Several action patterns embed entity UUID in the `action_id` string: `deprecate_decision_{uuid}`, `confirm_deprecate_{uuid}`, `cancel_deprecate_{uuid}`. This requires regex parsing and inflates `action_id` length (UUID = 36 chars). Slack limits `action_id` to 255 chars.
-
-**Suggested fix:**
-- Use fixed `action_id` values (e.g., `"deprecate_decision"`, `"confirm_deprecate"`)
-- Pass entity ID via `action.value` (already done for amend button)
-- Simplifies patterns: exact string match instead of regex
+Fixed: Deprecation buttons use fixed `action_id` ("deprecate_decision", "confirm_deprecate", "cancel_deprecate") with entity ID in `action.value`. Removed `DEPRECATE_DECISION_PATTERN` regex.
 
 ## Closed
 
