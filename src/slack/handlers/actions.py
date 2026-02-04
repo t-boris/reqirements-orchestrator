@@ -1184,14 +1184,8 @@ def register_action_handlers(app: AsyncApp) -> None:
 
             logger.info(f"Deprecated decision '{title}' in {channel_id} by {user_id}")
 
-            # Notify Jira if entity has jira_link
-            if entity.jira_link is not None:
-                try:
-                    from src.jira.factory import get_sync_service
-                    sync_service = get_sync_service()
-                    await sync_service.notify_decision_deprecated(deprecated)
-                except Exception as e:
-                    logger.warning(f"Jira deprecation notification failed: {e}")
+            # Jira notification is handled asynchronously by JiraNotificationProjection
+            # via the outbox pattern — no synchronous Jira call needed here.
 
             # Update pinned ADR message if it exists
             adr_ts = getattr(entity, 'adr_message_ts', None)
