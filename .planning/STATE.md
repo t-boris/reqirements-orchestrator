@@ -2,17 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-02)
+See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Thread -> Channel -> Jira flow must work flawlessly
-**Current focus:** v2.1 Smart UX & Observability
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 10 (Code Review Polish) — v2.1 milestone
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-04 - Completed 10-05-PLAN.md
+Phase: None — between milestones
+Plan: N/A
+Status: v2.1 milestone complete
+Last activity: 2026-02-04 - Shipped v2.1 Smart UX & Observability
 
 Progress: ████████████ 100% (v2.1)
 
@@ -41,15 +41,14 @@ Progress: ████████████ 100% (v2.1)
 ## Milestone Summary
 
 **v2.0 MARO 2.0** shipped 2026-02-02
+- Event-sourced architecture, Slack Bolt, 4 SuperModes, entity lifecycle, Jira projection
 
-Key accomplishments:
-- Event-sourced architecture with PostgreSQL backend
-- Slack Bolt integration with message routing and handlers
-- 2-stage intent classification with 4 SuperModes
-- Unified entity lifecycle (Draft -> Proposed -> Approved -> Committed)
-- Task-based workflow orchestration
-- Jira projection with duplicate detection and conflict resolution
-- Production deployment ready (Docker, Cloud Build, GCE)
+**v2.1 Smart UX & Observability** shipped 2026-02-04
+- Structured LLM interaction with button rendering
+- Intent audit logging and /maro inspect observability
+- Full decision lifecycle (record/amend/deprecate) with Jira notifications
+- ADR pinned message lifecycle UI with status badges and action buttons
+- Code review polish: JSON data flow, async Jira, projection consistency
 
 ## Roadmap Evolution
 
@@ -59,6 +58,6 @@ Key accomplishments:
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 10-05-PLAN.md (ADR lifecycle UI on pinned messages)
+Stopped at: v2.1 milestone shipped and archived
 Resume file: None
-Next action: v2.1 milestone complete — all phases finished
+Next action: `/gsd:discuss-milestone` to plan next milestone

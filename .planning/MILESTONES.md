@@ -1,5 +1,31 @@
 # Project Milestones: MARO
 
+## v2.1 Smart UX & Observability (Shipped: 2026-02-04)
+
+**Delivered:** Structured LLM interaction with button rendering, intent observability, full decision lifecycle (record/amend/deprecate), async Jira notifications via outbox, and ADR lifecycle UI on pinned messages.
+
+**Phases completed:** 8-10 (14 plans total)
+
+**Key accomplishments:**
+- Structured follow-up questions with Slack button rendering for seamless LLM-guided conversation flows
+- Intent audit logging with millisecond-precision classification chain tracking and /maro inspect command
+- Deterministic post-filter validation preventing hallucinated entity references
+- Full decision lifecycle management (record → amend → deprecate) with Jira notifications and status indicators
+- Event-driven async Jira notifications via outbox pattern, decoupling external API calls from handlers
+- ADR pinned message lifecycle UI with status badges and contextual action buttons
+
+**Stats:**
+- 44 milestone-specific commits
+- 13,618 lines of Python (total codebase)
+- 3 phases, 14 plans
+- 21 days (2026-01-14 → 2026-02-04)
+
+**Git range:** `feat(08-01)` → `feat(10-05)`
+
+**What's next:** Planning next milestone
+
+---
+
 ## v2.0 MARO 2.0 (Shipped: 2026-02-02)
 
 **Delivered:** Complete event-sourced rewrite with Slack bot, intent classification, entity lifecycle, workflow orchestration, and Jira projection.
