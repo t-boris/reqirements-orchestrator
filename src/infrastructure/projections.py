@@ -181,18 +181,21 @@ class EntityProjection(Projection):
         """Insert or update entity (idempotent via upsert).
 
         Creates a new entity row or updates if one exists with same ID.
+        Stores adr_message_ts for decision entities (None for work items).
         """
         async with self.pool.acquire() as conn:
+            adr_ts = getattr(event, "adr_message_ts", None)
             await conn.execute(
                 """
                 INSERT INTO entities_view
                 (id, entity_type, lifecycle, channel_id, thread_ts, content,
-                 attribution, version, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                 attribution, version, adr_message_ts, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                 ON CONFLICT (id) DO UPDATE SET
                     content = EXCLUDED.content,
                     attribution = EXCLUDED.attribution,
                     version = EXCLUDED.version,
+                    adr_message_ts = EXCLUDED.adr_message_ts,
                     updated_at = NOW()
                 """,
                 str(event.entity_id),
@@ -206,6 +209,7 @@ class EntityProjection(Projection):
                     "proposed_at": event.timestamp.isoformat(),
                 },
                 event.version,
+                adr_ts,
             )
 
     async def _update_lifecycle(
