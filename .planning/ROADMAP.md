@@ -75,7 +75,7 @@ Plans:
 **Plans:** 5 plans in 3 waves
 
 Plans:
-- [ ] 10-01: Action handler data flow — JSON values + fixed action_ids (wave 1, ISS-003 + ISS-004)
+- [x] 10-01: Action handler data flow — JSON values + fixed action_ids (wave 1, ISS-003 + ISS-004)
 - [x] 10-02: Dashboard UX — status indicators + overflow (wave 1, ISS-006 + ISS-007)
 - [x] 10-03: Projection consistency — adr_message_ts + approval reset (wave 1, ISS-008)
 - [ ] 10-04: Async Jira notifications via event-driven projection (wave 2, depends: 01, ISS-005)
