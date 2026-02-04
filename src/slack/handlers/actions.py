@@ -202,6 +202,12 @@ async def _record_all_decisions(
             text=f"{len(created)} decisions recorded",
         )
 
+        # Update each pinned ADR message with status badge + lifecycle buttons
+        for eid, _title in created:
+            entity = aggregate.get_entity(EntityId(eid))
+            if entity:
+                await _update_adr_pinned_message(client, channel_id, entity, aggregate)
+
         await _update_dashboard_after_decision(client, channel_id, aggregate)
 
     except Exception as e:
@@ -341,6 +347,48 @@ async def _update_dashboard_after_decision(
         logger.warning(f"Failed to update dashboard: {e}")
 
 
+async def _update_adr_pinned_message(client, channel_id: str, entity, aggregate) -> None:
+    """Update a pinned ADR message to reflect current lifecycle state.
+
+    Rebuilds the ADR post blocks with the current status badge and
+    appropriate lifecycle buttons, then calls chat_update.
+    """
+    adr_ts = getattr(entity, 'adr_message_ts', None)
+    if not adr_ts:
+        return
+
+    lifecycle = get_lifecycle(entity)
+    status = lifecycle.value
+    title = getattr(entity.content, "title", "Untitled")
+    decision_type = getattr(entity.content, "decision_type", None)
+    decision_type_str = decision_type.value if decision_type else "architecture"
+    description = getattr(entity.content, "description", "")
+    rationale = getattr(entity.content, "rationale", "")
+    alternatives = getattr(entity.content, "alternatives_considered", [])
+    recorded_by = getattr(entity.attribution, "proposed_by", None)
+
+    blocks = build_adr_post_blocks(
+        title=title,
+        decision_type=decision_type_str,
+        decision=description,
+        rationale=rationale,
+        alternatives=alternatives if alternatives else None,
+        recorded_by=str(recorded_by) if recorded_by else None,
+        status=status,
+        entity_id=str(entity.id),
+    )
+
+    try:
+        await client.chat_update(
+            channel=channel_id,
+            ts=adr_ts,
+            blocks=blocks,
+            text=f"ADR: {title} ({status})",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update pinned ADR message: {e}")
+
+
 async def _record_single_decision(
     client, say, channel_id: str, message_ts: str, thread_ts: str | None,
     user_id: str, blocks: list[dict], adr_index: int,
@@ -393,6 +441,11 @@ async def _record_single_decision(
             blocks=updated_blocks,
             text=f"Decision '{decision['title']}' recorded",
         )
+
+        # Update pinned ADR message with status badge + lifecycle buttons
+        recorded_entity = aggregate.get_entity(draft.id)
+        if recorded_entity:
+            await _update_adr_pinned_message(client, channel_id, recorded_entity, aggregate)
 
         await _update_dashboard_after_decision(client, channel_id, aggregate)
 
@@ -457,7 +510,7 @@ def register_action_handlers(app: AsyncApp) -> None:
     """Register all action handlers on the Bolt app."""
 
     @app.action(ENTITY_ACTION_PATTERN)
-    async def handle_entity_action(ack, body: dict, action: dict, say, logger) -> None:
+    async def handle_entity_action(ack, body: dict, action: dict, client, say, logger) -> None:
         """Handle approve/object/discuss button clicks.
 
         CRITICAL: ack() MUST be called first, within 3 seconds.
@@ -549,6 +602,12 @@ def register_action_handlers(app: AsyncApp) -> None:
                         text=f":thumbsup: <@{user_id}> approved. Waiting for more approvals.",
                         thread_ts=thread_ts,
                     )
+
+                # Update pinned ADR message if this is a decision
+                if not is_work_item:
+                    updated_entity = aggregate.get_entity(EntityId(entity_id))
+                    if updated_entity:
+                        await _update_adr_pinned_message(client, channel_id, updated_entity, aggregate)
 
             elif action_type == "object":
                 if not isinstance(entity, ProposedEntity):
@@ -927,7 +986,7 @@ def register_action_handlers(app: AsyncApp) -> None:
 
                 logger.info(f"Amended decision '{decision['title']}' in {channel_id} by {user_id}")
 
-                # Mark old ADR message as amended
+                # Mark old ADR message as amended (prepend notice)
                 if old_adr_ts:
                     try:
                         old_msg = await client.conversations_history(
@@ -946,6 +1005,11 @@ def register_action_handlers(app: AsyncApp) -> None:
                         )
                     except Exception as e:
                         logger.warning(f"Failed to update old ADR message: {e}")
+
+                # Update new pinned ADR message with status badge + lifecycle buttons
+                amended_entity = aggregate.get_entity(EntityId(entity_id_str))
+                if amended_entity:
+                    await _update_adr_pinned_message(client, channel_id, amended_entity, aggregate)
 
                 # Replace buttons with confirmation on the preview message
                 updated_blocks = [b for b in blocks if b.get("type") != "actions"]
@@ -1036,6 +1100,11 @@ def register_action_handlers(app: AsyncApp) -> None:
                     blocks=updated_blocks,
                     text=f"Decision '{decision['title']}' recorded",
                 )
+
+                # Update pinned ADR message with status badge + lifecycle buttons
+                recorded_entity = aggregate.get_entity(draft.id)
+                if recorded_entity:
+                    await _update_adr_pinned_message(client, channel_id, recorded_entity, aggregate)
 
                 await _update_dashboard_after_decision(client, channel_id, aggregate)
 
@@ -1190,26 +1259,10 @@ def register_action_handlers(app: AsyncApp) -> None:
             # Jira notification is handled asynchronously by JiraNotificationProjection
             # via the outbox pattern — no synchronous Jira call needed here.
 
-            # Update pinned ADR message if it exists
-            adr_ts = getattr(entity, 'adr_message_ts', None)
-            if adr_ts:
-                try:
-                    old_msg = await client.conversations_history(
-                        channel=channel_id, latest=adr_ts, inclusive=True, limit=1,
-                    )
-                    old_blocks = old_msg.get("messages", [{}])[0].get("blocks", [])
-                    deprecated_notice = {
-                        "type": "context",
-                        "elements": [{"type": "mrkdwn", "text": ":x: _This decision has been deprecated._"}],
-                    }
-                    updated_old_blocks = [deprecated_notice] + old_blocks
-                    await client.chat_update(
-                        channel=channel_id, ts=adr_ts,
-                        blocks=updated_old_blocks,
-                        text="This decision has been deprecated.",
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to update ADR message with deprecation notice: {e}")
+            # Update pinned ADR message with new status badge + no buttons
+            deprecated_entity = aggregate.get_entity(EntityId(entity_id_str))
+            if deprecated_entity:
+                await _update_adr_pinned_message(client, channel_id, deprecated_entity, aggregate)
 
             # Update dashboard
             await _update_dashboard_after_decision(client, channel_id, aggregate)
