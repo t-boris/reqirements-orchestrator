@@ -43,11 +43,11 @@ ADR_ACTION_PATTERN = re.compile(r"^adr_(record|edit|delete)_(\d+)$")
 # Pattern for RECORD mode confirm/edit/cancel/amend buttons
 RECORD_CONFIRM_PATTERN = re.compile(r"^(confirm_record|confirm_amend|edit|cancel)_decision$")
 
-# Pattern for deprecate button on committed decisions: deprecate_decision_{entity_id}
-DEPRECATE_DECISION_PATTERN = re.compile(r"^deprecate_decision_(.+)$")
+# Fixed action_id for deprecate button on committed decisions (entity ID in value)
+DEPRECATE_DECISION_ACTION = "deprecate_decision"
 
-# Pattern for deprecation confirmation: confirm_deprecate_{entity_id} or cancel_deprecate_{entity_id}
-DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate_(.+)$")
+# Pattern for deprecation confirmation: confirm_deprecate or cancel_deprecate (entity ID in value)
+DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate$")
 
 
 def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
@@ -1040,20 +1040,19 @@ def register_action_handlers(app: AsyncApp) -> None:
                 logger.error(f"Error confirming record decision: {e}", exc_info=True)
                 await say(text=f":x: Failed to record decision: {e}", thread_ts=thread_ts)
 
-    @app.action(DEPRECATE_DECISION_PATTERN)
+    @app.action(DEPRECATE_DECISION_ACTION)
     async def handle_deprecate_decision(ack, body: dict, action: dict, client, say) -> None:
         """Handle deprecate button click on committed decisions.
 
         Shows a confirmation prompt before deprecating.
+        Entity ID is read from action["value"].
         """
         await ack()
 
-        action_id = action.get("action_id", "")
-        match = DEPRECATE_DECISION_PATTERN.match(action_id)
-        if not match:
+        entity_id_str = action.get("value", "")
+        if not entity_id_str:
             return
 
-        entity_id_str = match.group(1)
         channel_id = body.get("channel", {}).get("id")
         message_ts = body.get("message", {}).get("ts")
         thread_ts = body.get("message", {}).get("thread_ts")
@@ -1092,13 +1091,13 @@ def register_action_handlers(app: AsyncApp) -> None:
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Confirm Deprecate"},
                             "style": "danger",
-                            "action_id": f"confirm_deprecate_{entity_id_str}",
+                            "action_id": "confirm_deprecate",
                             "value": entity_id_str,
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Cancel"},
-                            "action_id": f"cancel_deprecate_{entity_id_str}",
+                            "action_id": "cancel_deprecate",
                             "value": entity_id_str,
                         },
                     ],
@@ -1117,7 +1116,10 @@ def register_action_handlers(app: AsyncApp) -> None:
 
     @app.action(DEPRECATE_CONFIRM_PATTERN)
     async def handle_deprecate_confirm(ack, body: dict, action: dict, client, say) -> None:
-        """Handle confirm/cancel deprecation buttons."""
+        """Handle confirm/cancel deprecation buttons.
+
+        Entity ID is read from action["value"].
+        """
         await ack()
 
         action_id = action.get("action_id", "")
@@ -1126,7 +1128,10 @@ def register_action_handlers(app: AsyncApp) -> None:
             return
 
         confirm_or_cancel = match.group(1)
-        entity_id_str = match.group(2)
+        entity_id_str = action.get("value", "")
+        if not entity_id_str:
+            return
+
         channel_id = body.get("channel", {}).get("id")
         message_ts = body.get("message", {}).get("ts")
         thread_ts = body.get("message", {}).get("thread_ts")
