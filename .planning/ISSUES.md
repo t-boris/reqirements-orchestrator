@@ -56,20 +56,15 @@ Several action patterns embed entity UUID in the `action_id` string: `deprecate_
 - Pass entity ID via `action.value` (already done for amend button)
 - Simplifies patterns: exact string match instead of regex
 
+## Closed
+
 ### ISS-005: Action handlers do too much — Jira calls block user response
 
 **Source:** Code review (2026-02-04)
 **Severity:** Performance / architecture
-**Phase:** Future
+**Closed:** 2026-02-04 (Plan 10-04)
 
-`handle_deprecate_confirm` and `handle_record_confirm` perform multiple sequential operations: aggregate mutation, event persistence, Jira API call, ADR message update, dashboard update — all synchronously in one handler. If Jira is slow or down, the user waits for the full chain.
-
-**Suggested fix:**
-- Separate immediate user feedback (ack + update message) from side effects (Jira notification, dashboard update)
-- Use event-driven approach: Jira notification triggered by `DecisionDeprecated` / `DecisionAmended` events in a projection or async handler
-- Aligns with existing outbox pattern in event store
-
-## Closed
+Fixed: Removed synchronous Jira call from `handle_deprecate_confirm`. Created JiraNotificationProjection that handles DecisionDeprecated and DecisionAmended events asynchronously via the outbox pattern. Wired inline outbox processing into `save_events` so all projections run after event persistence.
 
 ### ISS-008: Amendment projection doesn't update approvals or adr_message_ts
 
