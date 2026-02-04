@@ -32,6 +32,28 @@ Plans:
 - [x] 08-04: /maro inspect Command (wave 2, depends: 02)
 - [x] 08-05: Architecture Docs Update (wave 1)
 
+### Phase 9: Decision Lifecycle
+
+**Goal:** Complete the decision lifecycle with amendment, deprecation UI, and Jira notifications. Decisions are currently one-way (record and forget) — this phase adds the ability to amend decisions when teams change their minds, deprecate from Slack UI, and notify Jira when decisions change.
+
+**Source:** Production testing — discovered that ADR links are lost after reload, decisions can't be amended, and Jira has no visibility into decision changes.
+
+**Scope:**
+1. **DecisionAmended event** — New domain event for updating decision content in-place while preserving audit trail
+2. **RECORD mode amendment detection** — When recording in a thread with existing decision, offer to amend instead of duplicate
+3. **Jira notifications** — Post comment to linked Jira issue when decision is deprecated or amended
+4. **Deprecation UI** — Slack button to deprecate committed decisions with confirmation flow
+5. **Dashboard status** — Show active vs deprecated decisions with visual indicators
+
+**Depends on:** Phase 8
+**Plans:** 4 plans in 3 waves
+
+Plans:
+- [ ] 09-01: Domain layer — DecisionAmended event + amend_decision method (wave 1)
+- [ ] 09-02: Jira notifications — deprecation and amendment comments (wave 1)
+- [ ] 09-03: RECORD mode amendment detection + Slack handlers (wave 2, depends: 01)
+- [ ] 09-04: Deprecation UI + dashboard enhancement (wave 3, depends: 01, 02, 03)
+
 ---
 
 ## Completed Milestones
@@ -65,3 +87,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 6. Jira Projection | v2.0 | 5/5 | Complete | 2026-02-02 |
 | 7. Polish & Deploy | v2.0 | 4/4 | Complete | 2026-02-02 |
 | 8. Smart UX Layer | v2.1 | 5/5 | Complete | 2026-02-03 |
+| 9. Decision Lifecycle | v2.1 | 0/4 | Planning | - |

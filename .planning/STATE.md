@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 
 ## Current Position
 
-Phase: 8 (Smart UX Layer) — v2.1 milestone
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-03 - Completed 08-04-PLAN.md (/maro inspect command)
+Phase: 9 (Decision Lifecycle) — v2.1 milestone
+Plan: 0 of 4 in current phase
+Status: Planning complete, ready for execution
+Last activity: 2026-02-04 - Created Phase 9 plans (decision amendment, deprecation, Jira notifications)
 
-Progress: ██████████ 100% (v2.1)
+Progress: ██████████░░ ~80% (v2.1)
 
 ## Performance Metrics
 
@@ -55,7 +55,7 @@ Key accomplishments:
 
 ## Session Continuity
 
-Last session: 2026-02-03
-Stopped at: Completed 08-04-PLAN.md (Phase 8 complete)
+Last session: 2026-02-04
+Stopped at: Created Phase 9 plans
 Resume file: None
-Next action: Complete milestone v2.1
+Next action: Execute Phase 9 — `/gsd:execute-phase 9`
