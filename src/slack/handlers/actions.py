@@ -49,6 +49,9 @@ DEPRECATE_DECISION_ACTION = "deprecate_decision"
 # Pattern for deprecation confirmation: confirm_deprecate or cancel_deprecate (entity ID in value)
 DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate$")
 
+# Pattern for ADR pinned message lifecycle buttons: adr_propose, adr_approve, adr_object, adr_deprecate
+ADR_LIFECYCLE_PATTERN = re.compile(r"^adr_(propose|approve|object|deprecate)$")
+
 
 def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
     """Build a Slack deep-link URL from channel ID and message timestamp."""
@@ -1227,6 +1230,117 @@ def register_action_handlers(app: AsyncApp) -> None:
         except Exception as e:
             logger.error(f"Error deprecating decision: {e}", exc_info=True)
             await say(text=f":x: Failed to deprecate decision: {e}", thread_ts=thread_ts)
+
+    @app.action(ADR_LIFECYCLE_PATTERN)
+    async def handle_adr_lifecycle(ack, body: dict, action: dict, client, say) -> None:
+        """Handle lifecycle action buttons on pinned ADR messages.
+
+        Supports: adr_propose, adr_approve, adr_object, adr_deprecate.
+        Entity ID is read from action["value"].
+        """
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = ADR_LIFECYCLE_PATTERN.match(action_id)
+        if not match:
+            return
+
+        lifecycle_action = match.group(1)
+        entity_id_str = action.get("value", "")
+        if not entity_id_str:
+            return
+
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+
+        try:
+            aggregate = await load_aggregate(channel_id)
+            entity = aggregate.get_entity(EntityId(entity_id_str))
+
+            if entity is None:
+                await say(text=f":x: Decision `{entity_id_str[:8]}` not found.")
+                return
+
+            title = getattr(entity.content, "title", entity_id_str[:8])
+
+            if lifecycle_action == "propose":
+                if not isinstance(entity, DraftEntity):
+                    await say(text=f":x: Decision must be in draft state to propose. Current: {type(entity).__name__}")
+                    return
+
+                proposed = aggregate.propose_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    canonical_message_ts=message_ts or "",
+                )
+                await save_events(aggregate)
+
+                logger.info(f"ADR lifecycle: proposed '{title}' in {channel_id} by {user_id}")
+                await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
+                await say(text=f":hourglass: *{title}* proposed for approval by <@{user_id}>.")
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            elif lifecycle_action == "approve":
+                if not isinstance(entity, ProposedEntity):
+                    await say(text=f":x: Decision must be in proposed state to approve. Current: {type(entity).__name__}")
+                    return
+
+                result = aggregate.approve_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                )
+                await save_events(aggregate)
+
+                if isinstance(result, ApprovedEntity):
+                    logger.info(f"ADR lifecycle: approved '{title}' in {channel_id} by {user_id}")
+                    await say(text=f":white_check_mark: *{title}* approved by <@{user_id}>.")
+                else:
+                    await say(text=f":thumbsup: <@{user_id}> approved *{title}*. Waiting for more approvals.")
+
+                await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            elif lifecycle_action == "object":
+                if not isinstance(entity, ProposedEntity):
+                    await say(text=f":x: Decision must be in proposed state to object. Current: {type(entity).__name__}")
+                    return
+
+                aggregate.raise_entity_objection(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    reason="Objection raised via ADR pinned message (reply in thread with details)",
+                )
+                await save_events(aggregate)
+
+                logger.info(f"ADR lifecycle: objection on '{title}' in {channel_id} by {user_id}")
+                await say(text=f":no_entry_sign: <@{user_id}> raised an objection to *{title}*. Please discuss in thread.")
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            elif lifecycle_action == "deprecate":
+                if not isinstance(entity, CommittedEntity):
+                    # For approved decisions, show a message suggesting to commit first
+                    state_name = type(entity).__name__.replace("Entity", "")
+                    await say(text=f":x: Only committed decisions can be deprecated. Current state: *{state_name}*.")
+                    return
+
+                deprecated = aggregate.deprecate_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    reason="Deprecated via ADR pinned message",
+                )
+                await save_events(aggregate)
+
+                logger.info(f"ADR lifecycle: deprecated '{title}' in {channel_id} by {user_id}")
+                await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
+                await say(text=f":no_entry_sign: *{title}* deprecated by <@{user_id}>.")
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+        except TransitionError as e:
+            await say(text=f":x: Action failed: {e}")
+        except Exception as e:
+            logger.error(f"Error handling ADR lifecycle action: {e}", exc_info=True)
+            await say(text=":x: An error occurred processing your action. Please try again.")
 
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
