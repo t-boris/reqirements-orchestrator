@@ -9,7 +9,14 @@ import re
 from slack_bolt.async_app import AsyncApp
 
 from src.domain.content import DecisionContent, DecisionType
-from src.domain.entities import ProposedEntity, ApprovedEntity, DraftEntity, get_lifecycle
+from src.domain.entities import (
+    ApprovedEntity,
+    CommittedEntity,
+    DeprecatedEntity,
+    DraftEntity,
+    ProposedEntity,
+    get_lifecycle,
+)
 from src.domain.transitions import TransitionError
 from src.domain.types import EntityId, ThreadTs, UserId
 from src.infrastructure.aggregate_loader import load_aggregate, save_events
@@ -35,6 +42,12 @@ ADR_ACTION_PATTERN = re.compile(r"^adr_(record|edit|delete)_(\d+)$")
 
 # Pattern for RECORD mode confirm/edit/cancel/amend buttons
 RECORD_CONFIRM_PATTERN = re.compile(r"^(confirm_record|confirm_amend|edit|cancel)_decision$")
+
+# Pattern for deprecate button on committed decisions: deprecate_decision_{entity_id}
+DEPRECATE_DECISION_PATTERN = re.compile(r"^deprecate_decision_(.+)$")
+
+# Pattern for deprecation confirmation: confirm_deprecate_{entity_id} or cancel_deprecate_{entity_id}
+DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate_(.+)$")
 
 
 def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
@@ -1131,6 +1144,195 @@ def register_action_handlers(app: AsyncApp) -> None:
             except Exception as e:
                 logger.error(f"Error confirming record decision: {e}", exc_info=True)
                 await say(text=f":x: Failed to record decision: {e}", thread_ts=thread_ts)
+
+    @app.action(DEPRECATE_DECISION_PATTERN)
+    async def handle_deprecate_decision(ack, body: dict, action: dict, client, say) -> None:
+        """Handle deprecate button click on committed decisions.
+
+        Shows a confirmation prompt before deprecating.
+        """
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = DEPRECATE_DECISION_PATTERN.match(action_id)
+        if not match:
+            return
+
+        entity_id_str = match.group(1)
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        thread_ts = body.get("message", {}).get("thread_ts")
+
+        try:
+            aggregate = await load_aggregate(channel_id)
+            entity = aggregate.get_entity(EntityId(entity_id_str))
+
+            if entity is None:
+                await say(text=f":x: Entity `{entity_id_str[:8]}` not found.", thread_ts=thread_ts)
+                return
+
+            if not isinstance(entity, CommittedEntity):
+                state_name = type(entity).__name__.replace("Entity", "")
+                await say(
+                    text=f":x: Only committed decisions can be deprecated. Current state: *{state_name}*.",
+                    thread_ts=thread_ts,
+                )
+                return
+
+            title = getattr(entity.content, "title", entity_id_str[:8])
+
+            # Show confirmation prompt
+            confirm_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":warning: *Deprecate decision: {title}?*\nThis decision will be marked as deprecated.",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Confirm Deprecate"},
+                            "style": "danger",
+                            "action_id": f"confirm_deprecate_{entity_id_str}",
+                            "value": entity_id_str,
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Cancel"},
+                            "action_id": f"cancel_deprecate_{entity_id_str}",
+                            "value": entity_id_str,
+                        },
+                    ],
+                },
+            ]
+
+            await client.chat_update(
+                channel=channel_id, ts=message_ts,
+                blocks=confirm_blocks,
+                text=f"Deprecate decision: {title}?",
+            )
+
+        except Exception as e:
+            logger.error(f"Error showing deprecation confirmation: {e}", exc_info=True)
+            await say(text=f":x: Failed to show deprecation confirmation: {e}", thread_ts=thread_ts)
+
+    @app.action(DEPRECATE_CONFIRM_PATTERN)
+    async def handle_deprecate_confirm(ack, body: dict, action: dict, client, say) -> None:
+        """Handle confirm/cancel deprecation buttons."""
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = DEPRECATE_CONFIRM_PATTERN.match(action_id)
+        if not match:
+            return
+
+        confirm_or_cancel = match.group(1)
+        entity_id_str = match.group(2)
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        user_id = body.get("user", {}).get("id")
+
+        if confirm_or_cancel == "cancel":
+            # Replace confirmation buttons with cancelled context
+            cancelled_blocks = [
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": "_Deprecation cancelled_"}],
+                },
+            ]
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=cancelled_blocks,
+                    text="Deprecation cancelled",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled deprecation message: {e}")
+            return
+
+        # confirm_or_cancel == "confirm"
+        try:
+            aggregate = await load_aggregate(channel_id)
+            entity = aggregate.get_entity(EntityId(entity_id_str))
+
+            if entity is None:
+                await say(text=f":x: Decision `{entity_id_str[:8]}` not found.", thread_ts=thread_ts)
+                return
+
+            if not isinstance(entity, CommittedEntity):
+                state_name = type(entity).__name__.replace("Entity", "")
+                await say(
+                    text=f":x: Only committed decisions can be deprecated. Current state: *{state_name}*.",
+                    thread_ts=thread_ts,
+                )
+                return
+
+            title = getattr(entity.content, "title", entity_id_str[:8])
+
+            # Deprecate via aggregate
+            deprecated = aggregate.deprecate_decision(
+                entity_id=EntityId(entity_id_str),
+                actor_id=UserId(user_id),
+                reason="Deprecated via Slack",
+            )
+            await save_events(aggregate)
+
+            logger.info(f"Deprecated decision '{title}' in {channel_id} by {user_id}")
+
+            # Notify Jira if entity has jira_link
+            if entity.jira_link is not None:
+                try:
+                    from src.jira.factory import get_sync_service
+                    sync_service = get_sync_service()
+                    await sync_service.notify_decision_deprecated(deprecated)
+                except Exception as e:
+                    logger.warning(f"Jira deprecation notification failed: {e}")
+
+            # Update pinned ADR message if it exists
+            adr_ts = getattr(entity, 'adr_message_ts', None)
+            if adr_ts:
+                try:
+                    old_msg = await client.conversations_history(
+                        channel=channel_id, latest=adr_ts, inclusive=True, limit=1,
+                    )
+                    old_blocks = old_msg.get("messages", [{}])[0].get("blocks", [])
+                    deprecated_notice = {
+                        "type": "context",
+                        "elements": [{"type": "mrkdwn", "text": ":x: _This decision has been deprecated._"}],
+                    }
+                    updated_old_blocks = [deprecated_notice] + old_blocks
+                    await client.chat_update(
+                        channel=channel_id, ts=adr_ts,
+                        blocks=updated_old_blocks,
+                        text="This decision has been deprecated.",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update ADR message with deprecation notice: {e}")
+
+            # Update dashboard
+            await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            # Replace confirmation buttons with result
+            result_blocks = [
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f":no_entry_sign: *{title}* deprecated by <@{user_id}>"}],
+                },
+            ]
+            await client.chat_update(
+                channel=channel_id, ts=message_ts,
+                blocks=result_blocks,
+                text=f"Decision '{title}' deprecated",
+            )
+
+        except Exception as e:
+            logger.error(f"Error deprecating decision: {e}", exc_info=True)
+            await say(text=f":x: Failed to deprecate decision: {e}", thread_ts=thread_ts)
 
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
