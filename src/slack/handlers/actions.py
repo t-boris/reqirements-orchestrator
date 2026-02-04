@@ -33,6 +33,9 @@ DECISION_PREVIEW_PATTERN = re.compile(r"^(record_all|cancel)_decisions$")
 # Pattern for per-ADR action buttons: adr_record_0, adr_edit_1, adr_delete_2
 ADR_ACTION_PATTERN = re.compile(r"^adr_(record|edit|delete)_(\d+)$")
 
+# Pattern for RECORD mode confirm/edit/cancel/amend buttons
+RECORD_CONFIRM_PATTERN = re.compile(r"^(confirm_record|confirm_amend|edit|cancel)_decision$")
+
 
 def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
     """Build a Slack deep-link URL from channel ID and message timestamp."""
@@ -124,6 +127,129 @@ def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
     return decisions
 
 
+def _parse_record_mode_preview(blocks: list[dict]) -> dict | None:
+    """Parse decision data from RECORD mode preview blocks.
+
+    Preview blocks (from RecordModeHandler._build_decision_preview_blocks):
+    - Section 1: *Draft Decision*\\n\\n*Type:* ...\\n*Title:* ...
+    - Section 2: *Description:*\\n...\\n\\n*Rationale:*\\n...(optional alternatives)
+    - Actions: confirm/edit/cancel buttons
+    """
+    sections = [b for b in blocks if b.get("type") == "section"]
+    if len(sections) < 2:
+        return None
+
+    # Parse first section: type and title
+    text1 = sections[0].get("text", {}).get("text", "")
+    title = ""
+    decision_type = "architecture"
+    for line in text1.split("\n"):
+        line = line.strip()
+        if line.startswith("*Type:*"):
+            decision_type = line.replace("*Type:*", "").strip().lower()
+        elif line.startswith("*Title:*"):
+            title = line.replace("*Title:*", "").strip()
+
+    # Parse second section: description, rationale, alternatives
+    text2 = sections[1].get("text", {}).get("text", "")
+    description = ""
+    rationale = ""
+    alternatives = []
+
+    # Split by known headers
+    current_field = None
+    for line in text2.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("*Description:*"):
+            current_field = "description"
+            rest = stripped.replace("*Description:*", "").strip()
+            if rest:
+                description = rest
+        elif stripped.startswith("*Rationale:*"):
+            current_field = "rationale"
+            rest = stripped.replace("*Rationale:*", "").strip()
+            if rest:
+                rationale = rest
+        elif stripped.startswith("_Alternatives:"):
+            alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
+            alternatives = [a.strip() for a in alts_raw.split(",") if a.strip()]
+            current_field = None
+        elif stripped and current_field == "description":
+            description = f"{description}\n{stripped}" if description else stripped
+        elif stripped and current_field == "rationale":
+            rationale = f"{rationale}\n{stripped}" if rationale else stripped
+
+    if not title:
+        return None
+
+    return {
+        "decision_type": decision_type,
+        "title": title,
+        "decision": description.strip(),
+        "rationale": rationale.strip(),
+        "alternatives_considered": alternatives,
+    }
+
+
+def _parse_amend_preview(blocks: list[dict]) -> dict | None:
+    """Parse decision data from amendment preview blocks.
+
+    Amendment blocks (from RecordModeHandler._build_amendment_preview_blocks):
+    - Section 1: *Amend Existing Decision*\\n\\n_Current:_ *title*\\n...
+    - Divider
+    - Section 2: *Proposed Update:*\\n\\n*Type:* ...\\n*Title:* ...\\n\\n*Description:*\\n...\\n\\n*Rationale:*\\n...
+    - Actions: amend/record as new/cancel buttons
+    """
+    sections = [b for b in blocks if b.get("type") == "section"]
+    if len(sections) < 2:
+        return None
+
+    # The proposed update content is in the second section (after divider)
+    text2 = sections[1].get("text", {}).get("text", "")
+    title = ""
+    decision_type = "architecture"
+    description = ""
+    rationale = ""
+    alternatives = []
+
+    current_field = None
+    for line in text2.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("*Type:*"):
+            decision_type = stripped.replace("*Type:*", "").strip().lower()
+        elif stripped.startswith("*Title:*"):
+            title = stripped.replace("*Title:*", "").strip()
+        elif stripped.startswith("*Description:*"):
+            current_field = "description"
+            rest = stripped.replace("*Description:*", "").strip()
+            if rest:
+                description = rest
+        elif stripped.startswith("*Rationale:*"):
+            current_field = "rationale"
+            rest = stripped.replace("*Rationale:*", "").strip()
+            if rest:
+                rationale = rest
+        elif stripped.startswith("_Alternatives:"):
+            alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
+            alternatives = [a.strip() for a in alts_raw.split(",") if a.strip()]
+            current_field = None
+        elif stripped and current_field == "description":
+            description = f"{description}\n{stripped}" if description else stripped
+        elif stripped and current_field == "rationale":
+            rationale = f"{rationale}\n{stripped}" if rationale else stripped
+
+    if not title:
+        return None
+
+    return {
+        "decision_type": decision_type,
+        "title": title,
+        "decision": description.strip(),
+        "rationale": rationale.strip(),
+        "alternatives_considered": alternatives,
+    }
+
+
 async def _record_all_decisions(
     client, say, channel_id: str, message_ts: str, thread_ts: str | None,
     user_id: str, original_blocks: list[dict],
@@ -139,6 +265,9 @@ async def _record_all_decisions(
 
         created = []
         for d in decisions:
+            # Post and pin ADR first to get adr_ts for persistence
+            adr_ts = await _post_and_pin_adr(client, channel_id, d, user_id)
+
             try:
                 dt = DecisionType(d.get("decision_type", "architecture").lower())
             except ValueError:
@@ -156,19 +285,13 @@ async def _record_all_decisions(
                 actor_id=UserId(user_id),
                 thread_ts=ThreadTs(thread_ts or ""),
                 content=content,
+                adr_message_ts=adr_ts,
             )
-            created.append((str(draft.id), content.title, d))
+            created.append((str(draft.id), content.title))
 
         await save_events(aggregate)
 
         logger.info(f"Recorded {len(created)} decisions in {channel_id} by {user_id}")
-
-        # Post and pin ADR messages
-        adr_links: dict[str, str] = {}
-        for draft_id, _title, decision_dict in created:
-            adr_ts = await _post_and_pin_adr(client, channel_id, decision_dict, user_id)
-            if adr_ts:
-                adr_links[draft_id] = adr_ts
 
         # Update original message — replace buttons with confirmation
         updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]
@@ -186,7 +309,7 @@ async def _record_all_decisions(
             text=f"{len(created)} decisions recorded",
         )
 
-        await _update_dashboard_after_decision(client, channel_id, aggregate, adr_links=adr_links)
+        await _update_dashboard_after_decision(client, channel_id, aggregate)
 
     except Exception as e:
         logger.error(f"Error recording decisions: {e}", exc_info=True)
@@ -272,7 +395,7 @@ def _replace_adr_blocks(blocks: list[dict], section_idx: int, replacement_block:
 
 
 async def _update_dashboard_after_decision(
-    client, channel_id: str, aggregate, *, adr_links: dict[str, str] | None = None,
+    client, channel_id: str, aggregate,
 ) -> None:
     """Update the channel dashboard after a decision change."""
     try:
@@ -285,8 +408,9 @@ async def _update_dashboard_after_decision(
                 entity_id = str(entity.id)
                 title = getattr(entity.content, "title", entity_id[:8])
                 item: dict[str, str] = {"title": title, "id": entity_id}
-                if adr_links and entity_id in adr_links:
-                    item["link"] = _build_slack_permalink(channel_id, adr_links[entity_id])
+                adr_ts = getattr(entity, 'adr_message_ts', None)
+                if adr_ts:
+                    item["link"] = _build_slack_permalink(channel_id, adr_ts)
                 decision_items.append(item)
             else:
                 lifecycle = get_lifecycle(entity)
@@ -330,6 +454,9 @@ async def _record_single_decision(
     decision = _parse_single_decision_from_section(blocks[section_idx])
 
     try:
+        # Post and pin ADR first to get adr_ts for persistence
+        adr_ts = await _post_and_pin_adr(client, channel_id, decision, user_id)
+
         aggregate = await load_aggregate(channel_id)
 
         try:
@@ -349,16 +476,11 @@ async def _record_single_decision(
             actor_id=UserId(user_id),
             thread_ts=ThreadTs(thread_ts or ""),
             content=content,
+            adr_message_ts=adr_ts,
         )
         await save_events(aggregate)
 
         logger.info(f"Recorded single decision '{decision['title']}' in {channel_id} by {user_id}")
-
-        # Post and pin ADR to channel
-        adr_ts = await _post_and_pin_adr(client, channel_id, decision, user_id)
-        adr_links: dict[str, str] = {}
-        if adr_ts:
-            adr_links[str(draft.id)] = adr_ts
 
         confirmation = {
             "type": "context",
@@ -372,7 +494,7 @@ async def _record_single_decision(
             text=f"Decision '{decision['title']}' recorded",
         )
 
-        await _update_dashboard_after_decision(client, channel_id, aggregate, adr_links=adr_links)
+        await _update_dashboard_after_decision(client, channel_id, aggregate)
 
     except Exception as e:
         logger.error(f"Error recording single decision: {e}", exc_info=True)
@@ -796,6 +918,219 @@ def register_action_handlers(app: AsyncApp) -> None:
                 )
             except Exception as e:
                 logger.warning(f"Failed to update cancelled message: {e}")
+
+    @app.action(RECORD_CONFIRM_PATTERN)
+    async def handle_record_confirm(ack, body: dict, action: dict, client, say) -> None:
+        """Handle Record Decision / Edit / Cancel buttons from RECORD mode preview."""
+        await ack()
+
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if action_id == "cancel_decision":
+            # Replace buttons with cancelled context
+            updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+            updated_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": "_Cancelled_"}],
+            })
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks, text="Decision cancelled",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled message: {e}")
+            return
+
+        if action_id == "confirm_amend_decision":
+            # Parse entity_id from button value
+            try:
+                button_value = json.loads(action.get("value", "{}"))
+                entity_id_str = button_value.get("entity_id")
+            except (json.JSONDecodeError, TypeError):
+                entity_id_str = None
+
+            if not entity_id_str:
+                await say(text=":x: Could not determine which decision to amend.", thread_ts=thread_ts)
+                return
+
+            # Parse new content from amendment preview blocks
+            decision = _parse_amend_preview(blocks)
+            if not decision:
+                await say(text=":x: Could not parse amendment content from preview.", thread_ts=thread_ts)
+                return
+
+            try:
+                aggregate = await load_aggregate(channel_id)
+                entity = aggregate.get_entity(EntityId(entity_id_str))
+
+                if entity is None:
+                    await say(text=f":x: Decision `{entity_id_str[:8]}` not found.", thread_ts=thread_ts)
+                    return
+
+                # Check if entity is amendable (only Draft and Proposed)
+                if isinstance(entity, (ApprovedEntity,)):
+                    await say(
+                        text=f":x: This decision is already *Approved*. To change it, deprecate and record a new one.",
+                        thread_ts=thread_ts,
+                    )
+                    return
+
+                if not isinstance(entity, (DraftEntity, ProposedEntity)):
+                    state_name = type(entity).__name__.replace("Entity", "")
+                    await say(
+                        text=f":x: This decision is already *{state_name}*. To change it, deprecate and record a new one.",
+                        thread_ts=thread_ts,
+                    )
+                    return
+
+                # Build new content
+                try:
+                    dt = DecisionType(decision.get("decision_type", "architecture").lower())
+                except ValueError:
+                    dt = DecisionType.ARCHITECTURE
+
+                new_content = DecisionContent(
+                    decision_type=dt,
+                    title=decision["title"],
+                    description=decision.get("decision", ""),
+                    rationale=decision.get("rationale", ""),
+                    alternatives_considered=decision.get("alternatives_considered", []),
+                )
+
+                # Post and pin new ADR message
+                adr_ts = await _post_and_pin_adr(client, channel_id, decision, user_id)
+
+                # Get old ADR message ts before amending
+                old_adr_ts = getattr(entity, 'adr_message_ts', None)
+
+                # Amend decision via aggregate
+                aggregate.amend_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    new_content=new_content,
+                    reason="Amended via thread discussion",
+                    new_adr_message_ts=adr_ts,
+                )
+                await save_events(aggregate)
+
+                logger.info(f"Amended decision '{decision['title']}' in {channel_id} by {user_id}")
+
+                # Mark old ADR message as amended
+                if old_adr_ts:
+                    try:
+                        old_msg = await client.conversations_history(
+                            channel=channel_id, latest=old_adr_ts, inclusive=True, limit=1,
+                        )
+                        old_blocks = old_msg.get("messages", [{}])[0].get("blocks", [])
+                        amended_notice = {
+                            "type": "context",
+                            "elements": [{"type": "mrkdwn", "text": ":warning: _This decision has been amended. See updated version above._"}],
+                        }
+                        updated_old_blocks = [amended_notice] + old_blocks
+                        await client.chat_update(
+                            channel=channel_id, ts=old_adr_ts,
+                            blocks=updated_old_blocks,
+                            text="This decision has been amended.",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update old ADR message: {e}")
+
+                # Replace buttons with confirmation on the preview message
+                updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+                updated_blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f":white_check_mark: *{decision['title']}* amended by <@{user_id}>"}],
+                })
+
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks,
+                    text=f"Decision '{decision['title']}' amended",
+                )
+
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            except Exception as e:
+                logger.error(f"Error amending decision: {e}", exc_info=True)
+                await say(text=f":x: Failed to amend decision: {e}", thread_ts=thread_ts)
+            return
+
+        # Parse decision from the RECORD mode preview blocks
+        decision = _parse_record_mode_preview(blocks)
+
+        if action_id == "edit_decision":
+            from src.slack.blocks.decisions import build_edit_adr_modal
+
+            trigger_id = body.get("trigger_id")
+            if trigger_id and decision:
+                modal = build_edit_adr_modal(
+                    adr_index=0,
+                    decision=decision,
+                    channel_id=channel_id,
+                    message_ts=message_ts,
+                    thread_ts=thread_ts,
+                )
+                await client.views_open(trigger_id=trigger_id, view=modal)
+            return
+
+        if action_id == "confirm_record_decision":
+            if not decision:
+                await say(text=":x: Could not parse decision from preview.", thread_ts=thread_ts)
+                return
+
+            try:
+                # Post and pin ADR first to get adr_ts
+                adr_ts = await _post_and_pin_adr(client, channel_id, decision, user_id)
+
+                aggregate = await load_aggregate(channel_id)
+
+                try:
+                    dt = DecisionType(decision.get("decision_type", "architecture").lower())
+                except ValueError:
+                    dt = DecisionType.ARCHITECTURE
+
+                content = DecisionContent(
+                    decision_type=dt,
+                    title=decision["title"],
+                    description=decision.get("decision", ""),
+                    rationale=decision.get("rationale", ""),
+                    alternatives_considered=decision.get("alternatives_considered", []),
+                )
+
+                draft = aggregate.record_decision(
+                    actor_id=UserId(user_id),
+                    thread_ts=ThreadTs(thread_ts or ""),
+                    content=content,
+                    adr_message_ts=adr_ts,
+                )
+                await save_events(aggregate)
+
+                logger.info(f"Confirmed record decision '{decision['title']}' in {channel_id} by {user_id}")
+
+                # Replace buttons with confirmation
+                updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+                updated_blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f":white_check_mark: *{decision['title']}* recorded by <@{user_id}>"}],
+                })
+
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks,
+                    text=f"Decision '{decision['title']}' recorded",
+                )
+
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            except Exception as e:
+                logger.error(f"Error confirming record decision: {e}", exc_info=True)
+                await say(text=f":x: Failed to record decision: {e}", thread_ts=thread_ts)
 
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
