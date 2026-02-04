@@ -19,6 +19,7 @@ import asyncpg
 
 from src.domain.events import (
     ApprovalAdded,
+    DecisionAmended,
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
@@ -97,6 +98,7 @@ class EntityProjection(Projection):
             "DecisionProposed",
             "DecisionApproved",
             "DecisionCommitted",
+            "DecisionAmended",
             "DecisionDeprecated",
             # Approval/Objection events
             "ApprovalAdded",
@@ -148,6 +150,8 @@ class EntityProjection(Projection):
                 await self._commit_decision(event)
             case DecisionDeprecated():
                 await self._deprecate_entity(event)
+            case DecisionAmended():
+                await self._amend_decision_content(event)
             case ApprovalAdded():
                 await self._add_approval(event.entity_id, event.approved_by)
             case ObjectionRaised():
@@ -309,6 +313,24 @@ class EntityProjection(Projection):
                 WHERE id = $2
                 """,
                 event.changes,
+                str(event.entity_id),
+            )
+
+    async def _amend_decision_content(self, event: DecisionAmended) -> None:
+        """Update decision content and version on amendment.
+
+        Replaces the full content with new_content (not a merge).
+        """
+        async with self.pool.acquire() as conn:
+            content = self._serialize_content(event.new_content)
+            await conn.execute(
+                """
+                UPDATE entities_view
+                SET content = $1, version = $2, updated_at = NOW()
+                WHERE id = $3
+                """,
+                content,
+                event.version,
                 str(event.entity_id),
             )
 
