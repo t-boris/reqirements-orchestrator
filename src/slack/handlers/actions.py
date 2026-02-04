@@ -140,129 +140,6 @@ def _parse_decisions_from_blocks(blocks: list[dict]) -> list[dict]:
     return decisions
 
 
-def _parse_record_mode_preview(blocks: list[dict]) -> dict | None:
-    """Parse decision data from RECORD mode preview blocks.
-
-    Preview blocks (from RecordModeHandler._build_decision_preview_blocks):
-    - Section 1: *Draft Decision*\\n\\n*Type:* ...\\n*Title:* ...
-    - Section 2: *Description:*\\n...\\n\\n*Rationale:*\\n...(optional alternatives)
-    - Actions: confirm/edit/cancel buttons
-    """
-    sections = [b for b in blocks if b.get("type") == "section"]
-    if len(sections) < 2:
-        return None
-
-    # Parse first section: type and title
-    text1 = sections[0].get("text", {}).get("text", "")
-    title = ""
-    decision_type = "architecture"
-    for line in text1.split("\n"):
-        line = line.strip()
-        if line.startswith("*Type:*"):
-            decision_type = line.replace("*Type:*", "").strip().lower()
-        elif line.startswith("*Title:*"):
-            title = line.replace("*Title:*", "").strip()
-
-    # Parse second section: description, rationale, alternatives
-    text2 = sections[1].get("text", {}).get("text", "")
-    description = ""
-    rationale = ""
-    alternatives = []
-
-    # Split by known headers
-    current_field = None
-    for line in text2.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("*Description:*"):
-            current_field = "description"
-            rest = stripped.replace("*Description:*", "").strip()
-            if rest:
-                description = rest
-        elif stripped.startswith("*Rationale:*"):
-            current_field = "rationale"
-            rest = stripped.replace("*Rationale:*", "").strip()
-            if rest:
-                rationale = rest
-        elif stripped.startswith("_Alternatives:"):
-            alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
-            alternatives = [a.strip() for a in alts_raw.split(",") if a.strip()]
-            current_field = None
-        elif stripped and current_field == "description":
-            description = f"{description}\n{stripped}" if description else stripped
-        elif stripped and current_field == "rationale":
-            rationale = f"{rationale}\n{stripped}" if rationale else stripped
-
-    if not title:
-        return None
-
-    return {
-        "decision_type": decision_type,
-        "title": title,
-        "decision": description.strip(),
-        "rationale": rationale.strip(),
-        "alternatives_considered": alternatives,
-    }
-
-
-def _parse_amend_preview(blocks: list[dict]) -> dict | None:
-    """Parse decision data from amendment preview blocks.
-
-    Amendment blocks (from RecordModeHandler._build_amendment_preview_blocks):
-    - Section 1: *Amend Existing Decision*\\n\\n_Current:_ *title*\\n...
-    - Divider
-    - Section 2: *Proposed Update:*\\n\\n*Type:* ...\\n*Title:* ...\\n\\n*Description:*\\n...\\n\\n*Rationale:*\\n...
-    - Actions: amend/record as new/cancel buttons
-    """
-    sections = [b for b in blocks if b.get("type") == "section"]
-    if len(sections) < 2:
-        return None
-
-    # The proposed update content is in the second section (after divider)
-    text2 = sections[1].get("text", {}).get("text", "")
-    title = ""
-    decision_type = "architecture"
-    description = ""
-    rationale = ""
-    alternatives = []
-
-    current_field = None
-    for line in text2.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("*Type:*"):
-            decision_type = stripped.replace("*Type:*", "").strip().lower()
-        elif stripped.startswith("*Title:*"):
-            title = stripped.replace("*Title:*", "").strip()
-        elif stripped.startswith("*Description:*"):
-            current_field = "description"
-            rest = stripped.replace("*Description:*", "").strip()
-            if rest:
-                description = rest
-        elif stripped.startswith("*Rationale:*"):
-            current_field = "rationale"
-            rest = stripped.replace("*Rationale:*", "").strip()
-            if rest:
-                rationale = rest
-        elif stripped.startswith("_Alternatives:"):
-            alts_raw = stripped.replace("_Alternatives:", "").strip().rstrip("_").strip()
-            alternatives = [a.strip() for a in alts_raw.split(",") if a.strip()]
-            current_field = None
-        elif stripped and current_field == "description":
-            description = f"{description}\n{stripped}" if description else stripped
-        elif stripped and current_field == "rationale":
-            rationale = f"{rationale}\n{stripped}" if rationale else stripped
-
-    if not title:
-        return None
-
-    return {
-        "decision_type": decision_type,
-        "title": title,
-        "decision": description.strip(),
-        "rationale": rationale.strip(),
-        "alternatives_considered": alternatives,
-    }
-
-
 async def _record_all_decisions(
     client, say, channel_id: str, message_ts: str, thread_ts: str | None,
     user_id: str, original_blocks: list[dict],
@@ -968,21 +845,27 @@ def register_action_handlers(app: AsyncApp) -> None:
             return
 
         if action_id == "confirm_amend_decision":
-            # Parse entity_id from button value
+            # Read decision data + entity_id from button value JSON
             try:
                 button_value = json.loads(action.get("value", "{}"))
                 entity_id_str = button_value.get("entity_id")
+                decision = {
+                    "decision_type": button_value.get("decision_type", "architecture"),
+                    "title": button_value.get("title", ""),
+                    "decision": button_value.get("decision", ""),
+                    "rationale": button_value.get("rationale", ""),
+                    "alternatives_considered": button_value.get("alternatives_considered", []),
+                }
             except (json.JSONDecodeError, TypeError):
                 entity_id_str = None
+                decision = None
 
             if not entity_id_str:
                 await say(text=":x: Could not determine which decision to amend.", thread_ts=thread_ts)
                 return
 
-            # Parse new content from amendment preview blocks
-            decision = _parse_amend_preview(blocks)
-            if not decision:
-                await say(text=":x: Could not parse amendment content from preview.", thread_ts=thread_ts)
+            if not decision or not decision.get("title"):
+                await say(text=":x: Could not parse amendment content.", thread_ts=thread_ts)
                 return
 
             try:
@@ -1081,8 +964,13 @@ def register_action_handlers(app: AsyncApp) -> None:
                 await say(text=f":x: Failed to amend decision: {e}", thread_ts=thread_ts)
             return
 
-        # Parse decision from the RECORD mode preview blocks
-        decision = _parse_record_mode_preview(blocks)
+        # Read decision data from button value JSON
+        try:
+            decision = json.loads(action.get("value", "{}"))
+            if not decision.get("title"):
+                decision = None
+        except (json.JSONDecodeError, TypeError):
+            decision = None
 
         if action_id == "edit_decision":
             from src.slack.blocks.decisions import build_edit_adr_modal
@@ -1101,7 +989,7 @@ def register_action_handlers(app: AsyncApp) -> None:
 
         if action_id == "confirm_record_decision":
             if not decision:
-                await say(text=":x: Could not parse decision from preview.", thread_ts=thread_ts)
+                await say(text=":x: Could not read decision data. Please try again.", thread_ts=thread_ts)
                 return
 
             try:
