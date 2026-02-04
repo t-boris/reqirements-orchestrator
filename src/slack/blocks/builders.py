@@ -199,8 +199,10 @@ def build_dashboard_blocks(
                     display = f"~{title}~ _(deprecated)_"
                 elif status == "committed":
                     display = f":white_check_mark: {title}"
-                else:
-                    display = title
+                elif status == "proposed":
+                    display = f":hourglass: {title}"
+                else:  # draft
+                    display = f":pencil2: {title}"
 
                 text = f"* <{link}|{display}>" if link else f"* {display}"
                 blocks.append({
