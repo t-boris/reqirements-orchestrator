@@ -17,6 +17,61 @@ DECISION_TYPE_OPTIONS = [
 ]
 
 
+STATUS_BADGES: dict[str, str] = {
+    "draft": ":pencil2: Draft",
+    "proposed": ":hourglass: Proposed for Approval",
+    "approved": ":white_check_mark: Approved",
+    "committed": ":white_check_mark: Committed",
+    "deprecated": ":no_entry_sign: Deprecated",
+}
+
+
+def _build_lifecycle_buttons(status: str, entity_id: str) -> list[dict[str, Any]]:
+    """Build lifecycle action buttons appropriate for the given status.
+
+    Args:
+        status: Current lifecycle status (draft, proposed, approved, committed, deprecated).
+        entity_id: Entity ID passed as button value.
+
+    Returns:
+        List of button elements, or empty list for deprecated status.
+    """
+    if status == "draft":
+        return [{
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Propose for Approval"},
+            "style": "primary",
+            "action_id": "adr_propose",
+            "value": entity_id,
+        }]
+    elif status == "proposed":
+        return [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Approve"},
+                "style": "primary",
+                "action_id": "adr_approve",
+                "value": entity_id,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Object"},
+                "action_id": "adr_object",
+                "value": entity_id,
+            },
+        ]
+    elif status in ("approved", "committed"):
+        return [{
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Deprecate"},
+            "style": "danger",
+            "action_id": "adr_deprecate",
+            "value": entity_id,
+        }]
+    # deprecated or unknown: no buttons
+    return []
+
+
 def build_adr_post_blocks(
     title: str,
     decision_type: str,
@@ -24,12 +79,17 @@ def build_adr_post_blocks(
     rationale: str,
     alternatives: list[str] | None = None,
     recorded_by: str | None = None,
+    status: str = "draft",
+    entity_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build blocks for a pinned ADR channel post.
 
     This is the formatted message posted to the channel when a decision is recorded.
+    Includes a status badge and lifecycle action buttons when entity_id is provided.
     """
     now = int(time.time())
+    badge = STATUS_BADGES.get(status, STATUS_BADGES["draft"])
+
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
@@ -37,7 +97,7 @@ def build_adr_post_blocks(
         },
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": f"Type: {decision_type}"}],
+            "elements": [{"type": "mrkdwn", "text": f"Type: {decision_type} | Status: {badge}"}],
         },
         {
             "type": "section",
@@ -55,6 +115,15 @@ def build_adr_post_blocks(
             "type": "context",
             "elements": [{"type": "mrkdwn", "text": f"_Alternatives: {alts_text}_"}],
         })
+
+    # Lifecycle action buttons (only if entity_id provided)
+    if entity_id:
+        buttons = _build_lifecycle_buttons(status, entity_id)
+        if buttons:
+            blocks.append({
+                "type": "actions",
+                "elements": buttons,
+            })
 
     blocks.append({"type": "divider"})
 
