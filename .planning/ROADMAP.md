@@ -54,6 +54,33 @@ Plans:
 - [x] 09-03: RECORD mode amendment detection + Slack handlers (wave 2, depends: 01)
 - [x] 09-04: Deprecation UI + dashboard enhancement (wave 3, depends: 01, 02, 03)
 
+### Phase 10: Code Review Polish
+
+**Goal:** Address UX gaps, architectural smells, and data inconsistencies discovered during Phase 9 code review. Clean up action handler data flow, decouple Jira side effects, and add lifecycle UI to pinned ADR messages.
+
+**Source:** Code review session (2026-02-04) — 8 issues logged in ISSUES.md (ISS-001 through ISS-008)
+
+**Scope:**
+1. **Brittle parsers → JSON values** (ISS-003) — Store decision data in `action.value` instead of parsing mrkdwn blocks
+2. **Entity IDs in value** (ISS-004) — Use fixed `action_id` with entity ID in `action.value` for deprecation buttons
+3. **Dashboard status indicators** (ISS-006) — Distinguish Draft (:pencil2:) from Proposed (:hourglass:) on dashboard
+4. **Dashboard overflow** (ISS-007) — Add "...and N more" indicator when decisions are truncated
+5. **Projection consistency** (ISS-008) — Store `adr_message_ts` and reset approvals on amendment in read model
+6. **Async Jira notifications** (ISS-005) — Move Jira calls from handlers to event-driven projection
+7. **ADR lifecycle UI** (ISS-001) — Status badges + action buttons on pinned ADR messages
+
+**Deferred:** ISS-002 (adr_message_ts on work item entities) — Low ROI, would require event migration for existing data
+
+**Depends on:** Phase 9
+**Plans:** 5 plans in 3 waves
+
+Plans:
+- [ ] 10-01: Action handler data flow — JSON values + fixed action_ids (wave 1, ISS-003 + ISS-004)
+- [x] 10-02: Dashboard UX — status indicators + overflow (wave 1, ISS-006 + ISS-007)
+- [ ] 10-03: Projection consistency — adr_message_ts + approval reset (wave 1, ISS-008)
+- [ ] 10-04: Async Jira notifications via event-driven projection (wave 2, depends: 01, ISS-005)
+- [ ] 10-05: ADR lifecycle UI on pinned messages (wave 3, depends: 01 + 04, ISS-001)
+
 ---
 
 ## Completed Milestones
@@ -88,3 +115,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 7. Polish & Deploy | v2.0 | 4/4 | Complete | 2026-02-02 |
 | 8. Smart UX Layer | v2.1 | 5/5 | Complete | 2026-02-03 |
 | 9. Decision Lifecycle | v2.1 | 4/4 | Complete | 2026-02-04 |
+| 10. Code Review Polish | v2.1 | 2/5 | In progress | - |
