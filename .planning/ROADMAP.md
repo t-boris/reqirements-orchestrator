@@ -50,7 +50,7 @@ Plans:
 
 Plans:
 - [ ] 09-01: Domain layer — DecisionAmended event + amend_decision method (wave 1)
-- [ ] 09-02: Jira notifications — deprecation and amendment comments (wave 1)
+- [x] 09-02: Jira notifications — deprecation and amendment comments (wave 1)
 - [ ] 09-03: RECORD mode amendment detection + Slack handlers (wave 2, depends: 01)
 - [ ] 09-04: Deprecation UI + dashboard enhancement (wave 3, depends: 01, 02, 03)
 
@@ -87,4 +87,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 6. Jira Projection | v2.0 | 5/5 | Complete | 2026-02-02 |
 | 7. Polish & Deploy | v2.0 | 4/4 | Complete | 2026-02-02 |
 | 8. Smart UX Layer | v2.1 | 5/5 | Complete | 2026-02-03 |
-| 9. Decision Lifecycle | v2.1 | 0/4 | Planning | - |
+| 9. Decision Lifecycle | v2.1 | 1/4 | In progress | - |
