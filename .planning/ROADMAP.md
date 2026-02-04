@@ -3,7 +3,7 @@
 ## Milestones
 
 - [x] **v2.0 MARO 2.0** - Phases 1-7 (shipped 2026-02-02)
-- [ ] **v2.1 Smart UX & Observability** - Phase 8+
+- [x] **v2.1 Smart UX & Observability** - Phases 8-10 (completed 2026-02-04)
 
 ## Current Milestone: v2.1 Smart UX & Observability
 
@@ -79,7 +79,7 @@ Plans:
 - [x] 10-02: Dashboard UX — status indicators + overflow (wave 1, ISS-006 + ISS-007)
 - [x] 10-03: Projection consistency — adr_message_ts + approval reset (wave 1, ISS-008)
 - [x] 10-04: Async Jira notifications via event-driven projection (wave 2, depends: 01, ISS-005)
-- [ ] 10-05: ADR lifecycle UI on pinned messages (wave 3, depends: 01 + 04, ISS-001)
+- [x] 10-05: ADR lifecycle UI on pinned messages (wave 3, depends: 01 + 04, ISS-001)
 
 ---
 
@@ -115,4 +115,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 7. Polish & Deploy | v2.0 | 4/4 | Complete | 2026-02-02 |
 | 8. Smart UX Layer | v2.1 | 5/5 | Complete | 2026-02-03 |
 | 9. Decision Lifecycle | v2.1 | 4/4 | Complete | 2026-02-04 |
-| 10. Code Review Polish | v2.1 | 4/5 | In progress | - |
+| 10. Code Review Polish | v2.1 | 5/5 | Complete | 2026-02-04 |

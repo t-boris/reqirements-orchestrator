@@ -4,24 +4,6 @@ Deferred issues discovered during code review and development.
 
 ## Open
 
-### ISS-001: Pinned ADR messages have no lifecycle UI
-
-**Source:** Code review (2026-02-04)
-**Severity:** UX gap
-**Phase:** Future
-
-Pinned ADR messages in the channel are plain formatted text with no interactive elements. Users cannot tell whether a decision is Draft, Proposed, Approved, or Committed by looking at the pinned message. The only way to advance the lifecycle is through the original thread — which is easy to lose.
-
-**Missing:**
-- No status indicator (Draft / Proposed / Approved / Committed) on pinned message
-- No action buttons (Propose for Approval, Approve, Deprecate) on pinned message
-- `chat_update` not called on the pinned message when lifecycle transitions happen
-
-**Suggested fix:**
-- Add status badge + action buttons to `build_adr_post_blocks`
-- Update pinned message on each lifecycle transition via `chat_update`
-- Buttons: "Propose for Approval" on Draft, "Approve / Object" on Proposed, "Deprecate" on Committed
-
 ### ISS-002: `adr_message_ts` field on work item entities is dead weight
 
 **Source:** Code review (2026-02-04)
@@ -57,6 +39,14 @@ Several action patterns embed entity UUID in the `action_id` string: `deprecate_
 - Simplifies patterns: exact string match instead of regex
 
 ## Closed
+
+### ISS-001: Pinned ADR messages have no lifecycle UI
+
+**Source:** Code review (2026-02-04)
+**Severity:** UX gap
+**Closed:** 2026-02-04 (Plan 10-05)
+
+Fixed: Added status badges (Draft/Proposed/Approved/Committed/Deprecated) and lifecycle action buttons to `build_adr_post_blocks`. Registered `adr_propose`, `adr_approve`, `adr_object`, `adr_deprecate` action handlers. Created `_update_adr_pinned_message` helper that rebuilds pinned ADR blocks on every lifecycle transition. Wired into all existing handlers that change decision state.
 
 ### ISS-005: Action handlers do too much — Jira calls block user response
 
