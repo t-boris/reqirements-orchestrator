@@ -69,22 +69,15 @@ Several action patterns embed entity UUID in the `action_id` string: `deprecate_
 - Use event-driven approach: Jira notification triggered by `DecisionDeprecated` / `DecisionAmended` events in a projection or async handler
 - Aligns with existing outbox pattern in event store
 
+## Closed
+
 ### ISS-008: Amendment projection doesn't update approvals or adr_message_ts
 
 **Source:** Code review (2026-02-04)
 **Severity:** Data inconsistency
-**Phase:** Future
+**Closed:** 2026-02-04 (Plan 10-03)
 
-`_amend_decision_content` in `projections.py` updates only `content` and `version` in `entities_view`. Two gaps:
-
-1. **Approvals not reset** — when content changes, existing approvals may be stale (approved old content). If approval reset is added to the domain layer, the projection must mirror it.
-2. **`adr_message_ts` not stored** — `DecisionAmended.new_adr_message_ts` is not written to the read model. Currently not a problem (dashboard reads from aggregate, not projection), but creates inconsistency if read model is used for ADR link queries in the future.
-
-**Suggested fix:**
-- Add `adr_message_ts` column to `entities_view` (or store in content JSONB)
-- When amendment resets approvals in domain layer, projection should `SET approvals = '[]'::jsonb`
-
-## Closed
+Fixed: Added `adr_message_ts` column to `entities_view` (migration 003). Updated `_amend_decision_content` to store `new_adr_message_ts` and `_create_entity` to store `adr_message_ts` on initial recording. Approvals not reset on amendment because the aggregate intentionally preserves them (decision documented).
 
 ### ISS-006: Dashboard does not distinguish Draft from Proposed decisions
 
