@@ -264,11 +264,25 @@ class RecordModeHandler(ModeHandler):
                         "text": {"type": "plain_text", "text": "Record Decision"},
                         "style": "primary",
                         "action_id": "confirm_record_decision",
+                        "value": json.dumps({
+                            "title": content["title"],
+                            "decision_type": content["decision_type"],
+                            "decision": content["description"][:1200],
+                            "rationale": content.get("rationale", "")[:500],
+                            "alternatives_considered": content.get("alternatives_considered", []),
+                        }),
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Edit"},
                         "action_id": "edit_decision",
+                        "value": json.dumps({
+                            "title": content["title"],
+                            "decision_type": content["decision_type"],
+                            "decision": content["description"][:1200],
+                            "rationale": content.get("rationale", "")[:500],
+                            "alternatives_considered": content.get("alternatives_considered", []),
+                        }),
                     },
                     {
                         "type": "button",
@@ -329,12 +343,26 @@ class RecordModeHandler(ModeHandler):
                         "text": {"type": "plain_text", "text": "Amend Decision"},
                         "style": "primary",
                         "action_id": "confirm_amend_decision",
-                        "value": json.dumps({"entity_id": str(existing.id)}),
+                        "value": json.dumps({
+                            "entity_id": str(existing.id),
+                            "title": new_content["title"],
+                            "decision_type": new_content["decision_type"],
+                            "decision": new_content["description"][:1200],
+                            "rationale": new_content.get("rationale", "")[:500],
+                            "alternatives_considered": new_content.get("alternatives_considered", []),
+                        }),
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Record as New"},
                         "action_id": "confirm_record_decision",
+                        "value": json.dumps({
+                            "title": new_content["title"],
+                            "decision_type": new_content["decision_type"],
+                            "decision": new_content["description"][:1200],
+                            "rationale": new_content.get("rationale", "")[:500],
+                            "alternatives_considered": new_content.get("alternatives_considered", []),
+                        }),
                     },
                     {
                         "type": "button",
