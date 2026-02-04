@@ -317,20 +317,24 @@ class EntityProjection(Projection):
             )
 
     async def _amend_decision_content(self, event: DecisionAmended) -> None:
-        """Update decision content and version on amendment.
+        """Update decision content, version, and adr_message_ts on amendment.
 
         Replaces the full content with new_content (not a merge).
+        Also updates adr_message_ts if a new ADR message was posted.
         """
         async with self.pool.acquire() as conn:
             content = self._serialize_content(event.new_content)
+            adr_ts = getattr(event, "new_adr_message_ts", None)
             await conn.execute(
                 """
                 UPDATE entities_view
-                SET content = $1, version = $2, updated_at = NOW()
-                WHERE id = $3
+                SET content = $1, version = $2, adr_message_ts = COALESCE($3, adr_message_ts),
+                    updated_at = NOW()
+                WHERE id = $4
                 """,
                 content,
                 event.version,
+                adr_ts,
                 str(event.entity_id),
             )
 
