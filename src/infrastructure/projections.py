@@ -1,7 +1,8 @@
-"""Projection infrastructure for read models.
+"""Projection infrastructure for read models and event-driven side effects.
 
-This module provides the projection base class and EntityProjection implementation
-for building read models from domain events.
+This module provides the projection base class and implementations:
+- EntityProjection: Maintains entities_view read model
+- JiraNotificationProjection: Posts Jira comments on decision changes
 
 Based on maro_2_0.md spec Part 4.5 (Projections).
 
@@ -9,8 +10,10 @@ Key patterns:
 - All projections are idempotent (safe to replay)
 - Uses upserts (ON CONFLICT DO UPDATE) for idempotency
 - Projections track their position for resumption
+- Side-effect projections (Jira) are fault-tolerant (log and continue on failure)
 """
 
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
@@ -437,3 +440,173 @@ class EntityProjection(Projection):
         if hasattr(content, "model_dump"):
             return content.model_dump()
         return dict(content) if content else {}
+
+
+logger = logging.getLogger(__name__)
+
+
+class JiraNotificationProjection(Projection):
+    """Posts Jira comments when decisions are deprecated or amended.
+
+    This projection decouples Jira API calls from Slack action handlers,
+    ensuring that handlers complete within Slack's 3-second ack window
+    regardless of Jira availability. Jira notifications happen asynchronously
+    via the outbox pattern.
+
+    Fault tolerance:
+    - Jira failures are logged as warnings, never raised
+    - Does not block other projections or event processing
+    - Does not retry indefinitely (single attempt, log on failure)
+    """
+
+    def __init__(self, pool: asyncpg.Pool):
+        """Initialize the projection.
+
+        Args:
+            pool: An asyncpg connection pool (used to look up entity jira_link)
+        """
+        self.pool = pool
+        self._name = "jira_notification_projection"
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def handles(self) -> list[str]:
+        """Return event types this projection handles."""
+        return [
+            "DecisionDeprecated",
+            "DecisionAmended",
+        ]
+
+    async def apply(self, event: DomainEvent) -> None:
+        """Apply event by posting Jira notification comment.
+
+        Looks up the entity's jira_link from entities_view. If no jira_link
+        exists (entity was never committed to Jira), silently skips.
+
+        All Jira errors are caught and logged — never re-raised.
+        """
+        match event:
+            case DecisionDeprecated():
+                await self._notify_deprecated(event)
+            case DecisionAmended():
+                await self._notify_amended(event)
+
+    async def _get_entity_jira_key(self, entity_id: str) -> str | None:
+        """Look up jira_key from entities_view for the given entity.
+
+        Returns the jira_key string if the entity has been committed to Jira,
+        or None if it has no jira_link.
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT jira_link FROM entities_view WHERE id = $1",
+                    str(entity_id),
+                )
+                if row and row["jira_link"]:
+                    jira_link = row["jira_link"]
+                    # jira_link is stored as JSONB dict
+                    if isinstance(jira_link, dict):
+                        return jira_link.get("jira_key")
+                return None
+        except Exception as e:
+            logger.warning(f"Failed to look up jira_link for entity {entity_id}: {e}")
+            return None
+
+    async def _notify_deprecated(self, event: DecisionDeprecated) -> None:
+        """Post deprecation notice to Jira for a deprecated decision."""
+        jira_key = await self._get_entity_jira_key(event.entity_id)
+        if not jira_key:
+            return
+
+        try:
+            from src.jira.factory import get_sync_service
+
+            sync_service = get_sync_service()
+
+            # Build a minimal DeprecatedEntity-like object for the sync service.
+            # The sync_service.notify_decision_deprecated expects a DeprecatedEntity
+            # with jira_link and content. We look up what we need from the DB.
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT content, jira_link FROM entities_view WHERE id = $1",
+                    str(event.entity_id),
+                )
+
+            if not row:
+                return
+
+            from src.domain.content import DecisionContent as DomainDecisionContent, JiraLink
+            from src.domain.types import JiraKey, SyncStatus, Version
+
+            content_data = row["content"] if isinstance(row["content"], dict) else {}
+            jira_link_data = row["jira_link"] if isinstance(row["jira_link"], dict) else {}
+
+            # Format deprecation comment directly (avoid constructing full entity)
+            comment_lines = [
+                f"**Decision Superseded: {content_data.get('title', 'Unknown')}**",
+                "",
+                "This decision has been deprecated.",
+                f"Reason: {event.reason}",
+                "",
+                "---",
+                "_Updated via MARO_",
+            ]
+            comment = "\n".join(comment_lines)
+
+            await sync_service.jira.add_comment(jira_key, comment)
+            logger.info(
+                f"Posted deprecation notice for decision {event.entity_id} "
+                f"to {jira_key} via projection"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Jira deprecation notification failed for {event.entity_id} "
+                f"(jira_key={jira_key}): {e}"
+            )
+
+    async def _notify_amended(self, event: DecisionAmended) -> None:
+        """Post amendment notice to Jira for an amended decision."""
+        jira_key = await self._get_entity_jira_key(event.entity_id)
+        if not jira_key:
+            return
+
+        try:
+            from src.jira.factory import get_sync_service
+
+            sync_service = get_sync_service()
+
+            # Extract content from event (previous_content and new_content)
+            prev = event.previous_content
+            new = event.new_content
+
+            prev_title = prev.get("title", "Unknown") if isinstance(prev, dict) else getattr(prev, "title", "Unknown")
+            prev_desc = prev.get("description", "") if isinstance(prev, dict) else getattr(prev, "description", "")
+            new_title = new.get("title", "Unknown") if isinstance(new, dict) else getattr(new, "title", "Unknown")
+            new_desc = new.get("description", "") if isinstance(new, dict) else getattr(new, "description", "")
+
+            comment_lines = [
+                f"**Decision Amended: {new_title}**",
+                "",
+                f"Reason: {event.reason}",
+                "",
+                f"Previous: {str(prev_desc)[:200]}",
+                f"Updated: {str(new_desc)[:200]}",
+                "",
+                "---",
+                "_Updated via MARO_",
+            ]
+            comment = "\n".join(comment_lines)
+
+            await sync_service.jira.add_comment(jira_key, comment)
+            logger.info(
+                f"Posted amendment notice for decision {event.entity_id} "
+                f"to {jira_key} via projection"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Jira amendment notification failed for {event.entity_id} "
+                f"(jira_key={jira_key}): {e}"
+            )

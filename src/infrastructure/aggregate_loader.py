@@ -1,4 +1,9 @@
-"""Aggregate loading from event store."""
+"""Aggregate loading from event store with inline outbox processing.
+
+After persisting events, processes the outbox to apply projections
+(entity read model updates, Jira notifications, etc.) inline rather
+than requiring a separate background worker.
+"""
 
 import logging
 
@@ -31,7 +36,12 @@ async def load_aggregate(channel_id: str) -> ChannelAggregate:
 
 
 async def save_events(aggregate: ChannelAggregate) -> list:
-    """Persist pending events from an aggregate.
+    """Persist pending events and process outbox projections inline.
+
+    After appending events to the store (and outbox), processes pending
+    outbox entries through all registered projections. This ensures
+    read models and side effects (e.g., Jira notifications) are applied
+    without requiring a separate background outbox worker.
 
     Args:
         aggregate: Aggregate with pending events
@@ -47,4 +57,35 @@ async def save_events(aggregate: ChannelAggregate) -> list:
     store = EventStore(pool)
     await store.append_batch(events)
     logger.info(f"Persisted {len(events)} events for {aggregate.channel_id}")
+
+    # Process outbox inline — applies projections for newly persisted events
+    await _process_outbox(pool)
+
     return events
+
+
+async def _process_outbox(pool) -> None:
+    """Process pending outbox events through all registered projections.
+
+    Runs EntityProjection (read model) and JiraNotificationProjection
+    (async Jira side effects) against any pending outbox entries.
+
+    Errors in projection processing are logged but do not propagate —
+    the outbox processor handles retries on subsequent calls.
+    """
+    try:
+        from src.infrastructure.projections import EntityProjection, JiraNotificationProjection
+        from src.infrastructure.outbox import OutboxProcessor
+
+        projections = [
+            EntityProjection(pool),
+            JiraNotificationProjection(pool),
+        ]
+        processor = OutboxProcessor(pool, projections)
+        processed = await processor.process_all()
+        if processed > 0:
+            logger.debug(f"Outbox: processed {processed} events")
+    except Exception as e:
+        # Outbox processing failure must not break the save flow.
+        # Events are safely persisted; projections will catch up on next call.
+        logger.warning(f"Outbox processing failed (events are persisted, will retry): {e}")
