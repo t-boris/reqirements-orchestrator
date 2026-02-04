@@ -450,8 +450,8 @@ class ChannelAggregate:
                 actor_id=actor_id,
                 version=self.next_version,
                 entity_id=entity_id,
-                previous_content=previous_content,
-                new_content=new_content,
+                previous_content=previous_content.model_dump(),
+                new_content=new_content.model_dump(),
                 reason=reason,
                 new_adr_message_ts=new_adr_message_ts,
             )
