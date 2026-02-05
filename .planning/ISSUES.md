@@ -4,7 +4,18 @@ Deferred issues discovered during code review and development.
 
 ## Open
 
-_No open issues_
+### ISS-016: Stories created under Epic thread not linked to parent in Jira
+
+**Source:** Production usage (2026-02-05)
+**Severity:** Functional gap / UX
+
+When creating stories from an Epic's thread (pinned message), the stories are not automatically linked to the parent Epic in Jira. This requires:
+1. Track parent-child relationship in domain model (`parent_entity_id`)
+2. Thread context detection to know which entity a thread belongs to
+3. Jira client support for setting Epic Link field
+4. Commit flow to look up parent's Jira key and set link
+
+Workaround: Manually link stories to epic in Jira after creation.
 
 ## Closed
 
