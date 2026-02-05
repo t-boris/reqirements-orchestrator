@@ -78,6 +78,8 @@ def build_adr_post_blocks(
     decision: str,
     rationale: str,
     alternatives: list[str] | None = None,
+    patterns_referenced: list[str] | None = None,
+    tradeoffs: list[str] | None = None,
     recorded_by: str | None = None,
     status: str = "draft",
     entity_id: str | None = None,
@@ -114,6 +116,20 @@ def build_adr_post_blocks(
         blocks.append({
             "type": "context",
             "elements": [{"type": "mrkdwn", "text": f"_Alternatives: {alts_text}_"}],
+        })
+
+    if patterns_referenced:
+        patterns_text = ", ".join(patterns_referenced)
+        blocks.append({
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"_Patterns: {patterns_text}_"}],
+        })
+
+    if tradeoffs:
+        tradeoff_items = "\n".join(f"  \u2022 {t}" for t in tradeoffs)
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Tradeoffs:*\n{tradeoff_items}"},
         })
 
     # Lifecycle action buttons (only if entity_id provided)

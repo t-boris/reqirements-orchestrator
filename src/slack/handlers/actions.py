@@ -25,6 +25,8 @@ from src.modes import dispatch_mode
 from src.slack.blocks.decisions import build_adr_post_blocks
 from src.slack.client import SlackClient
 from src.slack.dashboard import DashboardManager
+from src.slack.handlers.jira import handle_commit_to_jira, handle_create_anyway, handle_select_duplicate
+from src.slack.response_gate import get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,12 @@ DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate$")
 
 # Pattern for ADR pinned message lifecycle buttons: adr_propose, adr_approve, adr_object, adr_deprecate
 ADR_LIFECYCLE_PATTERN = re.compile(r"^adr_(propose|approve|object|deprecate)$")
+
+# Pattern for work item draft preview buttons: propose_draft, edit_draft, cancel_draft
+DRAFT_ACTION_PATTERN = re.compile(r"^(propose|edit|cancel)_draft$")
+
+# Pattern for Jira duplicate selection buttons: select_duplicate_{jira_key}
+JIRA_DUPLICATE_PATTERN = re.compile(r"^select_duplicate_.+$")
 
 
 def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
@@ -81,6 +89,7 @@ async def _post_and_pin_adr(client, channel_id: str, decision: dict, user_id: st
         )
         adr_ts = result.get("ts")
         if adr_ts:
+            get_tracker().record_bot_response(channel_id, adr_ts)
             try:
                 await client.pins_add(channel=channel_id, timestamp=adr_ts)
             except Exception as e:
@@ -185,6 +194,8 @@ async def _record_all_decisions(
         await save_events(aggregate)
 
         logger.info(f"Recorded {len(created)} decisions in {channel_id} by {user_id}")
+        if thread_ts:
+            get_tracker().record_bot_response(channel_id, thread_ts)
 
         # Update original message — replace buttons with confirmation
         updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]
@@ -365,6 +376,8 @@ async def _update_adr_pinned_message(client, channel_id: str, entity, aggregate)
     description = getattr(entity.content, "description", "")
     rationale = getattr(entity.content, "rationale", "")
     alternatives = getattr(entity.content, "alternatives_considered", [])
+    patterns = getattr(entity.content, "patterns_referenced", [])
+    tradeoffs = getattr(entity.content, "tradeoffs", [])
     recorded_by = getattr(entity.attribution, "proposed_by", None)
 
     blocks = build_adr_post_blocks(
@@ -373,6 +386,8 @@ async def _update_adr_pinned_message(client, channel_id: str, entity, aggregate)
         decision=description,
         rationale=rationale,
         alternatives=alternatives if alternatives else None,
+        patterns_referenced=patterns if patterns else None,
+        tradeoffs=tradeoffs if tradeoffs else None,
         recorded_by=str(recorded_by) if recorded_by else None,
         status=status,
         entity_id=str(entity.id),
@@ -429,6 +444,8 @@ async def _record_single_decision(
         await save_events(aggregate)
 
         logger.info(f"Recorded single decision '{decision['title']}' in {channel_id} by {user_id}")
+        if thread_ts:
+            get_tracker().record_bot_response(channel_id, thread_ts)
 
         confirmation = {
             "type": "context",
@@ -603,6 +620,9 @@ def register_action_handlers(app: AsyncApp) -> None:
                         thread_ts=thread_ts,
                     )
 
+                if thread_ts:
+                    get_tracker().record_bot_response(channel_id, thread_ts)
+
                 # Update pinned ADR message if this is a decision
                 if not is_work_item:
                     updated_entity = aggregate.get_entity(EntityId(entity_id))
@@ -629,6 +649,8 @@ def register_action_handlers(app: AsyncApp) -> None:
                     text=f":no_entry_sign: <@{user_id}> raised an objection to *{title}*. Please discuss in thread.",
                     thread_ts=thread_ts,
                 )
+                if thread_ts:
+                    get_tracker().record_bot_response(channel_id, thread_ts)
 
             elif action_type == "discuss":
                 title = getattr(entity.content, "title", entity_id)
@@ -636,6 +658,8 @@ def register_action_handlers(app: AsyncApp) -> None:
                     text=f":speech_balloon: <@{user_id}> wants to discuss *{title}*. Reply in this thread.",
                     thread_ts=thread_ts,
                 )
+                if thread_ts:
+                    get_tracker().record_bot_response(channel_id, thread_ts)
 
         except TransitionError as e:
             await say(
@@ -706,6 +730,8 @@ def register_action_handlers(app: AsyncApp) -> None:
                 text=f"<@{user_id}> Go ahead, type your answer:",
                 thread_ts=thread_ts,
             )
+            if thread_ts:
+                get_tracker().record_bot_response(channel_id, thread_ts)
             return
 
         # Post the answer as a visible thread message (for conversation record)
@@ -713,6 +739,8 @@ def register_action_handlers(app: AsyncApp) -> None:
             text=answer,
             thread_ts=thread_ts,
         )
+        if thread_ts:
+            get_tracker().record_bot_response(channel_id, thread_ts)
 
         # Directly invoke classification + dispatch pipeline.
         # The posted message above is a bot message and will be filtered by the
@@ -1087,6 +1115,8 @@ def register_action_handlers(app: AsyncApp) -> None:
                 await save_events(aggregate)
 
                 logger.info(f"Confirmed record decision '{decision['title']}' in {channel_id} by {user_id}")
+                if thread_ts:
+                    get_tracker().record_bot_response(channel_id, thread_ts)
 
                 # Replace buttons with confirmation
                 updated_blocks = [b for b in blocks if b.get("type") != "actions"]
@@ -1394,6 +1424,180 @@ def register_action_handlers(app: AsyncApp) -> None:
         except Exception as e:
             logger.error(f"Error handling ADR lifecycle action: {e}", exc_info=True)
             await say(text=":x: An error occurred processing your action. Please try again.")
+
+    @app.action(DRAFT_ACTION_PATTERN)
+    async def handle_draft_action(ack, body: dict, action: dict, client, say) -> None:
+        """Handle Propose / Edit / Cancel buttons on work item draft previews.
+
+        Work item content is stored as JSON in button value.
+        """
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = DRAFT_ACTION_PATTERN.match(action_id)
+        if not match:
+            return
+
+        draft_action = match.group(1)
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if draft_action == "cancel":
+            updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+            updated_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": "_Cancelled_"}],
+            })
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks, text="Draft cancelled",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled draft message: {e}")
+            return
+
+        # Parse work item content from button value
+        try:
+            content_data = json.loads(action.get("value", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            content_data = None
+
+        if not content_data or not content_data.get("title"):
+            await say(text=":x: Could not read draft data. Please try again.", thread_ts=thread_ts)
+            return
+
+        if draft_action == "edit":
+            # TODO: Open edit modal for work items (similar to ADR edit)
+            await say(
+                text=":pencil2: Work item editing is not yet supported. Please cancel and re-create.",
+                thread_ts=thread_ts,
+            )
+            return
+
+        # draft_action == "propose"
+        try:
+            from src.domain.content import IssueType, WorkItemContent
+
+            aggregate = await load_aggregate(channel_id)
+
+            content = WorkItemContent(
+                issue_type=IssueType(content_data.get("issue_type", "story").lower()),
+                title=content_data["title"],
+                description=content_data.get("description", ""),
+                acceptance_criteria=content_data.get("acceptance_criteria", []),
+                constraints=content_data.get("constraints", []),
+            )
+
+            draft = aggregate.draft_work_item(
+                actor_id=UserId(user_id),
+                thread_ts=ThreadTs(thread_ts or ""),
+                content=content,
+            )
+
+            proposed = aggregate.propose_work_item(
+                entity_id=draft.id,
+                actor_id=UserId(user_id),
+                canonical_message_ts=message_ts or "",
+            )
+            await save_events(aggregate)
+
+            logger.info(f"Proposed work item '{content.title}' in {channel_id} by {user_id}")
+            if thread_ts:
+                get_tracker().record_bot_response(channel_id, thread_ts)
+
+            # Build proposal blocks with approve/object/discuss buttons
+            ac_text = ""
+            if content.acceptance_criteria:
+                ac_items = "\n".join(f"  - {ac}" for ac in content.acceptance_criteria)
+                ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
+
+            proposal_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f":mega: *Proposed: {content.title}*\n"
+                            f"*Type:* {content.issue_type.value.title()}\n"
+                            f"{content.description[:500]}"
+                            f"{ac_text}\n\n"
+                            f"_Proposed by <@{user_id}>_"
+                        ),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Approve"},
+                            "style": "primary",
+                            "action_id": f"approve_{draft.id}",
+                            "value": str(draft.id),
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Object"},
+                            "style": "danger",
+                            "action_id": f"object_{draft.id}",
+                            "value": str(draft.id),
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Discuss"},
+                            "action_id": f"discuss_{draft.id}",
+                            "value": str(draft.id),
+                        },
+                    ],
+                },
+            ]
+
+            # Post proposal to main channel (not in thread) and pin it
+            try:
+                result = await client.chat_postMessage(
+                    channel=channel_id,
+                    blocks=proposal_blocks,
+                    text=f"Proposed: {content.title}",
+                )
+                proposal_ts = result.get("ts")
+                if proposal_ts:
+                    get_tracker().record_bot_response(channel_id, proposal_ts)
+                    try:
+                        await client.pins_add(channel=channel_id, timestamp=proposal_ts)
+                    except Exception as e:
+                        logger.warning(f"Failed to pin proposal in {channel_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to post proposal to channel: {e}")
+
+            # Update the original thread preview to show confirmation
+            confirmed_blocks = [b for b in blocks if b.get("type") != "actions"]
+            confirmed_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f":white_check_mark: *{content.title}* proposed to channel by <@{user_id}>"}],
+            })
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=confirmed_blocks,
+                    text=f"Proposed: {content.title}",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update preview message: {e}")
+
+            await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+        except Exception as e:
+            logger.error(f"Error proposing draft: {e}", exc_info=True)
+            await say(text=f":x: Failed to propose work item: {e}", thread_ts=thread_ts)
+
+    # Jira commit flow handlers
+    app.action("commit_to_jira")(handle_commit_to_jira)
+    app.action(JIRA_DUPLICATE_PATTERN)(handle_select_duplicate)
+    app.action("create_anyway")(handle_create_anyway)
 
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
