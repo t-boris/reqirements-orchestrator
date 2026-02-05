@@ -45,8 +45,10 @@ class DashboardManager:
         committed_count: int = 0,
         decisions_count: int = 0,
         pending_items: list[dict[str, str]] | None = None,
+        approved_items: list[dict[str, str]] | None = None,
         committed_items: list[dict[str, str]] | None = None,
         decision_items: list[dict[str, str]] | None = None,
+        jira_url: str | None = None,
     ) -> None:
         """Create or update channel dashboard.
 
@@ -58,8 +60,11 @@ class DashboardManager:
             committed_count=committed_count,
             decisions_count=decisions_count,
             pending_items=pending_items,
+            approved_items=approved_items,
             committed_items=committed_items,
             decision_items=decision_items,
+            channel_id=channel_id,
+            jira_url=jira_url,
         )
 
         existing = self._dashboards.get(channel_id)

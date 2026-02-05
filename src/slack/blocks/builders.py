@@ -130,8 +130,11 @@ def build_dashboard_blocks(
     committed_count: int = 0,
     decisions_count: int = 0,
     pending_items: list[dict[str, str]] | None = None,
+    approved_items: list[dict[str, str]] | None = None,
     committed_items: list[dict[str, str]] | None = None,
     decision_items: list[dict[str, str]] | None = None,
+    channel_id: str | None = None,
+    jira_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build channel status dashboard blocks.
 
@@ -146,7 +149,7 @@ def build_dashboard_blocks(
     })
     blocks.append({"type": "divider"})
 
-    # Pending approvals section
+    # Pending approvals section (Draft/Proposed work items)
     if pending_count > 0:
         blocks.append({
             "type": "section",
@@ -154,9 +157,28 @@ def build_dashboard_blocks(
         })
         if pending_items:
             for item in pending_items[:5]:
+                title = item.get('title', 'Untitled')
+                link = item.get('link')
+                text = f"* <{link}|{title}>" if link else f"* {title}"
                 blocks.append({
                     "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"* {item.get('title', 'Untitled')}"}],
+                    "elements": [{"type": "mrkdwn", "text": text}],
+                })
+
+    # Approved (ready for Jira) section
+    if approved_count > 0:
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Ready for Jira ({approved_count})*"},
+        })
+        if approved_items:
+            for item in approved_items[:5]:
+                title = item.get('title', 'Untitled')
+                link = item.get('link')
+                text = f"* <{link}|:white_check_mark: {title}>" if link else f"* :white_check_mark: {title}"
+                blocks.append({
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": text}],
                 })
 
     # Committed (in Jira) section
@@ -169,9 +191,15 @@ def build_dashboard_blocks(
             for item in committed_items[:5]:
                 jira_key = item.get("jira_key", "draft")
                 title = item.get("title", "Untitled")
+                # Link to Jira if we have URL
+                if jira_url and jira_key != "draft":
+                    jira_link = f"<{jira_url}/browse/{jira_key}|{jira_key}>"
+                    text = f"* [{jira_link}] {title}"
+                else:
+                    text = f"* [{jira_key}] {title}"
                 blocks.append({
                     "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"* [{jira_key}] {title}"}],
+                    "elements": [{"type": "mrkdwn", "text": text}],
                 })
 
     # Active decisions section
@@ -223,6 +251,29 @@ def build_dashboard_blocks(
                     "type": "context",
                     "elements": [{"type": "mrkdwn", "text": f"_...and {overflow} more deprecated_"}],
                 })
+
+    # "Show all" button when items overflow
+    has_overflow = False
+    if decision_items:
+        active_items = [d for d in decision_items if d.get("status") != "deprecated"]
+        deprecated_items = [d for d in decision_items if d.get("status") == "deprecated"]
+        if len(active_items) > 5 or len(deprecated_items) > 2:
+            has_overflow = True
+    if pending_items and len(pending_items) > 5:
+        has_overflow = True
+    if committed_items and len(committed_items) > 5:
+        has_overflow = True
+
+    if has_overflow and channel_id:
+        blocks.append({
+            "type": "actions",
+            "elements": [{
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Show all items"},
+                "action_id": "dashboard_show_all",
+                "value": channel_id,
+            }],
+        })
 
     blocks.append({"type": "divider"})
 

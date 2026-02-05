@@ -492,11 +492,17 @@ def _replace_adr_blocks(blocks: list[dict], section_idx: int, replacement_block:
 async def _update_dashboard_after_decision(
     client, channel_id: str, aggregate,
 ) -> None:
-    """Update the channel dashboard after a decision change."""
+    """Update the channel dashboard after a decision/work item change."""
+    from src.config import get_settings
+
     try:
+        settings = get_settings()
         counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
         pending_items = []
+        approved_items = []
+        committed_items = []
         decision_items = []
+
         for entity in aggregate.entities.values():
             if entity.entity_type.value == "decision":
                 counts["decisions"] += 1
@@ -515,18 +521,34 @@ async def _update_dashboard_after_decision(
                     item["superseded_by"] = str(entity.superseded_by)
                 decision_items.append(item)
             else:
+                # Work items
                 lifecycle = get_lifecycle(entity)
                 lc = lifecycle.value
+                entity_id = str(entity.id)
+                title = getattr(entity.content, "title", entity_id[:8])
+
                 if lc in ("draft", "proposed"):
                     counts["pending"] += 1
                     pending_items.append({
-                        "title": getattr(entity.content, "title", str(entity.id)[:8]),
-                        "id": str(entity.id),
+                        "title": title,
+                        "id": entity_id,
                     })
                 elif lc == "approved":
                     counts["approved"] += 1
+                    approved_items.append({
+                        "title": title,
+                        "id": entity_id,
+                    })
                 elif lc == "committed":
                     counts["committed"] += 1
+                    jira_key = ""
+                    if hasattr(entity, "jira_link") and entity.jira_link:
+                        jira_key = entity.jira_link.jira_key
+                    committed_items.append({
+                        "title": title,
+                        "id": entity_id,
+                        "jira_key": jira_key,
+                    })
 
         slack_client = SlackClient(client)
         dashboard_mgr = DashboardManager(slack_client)
@@ -537,7 +559,10 @@ async def _update_dashboard_after_decision(
             committed_count=counts["committed"],
             decisions_count=counts["decisions"],
             pending_items=pending_items,
+            approved_items=approved_items,
+            committed_items=committed_items,
             decision_items=decision_items,
+            jira_url=settings.jira_url if settings.jira_url else None,
         )
     except Exception as e:
         logger.warning(f"Failed to update dashboard: {e}")
@@ -2318,6 +2343,10 @@ def register_action_handlers(app: AsyncApp) -> None:
                     sections.append("\n".join(lines))
 
             # Work items
+            from src.config import get_settings
+            settings = get_settings()
+            jira_url = settings.jira_url if settings.jira_url else None
+
             work_items = [
                 e for e in aggregate.entities.values()
                 if e.entity_type.value == "work_item"
@@ -2335,20 +2364,24 @@ def register_action_handlers(app: AsyncApp) -> None:
                     sections.append("\n".join(lines))
 
                 if approved:
-                    lines = ["*Approved (not yet in Jira)*"]
+                    lines = ["*Ready for Jira*"]
                     for e in approved:
                         title = getattr(e.content, "title", str(e.id)[:8])
-                        lines.append(f"  \u2022 {title}")
+                        lines.append(f"  \u2022 :white_check_mark: {title}")
                     sections.append("\n".join(lines))
 
                 if committed:
                     lines = ["*In Jira*"]
                     for e in committed:
                         title = getattr(e.content, "title", str(e.id)[:8])
-                        jira_key = ""
                         if hasattr(e, "jira_link") and e.jira_link:
-                            jira_key = f"[{e.jira_link.jira_key}] "
-                        lines.append(f"  \u2022 {jira_key}{title}")
+                            jira_key = e.jira_link.jira_key
+                            if jira_url:
+                                lines.append(f"  \u2022 <{jira_url}/browse/{jira_key}|{jira_key}> {title}")
+                            else:
+                                lines.append(f"  \u2022 [{jira_key}] {title}")
+                        else:
+                            lines.append(f"  \u2022 {title}")
                     sections.append("\n".join(lines))
 
             if not sections:
