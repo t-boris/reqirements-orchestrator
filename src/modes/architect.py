@@ -11,6 +11,8 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from src.domain.entities import get_lifecycle
+from src.infrastructure.aggregate_loader import load_aggregate
 from src.llm.client import structured_completion
 from src.modes.base import ModeHandler, ModeContext, ModeResult
 from src.modes.converse import FollowUpQuestion, FollowUpOption
@@ -46,11 +48,15 @@ asks an architecture question, respond with concrete patterns, tradeoffs, and re
 - Recommend a specific approach with rationale
 - Note assumptions and when the recommendation changes
 
-*Thread context awareness* — use the full thread history to understand:
+*Context awareness* — use the full thread history AND existing entities to understand:
 - What system is being discussed
 - What constraints have been mentioned
-- What decisions were already made
+- What decisions were already made (check existing entities below)
 - What the team's context/scale is
+- What work items are in progress or planned
+
+When existing decisions or work items are provided, factor them into your analysis. Don't recommend
+something that contradicts an approved decision. Reference existing entities by name when relevant.
 
 *ADR recommendation:* When your analysis leads to a concrete architectural recommendation
 (a specific "use X" or "go with Y" conclusion, not just exploration), set recommend_adr=True
@@ -81,10 +87,13 @@ When you have questions for the user:
 ARCHITECT_USER = """Thread context:
 {thread_context}
 
+Existing entities in this channel (decisions, work items):
+{entity_context}
+
 Latest message from user:
 "{message}"
 
-Provide architectural analysis based on the full conversation context."""
+Provide architectural analysis based on the full conversation context and existing entities."""
 
 
 class ArchitectResponse(BaseModel):
@@ -128,6 +137,47 @@ class ArchitectModeHandler(ModeHandler):
     def mode_name(self) -> str:
         return "ARCHITECT"
 
+    async def _build_entity_context(self, channel_id: str) -> str:
+        """Build entity summaries with architectural detail for LLM context.
+
+        Richer than the intent classifier's summary — includes decision rationale
+        and work item descriptions so the architect LLM can factor them in.
+        """
+        try:
+            aggregate = await load_aggregate(channel_id)
+            if not aggregate.entities:
+                return "(No existing entities)"
+
+            summaries = []
+            for eid, entity in list(aggregate.entities.items())[:20]:
+                title = getattr(entity.content, "title", str(eid)[:8])
+                state = get_lifecycle(entity).value
+                etype = entity.entity_type.value
+
+                parts = [f"- *{title}* ({etype}, {state})"]
+
+                # For decisions: include rationale and patterns
+                if etype == "decision":
+                    rationale = getattr(entity.content, "rationale", "")
+                    if rationale:
+                        parts.append(f"  Rationale: {rationale[:200]}")
+                    patterns = getattr(entity.content, "patterns_referenced", [])
+                    if patterns:
+                        parts.append(f"  Patterns: {', '.join(patterns)}")
+
+                # For work items: include description
+                elif etype == "work_item":
+                    desc = getattr(entity.content, "description", "")
+                    if desc:
+                        parts.append(f"  Description: {desc[:200]}")
+
+                summaries.append("\n".join(parts))
+
+            return "\n".join(summaries)
+        except Exception as e:
+            logger.debug(f"Could not load entity context: {e}")
+            return "(No existing entities)"
+
     async def handle(self, context: ModeContext) -> ModeResult:
         """Handle ARCHITECT mode message with architecture-specialized LLM response."""
         logger.info(
@@ -143,6 +193,9 @@ class ArchitectModeHandler(ModeHandler):
                 for m in context.thread_messages
             )
 
+        # Load existing entities for architectural context
+        entity_context = await self._build_entity_context(context.channel_id)
+
         # Use LLM for architecture analysis
         try:
             result = await structured_completion(
@@ -151,6 +204,7 @@ class ArchitectModeHandler(ModeHandler):
                     {"role": "system", "content": ARCHITECT_SYSTEM},
                     {"role": "user", "content": ARCHITECT_USER.format(
                         thread_context=thread_context,
+                        entity_context=entity_context,
                         message=context.message,
                     )},
                 ],
