@@ -11,19 +11,23 @@ from pydantic import BaseModel, Field
 
 
 class SuperMode(str, Enum):
-    """The four SuperModes for message handling.
+    """The six SuperModes for message handling.
 
     Every message results in one of these modes:
     - CREATE: User wants to define a new work item or decision
     - MODIFY: User wants to change an existing entity
     - RECORD: User made a decision that should be captured
     - CONVERSE: Casual conversation, questions, clarifications
+    - JIRA: User wants to search, view, update, or query Jira issues
+    - ARCHITECT: User asks about software architecture, design patterns, or system design
     """
 
     CREATE = "create"
     MODIFY = "modify"
     RECORD = "record"
     CONVERSE = "converse"
+    JIRA = "jira"
+    ARCHITECT = "architect"
 
 
 class EntityType(str, Enum):

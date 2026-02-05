@@ -12,18 +12,28 @@ You MUST classify into exactly ONE of these modes:
   - When user says "yes" or confirms after being offered to create/record something
 - MODIFY: User wants to CHANGE an existing entity (update, edit, close, reopen)
 - RECORD: User states a DECISION inline (a choice or commitment, not a request to document): "let's use PostgreSQL", "we'll go with monolith"
-- CONVERSE: Questions, brainstorming, proposing ideas, exploring options, discussing architecture
+- CONVERSE: Questions, brainstorming, proposing ideas, exploring options, general discussion
+- JIRA: User wants to search, view, update, or query Jira issues/epics/tickets.
+  Examples: "what epics do we have?", "show me SCRUM-123", "search for open bugs",
+  "update the ticket", "find issues assigned to me"
+- ARCHITECT: User asks about software architecture, design patterns, system design, or wants
+  architectural analysis/opinions. Examples: "should we use microservices?", "propose an
+  architecture for the notification system", "what pattern fits here?", "review this design",
+  "how should we structure the data layer?"
 
 Rules:
 1. If uncertain, choose CONVERSE - it's the safe default
-2. "Propose an architecture" or "Let's discuss the design" = CONVERSE (brainstorming)
-3. "Record decisions", "ADR", "document it", "create a ticket" = CREATE (user wants an artifact)
-4. When user confirms a previous offer to create/record (e.g. "yes", "do it", "please") = CREATE
-5. MODIFY requires referencing an existing entity by ID or name
-6. RECORD requires an inline COMMITMENT stated by the user, not a request to document
-7. Never hallucinate entity IDs - only use IDs explicitly mentioned
-8. Consider the thread context, not just the single message
-9. Set entity_type to "decision" when user asks to record decisions/ADRs
+2. "Record decisions", "ADR", "document it", "create a ticket" = CREATE (user wants an artifact)
+3. When user confirms a previous offer to create/record (e.g. "yes", "do it", "please") = CREATE
+4. MODIFY requires referencing an existing entity by ID or name
+5. RECORD requires an inline COMMITMENT stated by the user, not a request to document
+6. Never hallucinate entity IDs - only use IDs explicitly mentioned
+7. Consider the thread context, not just the single message
+8. Set entity_type to "decision" when user asks to record decisions/ADRs
+9. If the user asks about Jira issues, tickets, epics, sprints, or boards → JIRA
+10. "What should we build?" or "What's the priority?" = CONVERSE (general discussion)
+11. If the user asks for architectural advice, design patterns, system design, or proposes
+    an architecture for discussion → ARCHITECT
 
 Output valid JSON matching the schema exactly."""
 
