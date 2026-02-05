@@ -16,6 +16,8 @@ from src.intent.schemas import (
     IntentClassification,
     PreGateResult,
     PreGateOutput,
+    ExecutionPlan,
+    PlanStep,
 )
 from src.intent.pregates import check_pregates
 from src.intent.postfilters import apply_postfilters
@@ -255,6 +257,7 @@ def _apply_confidence_thresholds(result: IntentClassification) -> IntentClassifi
             target_entity_id=result.target_entity_id,
             reasoning=f"Low confidence fallback. Original: {result.mode} - {result.reasoning}",
             entities_mentioned=result.entities_mentioned,
+            is_compound_request=result.is_compound_request,
         )
 
     # Side-effect modes need higher confidence
@@ -272,6 +275,83 @@ def _apply_confidence_thresholds(result: IntentClassification) -> IntentClassifi
                 target_entity_id=result.target_entity_id,
                 reasoning=f"Medium confidence for side-effect mode. Original: {result.mode} - {result.reasoning}",
                 entities_mentioned=result.entities_mentioned,
+                is_compound_request=result.is_compound_request,
             )
 
     return result
+
+
+def generate_execution_plan(
+    intent: IntentClassification,
+    message: str,
+) -> ExecutionPlan | None:
+    """Generate an execution plan for compound requests.
+
+    When is_compound_request is True, creates a multi-step plan based on
+    the detected pattern. Returns None for simple (non-compound) requests.
+
+    Common patterns:
+    - "analyze X and create Y" → ARCHITECT → CREATE (batch work items)
+    - "review X and record Y" → ARCHITECT → CREATE (decisions)
+    """
+    if not intent.is_compound_request:
+        return None
+
+    # Determine the final action based on keywords in message
+    message_lower = message.lower()
+
+    # Detect what the user wants to create at the end
+    wants_work_items = any(kw in message_lower for kw in [
+        "work item", "epic", "story", "task", "ticket", "spike",
+        "split into", "break down", "decompose",
+    ])
+    wants_decisions = any(kw in message_lower for kw in [
+        "decision", "adr", "record", "document",
+    ])
+
+    steps: list[PlanStep] = []
+
+    # Step 1: Analysis phase (ARCHITECT)
+    if intent.mode == SuperMode.ARCHITECT or "analyze" in message_lower or "review" in message_lower:
+        steps.append(PlanStep(
+            mode=SuperMode.ARCHITECT,
+            instruction="Analyze the existing decisions and architecture in this channel. "
+                       "Identify key components, patterns, and areas that need implementation work.",
+            pass_output_to_next=True,
+        ))
+
+    # Step 2: Creation phase
+    if wants_work_items:
+        steps.append(PlanStep(
+            mode=SuperMode.CREATE,
+            instruction="Based on the analysis, create multiple work items (epics/stories/tasks) "
+                       "that cover the implementation. Each work item should be specific and actionable.",
+            pass_output_to_next=False,
+        ))
+    elif wants_decisions:
+        steps.append(PlanStep(
+            mode=SuperMode.CREATE,
+            instruction="Based on the analysis, create decision records (ADRs) for the key "
+                       "architectural choices identified.",
+            pass_output_to_next=False,
+        ))
+    else:
+        # Default: create work items
+        steps.append(PlanStep(
+            mode=SuperMode.CREATE,
+            instruction="Based on the analysis, create appropriate artifacts "
+                       "(work items or decisions) as needed.",
+            pass_output_to_next=False,
+        ))
+
+    # Only return a plan if we have multiple steps
+    if len(steps) < 2:
+        return None
+
+    logger.info(f"Generated execution plan with {len(steps)} steps for compound request")
+
+    return ExecutionPlan(
+        steps=steps,
+        reasoning=f"Compound request detected: {intent.reasoning}. "
+                 f"Plan: {' → '.join(s.mode.value.upper() for s in steps)}",
+    )

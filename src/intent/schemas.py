@@ -84,6 +84,10 @@ class IntentClassification(BaseModel):
         default_factory=list,
         description="Entity IDs mentioned in the message"
     )
+    is_compound_request: bool = Field(
+        default=False,
+        description="True if request requires multiple steps (analyze then create, etc.)"
+    )
 
 
 class SafetyCheckResult(BaseModel):
@@ -96,3 +100,32 @@ class SafetyCheckResult(BaseModel):
     reason: str | None = None
     requires_confirmation: bool = False
     warnings: list[str] = Field(default_factory=list)
+
+
+class PlanStep(BaseModel):
+    """A step in a multi-step execution plan.
+
+    Plans allow the bot to handle compound requests like
+    "analyze the architecture and create work items for each component".
+    """
+
+    mode: SuperMode = Field(description="The SuperMode to execute for this step")
+    instruction: str = Field(description="What the LLM should do in this step")
+    pass_output_to_next: bool = Field(
+        default=True,
+        description="Whether this step's output should be passed as context to the next step"
+    )
+
+
+class ExecutionPlan(BaseModel):
+    """Multi-step execution plan for compound requests.
+
+    When a user request requires multiple steps (e.g., "analyze X and create Y"),
+    the router generates a plan instead of a single mode classification.
+    """
+
+    steps: list[PlanStep] = Field(
+        description="Ordered steps to execute",
+        min_length=2,  # Plans only make sense with 2+ steps
+    )
+    reasoning: str = Field(description="Why this request requires a multi-step plan")

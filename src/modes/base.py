@@ -34,6 +34,10 @@ class ModeContext:
     channel_aggregate: ChannelAggregate | None = None
     target_entity: Entity | None = None
 
+    # Plan execution context (for multi-step plans)
+    plan_step_context: str | None = None  # Output from previous plan steps
+    is_plan_step: bool = False  # True when executing as part of a plan
+
 
 @dataclass
 class ModeResult:

@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field
 
 from src.domain.channel import ChannelAggregate
 from src.domain.content import Attribution, IssueType, WorkItemContent
-from src.domain.entities import DraftEntity
+from src.domain.entities import DraftEntity, get_lifecycle
 from src.domain.types import ChannelId, EntityId, EntityType, ThreadTs, UserId, Version
+from src.infrastructure.aggregate_loader import load_aggregate
 from src.llm.client import structured_completion
 from src.modes.base import ModeContext, ModeHandler, ModeResult
 
@@ -34,6 +35,14 @@ class ExtractedWorkItem(BaseModel):
     constraints: list[str] = Field(
         default_factory=list,
         description="Technical constraints or requirements"
+    )
+
+
+class ExtractedWorkItems(BaseModel):
+    """Multiple work items extracted from existing entities in a channel."""
+
+    work_items: list[ExtractedWorkItem] = Field(
+        description="One work item per relevant entity/decision area"
     )
 
 
@@ -89,6 +98,31 @@ User's latest message requesting creation:
 
 Extract a work item based on the full conversation context."""
 
+EXTRACT_BATCH_WORK_ITEMS_SYSTEM = """You are generating structured work items from existing architectural decisions and entities in a channel.
+
+The user wants to create work items (epics/stories/tasks) based on the existing decisions and entities.
+Generate ONE work item per relevant entity/decision area.
+
+For each work item:
+- Title should read like a Jira ticket title (5-15 words)
+- Issue type: epic for large decision areas, story for specific features, task for implementation chores
+- Description should reference the related decision and explain what needs to be built
+- Include acceptance criteria derived from the decision's rationale and constraints
+- Include relevant technical constraints from the decision
+
+Be professional and concise. Each work item should be independently actionable."""
+
+EXTRACT_BATCH_WORK_ITEMS_USER = """Existing entities in this channel:
+{entity_context}
+
+Thread conversation:
+{thread_context}
+
+User's request:
+"{message}"
+
+Generate one work item per relevant entity/decision area."""
+
 EXTRACT_DECISION_SYSTEM = """You are extracting ALL architectural decisions from a Slack thread discussion.
 
 A thread often contains MULTIPLE decisions - from the initial requirements message AND from the conversation.
@@ -135,9 +169,12 @@ class CreateModeHandler(ModeHandler):
 
         Flow:
         1. Check safety (confirmation required for side effects)
-        2. Extract content from message/thread
+        2. Extract content from message/thread (or from plan step context)
         3. Create draft entity via ChannelAggregate
         4. Return preview with "Propose" button
+
+        When executing as a plan step, uses plan_step_context (analysis from
+        previous steps like ARCHITECT mode) to generate batch work items.
         """
         # Safety check - CREATE requires confirmation
         if not context.safety_check.allowed:
@@ -148,6 +185,9 @@ class CreateModeHandler(ModeHandler):
 
         if context.safety_check.requires_confirmation and not context.entity_data:
             # First pass - extract content and show preview
+            # If this is a plan step with context from ARCHITECT, use batch mode
+            if context.is_plan_step and context.plan_step_context:
+                return await self._create_batch_from_plan_context(context)
             return await self._create_preview(context)
 
         # User confirmed - create the entity
@@ -162,12 +202,60 @@ class CreateModeHandler(ModeHandler):
             for m in context.thread_messages
         )
 
+    async def _build_entity_context(self, channel_id: str) -> str:
+        """Build entity summaries for LLM context (reuses ARCHITECT pattern)."""
+        try:
+            aggregate = await load_aggregate(channel_id)
+            if not aggregate.entities:
+                return "(No existing entities)"
+
+            summaries = []
+            for eid, entity in list(aggregate.entities.items())[:20]:
+                title = getattr(entity.content, "title", str(eid)[:8])
+                state = get_lifecycle(entity).value
+                etype = entity.entity_type.value
+
+                parts = [f"- *{title}* ({etype}, {state}) [id: {eid}]"]
+
+                if etype == "decision":
+                    rationale = getattr(entity.content, "rationale", "")
+                    if rationale:
+                        parts.append(f"  Rationale: {rationale[:200]}")
+                    desc = getattr(entity.content, "description", "")
+                    if desc:
+                        parts.append(f"  Decision: {desc[:200]}")
+                elif etype == "work_item":
+                    desc = getattr(entity.content, "description", "")
+                    if desc:
+                        parts.append(f"  Description: {desc[:200]}")
+
+                summaries.append("\n".join(parts))
+
+            return "\n".join(summaries)
+        except Exception as e:
+            logger.debug(f"Could not load entity context: {e}")
+            return "(No existing entities)"
+
+    def _is_batch_work_item_intent(self, message: str) -> bool:
+        """Detect if the message intends to create work items from existing entities."""
+        import re
+        batch_patterns = [
+            r"(?:create|make|generate|build)\s+(?:epics?|stories|tasks|work items?|tickets?)\s+(?:for|from|based on)",
+            r"(?:for|from|based on)\s+(?:the\s+)?(?:architecture|decisions?|ADRs?|entities)",
+            r"(?:create|make|generate)\s+(?:epics?|stories|tasks)\s+(?:for\s+)?(?:each|all|every)",
+        ]
+        lower = message.lower()
+        return any(re.search(p, lower) for p in batch_patterns)
+
     async def _create_preview(self, context: ModeContext) -> ModeResult:
         """Extract content using LLM and show preview for confirmation."""
         entity_type = context.intent.entity_type or "work_item"
         thread_context = self._build_thread_context(context)
 
         if entity_type == "work_item":
+            # Check for batch intent referencing existing entities
+            if self._is_batch_work_item_intent(context.message):
+                return await self._create_batch_work_items_preview(context, thread_context)
             return await self._create_work_item_preview(context, thread_context)
 
         return await self._create_decision_preview(context, thread_context)
@@ -227,6 +315,114 @@ class CreateModeHandler(ModeHandler):
                 "content": preview_content,
             },
             response_blocks=self._build_preview_blocks(preview_content),
+        )
+
+    async def _create_batch_from_plan_context(self, context: ModeContext) -> ModeResult:
+        """Create batch work items using analysis from plan step context.
+
+        This is called when CREATE mode is executing as part of a multi-step plan,
+        with the previous ARCHITECT step's analysis in plan_step_context.
+        """
+        analysis_context = context.plan_step_context or ""
+        entity_context = await self._build_entity_context(context.channel_id)
+        thread_context = self._build_thread_context(context)
+
+        # Enhanced prompt that uses the analysis from the previous step
+        system_prompt = """You are generating structured work items based on an architectural analysis.
+
+The ARCHITECT has analyzed the existing decisions and provided recommendations. Now create
+actionable work items (epics/stories/tasks) that implement this analysis.
+
+For each work item:
+- Title should read like a Jira ticket title (5-15 words)
+- Issue type: epic for large areas, story for specific features, task for implementation chores
+- Description should reference the related analysis and explain what needs to be built
+- Include acceptance criteria derived from the analysis
+- Include relevant technical constraints
+
+Create multiple work items to cover all implementation areas identified in the analysis.
+Be professional and concise. Each work item should be independently actionable."""
+
+        user_prompt = f"""Architectural Analysis (from previous step):
+{analysis_context}
+
+Existing entities in channel:
+{entity_context}
+
+Thread conversation:
+{thread_context}
+
+User's original request:
+"{context.message}"
+
+Generate work items based on the architectural analysis above."""
+
+        try:
+            extracted = await structured_completion(
+                response_model=ExtractedWorkItems,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            work_items = [w.model_dump() for w in extracted.work_items]
+        except Exception as e:
+            logger.warning(f"LLM batch work item extraction from plan context failed: {e}")
+            # Fall back to regular batch mode
+            return await self._create_batch_work_items_preview(context, thread_context)
+
+        if not work_items:
+            return await self._create_batch_work_items_preview(context, thread_context)
+
+        return ModeResult(
+            response_text=f"*Draft Work Items* ({len(work_items)} generated from analysis)",
+            requires_confirmation=True,
+            confirmation_data={
+                "action": "create_batch_work_items",
+                "content": {"work_items": work_items},
+            },
+            response_blocks=self._build_work_items_preview_blocks(work_items),
+        )
+
+    async def _create_batch_work_items_preview(
+        self, context: ModeContext, thread_context: str
+    ) -> ModeResult:
+        """Extract and preview multiple work items from existing entities using LLM."""
+        entity_context = await self._build_entity_context(context.channel_id)
+
+        if entity_context == "(No existing entities)":
+            # Fall back to single work item mode
+            return await self._create_work_item_preview(context, thread_context)
+
+        try:
+            extracted = await structured_completion(
+                response_model=ExtractedWorkItems,
+                messages=[
+                    {"role": "system", "content": EXTRACT_BATCH_WORK_ITEMS_SYSTEM},
+                    {"role": "user", "content": EXTRACT_BATCH_WORK_ITEMS_USER.format(
+                        entity_context=entity_context,
+                        thread_context=thread_context,
+                        message=context.message,
+                    )},
+                ],
+            )
+            work_items = [w.model_dump() for w in extracted.work_items]
+        except Exception as e:
+            logger.warning(f"LLM batch work item extraction failed: {e}")
+            # Fall back to single work item mode
+            return await self._create_work_item_preview(context, thread_context)
+
+        if not work_items:
+            return await self._create_work_item_preview(context, thread_context)
+
+        return ModeResult(
+            response_text=f"*Draft Work Items* ({len(work_items)} generated from entities)",
+            requires_confirmation=True,
+            confirmation_data={
+                "action": "create_batch_work_items",
+                "content": {"work_items": work_items},
+            },
+            response_blocks=self._build_work_items_preview_blocks(work_items),
         )
 
     async def _create_decision_preview(
@@ -377,6 +573,11 @@ class CreateModeHandler(ModeHandler):
 
     def _build_preview_blocks(self, content: dict) -> list[dict]:
         """Build Slack blocks for work item preview."""
+        import json
+
+        # Store content as JSON in button values (same pattern as RECORD mode)
+        content_json = json.dumps(content)
+
         return [
             {
                 "type": "section",
@@ -400,16 +601,19 @@ class CreateModeHandler(ModeHandler):
                         "text": {"type": "plain_text", "text": "Propose to Channel"},
                         "style": "primary",
                         "action_id": "propose_draft",
+                        "value": content_json,
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Edit"},
                         "action_id": "edit_draft",
+                        "value": content_json,
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Cancel"},
                         "action_id": "cancel_draft",
+                        "value": content_json,
                     },
                 ],
             },
@@ -486,6 +690,97 @@ class CreateModeHandler(ModeHandler):
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Cancel All"},
                     "action_id": "cancel_decisions",
+                },
+            ],
+        })
+
+        return blocks
+
+    def _build_work_items_preview_blocks(self, work_items: list[dict]) -> list[dict]:
+        """Build Slack blocks for multiple work item previews with per-item buttons."""
+        import json
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": f"Draft Work Items ({len(work_items)} generated)",
+                },
+            },
+        ]
+
+        for i, w in enumerate(work_items):
+            ac_text = ""
+            if w.get("acceptance_criteria"):
+                ac_items = "\n".join(f"  \u2022 {ac}" for ac in w["acceptance_criteria"])
+                ac_text = f"\n_Acceptance Criteria:_\n{ac_items}"
+
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{i + 1}. {w['title']}*\n"
+                        f"Type: {w.get('issue_type', 'story').title()}\n"
+                        f"{w.get('description', '')[:500]}"
+                        f"{ac_text}"
+                    ),
+                },
+            })
+            # Truncate button value to stay within Slack's 2000 char limit
+            compact_item = {
+                "title": w["title"][:200],
+                "issue_type": w.get("issue_type", "story"),
+                "description": w.get("description", "")[:500],
+                "acceptance_criteria": [ac[:100] for ac in w.get("acceptance_criteria", [])[:5]],
+                "constraints": [c[:100] for c in w.get("constraints", [])[:3]],
+            }
+            content_json = json.dumps(compact_item)
+            # Final safety: if still over limit, strip description further
+            if len(content_json) > 1900:
+                compact_item["description"] = compact_item["description"][:200]
+                compact_item["acceptance_criteria"] = compact_item["acceptance_criteria"][:3]
+                content_json = json.dumps(compact_item)
+
+            blocks.append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Propose"},
+                        "style": "primary",
+                        "action_id": f"wi_propose_{i}",
+                        "value": content_json,
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Delete"},
+                        "style": "danger",
+                        "action_id": f"wi_delete_{i}",
+                        "value": content_json,
+                    },
+                ],
+            })
+            blocks.append({"type": "divider"})
+
+        # Global actions — value is just a marker; handler extracts data
+        # from per-item buttons to avoid Slack's 2000 char value limit
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Propose All"},
+                    "style": "primary",
+                    "action_id": "propose_all_work_items",
+                    "value": "propose_all",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel All"},
+                    "action_id": "cancel_all_work_items",
+                    "value": "cancel",
                 },
             ],
         })

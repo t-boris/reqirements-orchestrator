@@ -4,68 +4,75 @@ Deferred issues discovered during code review and development.
 
 ## Open
 
+_No open issues_
+
+## Closed
+
+### ISS-015: Bot doesn't understand compound requests (analyze X and create Y)
+
+**Source:** Production usage (2026-02-05)
+**Severity:** Functional gap / core UX
+**Closed:** 2026-02-05
+
+Fixed: Implemented plan-based execution system for compound requests. Added `PlanStep` and `ExecutionPlan` schemas to `schemas.py`. Updated intent prompts to detect compound requests (`is_compound_request` field). Added `generate_execution_plan()` to `router.py` that detects patterns like "analyze X and create Y" and generates multi-step plans. Updated `ModeDispatcher` with `_execute_plan()` method that executes steps sequentially, passing context between them. Added `plan_step_context` and `is_plan_step` fields to `ModeContext`. Updated CREATE mode with `_create_batch_from_plan_context()` that uses ARCHITECT's analysis to generate batch work items.
+
+### ISS-014: CONVERSE mode has no entity awareness
+
+**Source:** Production usage (2026-02-05)
+**Severity:** Functional gap / core UX
+**Closed:** 2026-02-05
+
+Fixed: Added `_build_entity_context()` to `ConverseModeHandler` (same pattern as ARCHITECT mode). Updated `CONVERSE_SYSTEM` prompt to instruct LLM to check existing entities when answering questions about ADRs, decisions, work items, and duplication. Updated `CONVERSE_USER` template with `{entity_context}` placeholder. LLM now receives full entity list (title, type, state, rationale/description) and can answer questions about existing entities directly.
+
+### ISS-011: No way to discard/delete a Draft or Proposed ADR
+
+**Source:** Production usage (2026-02-05)
+**Severity:** UX gap / functional
+**Closed:** 2026-02-05
+
+Fixed: Added `DecisionDiscarded` event, `discard_decision()` aggregate method, "Discard" button on Draft and Proposed ADR pinned messages, `adr_discard` lifecycle handler that removes entity from aggregate, updates pinned message to ":x: Discarded" state with no buttons, unpins the message, and refreshes the dashboard. Projection DELETEs entity from `entities_view`.
+
+### ISS-013: CREATE mode has no awareness of existing entities and can't batch-create work items
+
+**Source:** Production usage (2026-02-05)
+**Severity:** Functional gap / core UX
+**Closed:** 2026-02-05
+
+Fixed: Added `ExtractedWorkItems` batch schema, `_build_entity_context()` method (reuses ARCHITECT pattern), batch intent detection via regex patterns, `_create_batch_work_items_preview()` with entity-aware LLM prompt, and `_build_work_items_preview_blocks()` for multi-item preview with per-item Propose/Delete buttons and global Propose All/Cancel All. Action handlers added: `WORK_ITEM_PREVIEW_PATTERN` for per-item actions, `WORK_ITEM_BATCH_PATTERN` for global actions, plus `_propose_single_work_item()` and `_propose_all_work_items()` helpers.
+
+### ISS-012: Channel Status dashboard truncates items with no way to expand
+
+**Source:** Production usage (2026-02-05)
+**Severity:** UX gap
+**Closed:** 2026-02-05
+
+Fixed: Added "Show all items" button to dashboard when any section overflows its display limit. Button click handler (`dashboard_show_all`) loads the aggregate and posts a full untruncated list as a thread reply on the dashboard message, grouped by section (active decisions, deprecated decisions, pending work items, approved, committed).
+
+## Closed
+
 ### ISS-002: `adr_message_ts` field on work item entities is dead weight
 
 **Source:** Code review (2026-02-04)
 **Severity:** Minor / design smell
-**Phase:** Future
+**Closed:** 2026-02-05 (acknowledged — not worth migration risk)
 
-`adr_message_ts` was added to all 5 entity types (DraftEntity, ProposedEntity, etc.) but is only meaningful for decisions. Work item entities always have `adr_message_ts = None`. Consider moving to `DecisionContent` or a decision-specific entity variant.
+The field is `None` on work items and costs nothing at runtime. Removing it from entity types would require schema migration of all 5 frozen entity types plus transitions.py, projections.py, serialization.py — high churn, zero functional benefit.
 
 ### ISS-009: Bot responds to every message — no "should I respond?" gate
 
 **Source:** Production testing (2026-02-04)
 **Severity:** Critical / UX + functional
-**Phase:** Next
+**Closed:** 2026-02-04
 
-Two related problems in `handle_message` (`src/slack/handlers/events.py`):
-
-**Problem 1: Bot responds to ALL human messages in channels it's in.**
-
-There is no gate to decide whether the bot should respond. Every regular message passes filters (subtype, bot_id, @mention dedup) and goes to intent classification. Since CONVERSE is the safe default, the bot replies to every message — even human-to-human conversations where nobody asked the bot anything. This is disruptive in active channels.
-
-**When bot SHOULD respond:**
-- `@mention` — explicit request (already handled by `app_mention`)
-- DM — user is talking directly to bot
-- Bot-initiated thread — bot started or was invited into the thread
-- Approval/objection keywords in proposal threads — "lgtm", "approved" (already in PreGates)
-
-**When bot should NOT respond:**
-- Human-to-human conversation in channel (no @mention)
-- Thread where bot wasn't mentioned or involved
-- Messages clearly not directed at the bot
-
-**Problem 2: `handle_message` doesn't fetch thread history.**
-
-When the bot IS supposed to respond in a thread, it doesn't call `conversations_replies()`. Only `handle_app_mention` fetches thread context. This causes:
-1. "Record all decisions" in thread → 0 decisions found (LLM has no thread context)
-2. Asking about a pinned ADR in its thread → bot says "I don't have context"
-
-**Suggested fix:**
-1. Add a response gate to `handle_message`:
-   - **Channel messages**: Only respond to @mentions (handled by `app_mention`), approval keywords, or messages in bot-initiated threads
-   - **DMs**: Always respond
-   - **Bot threads** (threads where bot previously posted): Respond and fetch thread history
-2. When responding in threads, always fetch `conversations_replies()` for context
-3. Track "bot threads" — threads where the bot has participated (via a set of `thread_ts` values, or check if bot has posted in thread)
+Fixed: Added `src/slack/response_gate.py` with `BotThreadTracker` (in-memory + negative cache) and `check_response_gate()` implementing 3-tier bot thread detection: in-memory set, entity store query, Slack API fallback. Gate allows DMs, bot threads, and entity threads; blocks top-level channel messages and threads without bot participation. Wired into `handle_message` before intent classification.
 
 ### ISS-010: Thread context not fetched in handle_message
 
 **Source:** Production testing (2026-02-04)
 **Severity:** Critical / functional gap
-**Phase:** Next (blocked by ISS-009)
+**Closed:** 2026-02-04
 
-Extracted from ISS-009 as a separate concern. When `handle_message` does process a thread message (after ISS-009 adds proper gating), it must fetch thread history via `conversations_replies()`. Currently only `handle_app_mention` does this.
-
-**Symptoms:**
-1. "Record all decisions" as regular message in thread → "Draft Decision Records (0 found)"
-2. "List advantages of this decision" in ADR thread → "I don't have the context of which decision"
-
-**Suggested fix:**
-- In `handle_message`, when `thread_ts` is present and bot decides to respond, call `conversations_replies(channel, ts=thread_ts, limit=50)` and pass `thread_messages` to the dispatcher
-- Same pattern as `handle_app_mention` lines ~177-190
-
-## Closed
+Fixed: `handle_message` now fetches `conversations_replies(limit=50)` when `thread_ts` is present, builds `thread_messages` and `thread_summary`, and passes both to `RouterContext` and `dispatch_mode()`. Same pattern as `handle_app_mention`. Bot participation recorded via `BotThreadTracker` after every `say()` call across event and action handlers.
 
 ### ISS-003: Block parsers are brittle — coupled to mrkdwn format
 
@@ -82,8 +89,6 @@ Fixed: Deleted `_parse_record_mode_preview()` and `_parse_amend_preview()`. Deci
 **Closed:** 2026-02-04 (Plan 10-01)
 
 Fixed: Deprecation buttons use fixed `action_id` ("deprecate_decision", "confirm_deprecate", "cancel_deprecate") with entity ID in `action.value`. Removed `DEPRECATE_DECISION_PATTERN` regex.
-
-## Closed
 
 ### ISS-001: Pinned ADR messages have no lifecycle UI
 

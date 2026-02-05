@@ -35,6 +35,18 @@ Rules:
 11. If the user asks for architectural advice, design patterns, system design, or proposes
     an architecture for discussion → ARCHITECT
 
+COMPOUND REQUEST DETECTION (is_compound_request):
+Set is_compound_request=true when the user asks for MULTIPLE SEQUENTIAL ACTIONS:
+- "analyze the architecture AND create work items/epics/stories"
+- "look at the decisions AND split into tasks"
+- "review the ADRs AND record the implementation plan"
+- "based on X, create Y" where X requires analysis first
+
+For compound requests:
+- Set mode to the FIRST logical step (usually ARCHITECT or CONVERSE for analysis)
+- Set is_compound_request=true
+- The system will execute a multi-step plan: analyze → create artifacts
+
 Output valid JSON matching the schema exactly."""
 
 INTENT_CLASSIFICATION_USER = """Context:
