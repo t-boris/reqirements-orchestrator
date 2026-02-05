@@ -9,7 +9,7 @@
 
 **v2.2 Architecture Advisor** - Phase 11
 
-- [ ] Phase 11: Architecture Advisor (1/2 plans) - in progress
+- [x] Phase 11: Architecture Advisor (2/2 plans) - completed 2026-02-05
 
 ---
 
@@ -58,4 +58,4 @@ Complete rewrite of MARO from v1.x to an event-sourced architecture.
 | 8. Smart UX Layer | v2.1 | 5/5 | Complete | 2026-02-03 |
 | 9. Decision Lifecycle | v2.1 | 4/4 | Complete | 2026-02-04 |
 | 10. Code Review Polish | v2.1 | 5/5 | Complete | 2026-02-04 |
-| 11. Architecture Advisor | v2.2 | 1/2 | In progress | - |
+| 11. Architecture Advisor | v2.2 | 2/2 | Complete | 2026-02-05 |
