@@ -51,11 +51,20 @@ DEPRECATE_DECISION_ACTION = "deprecate_decision"
 # Pattern for deprecation confirmation: confirm_deprecate or cancel_deprecate (entity ID in value)
 DEPRECATE_CONFIRM_PATTERN = re.compile(r"^(confirm|cancel)_deprecate$")
 
-# Pattern for ADR pinned message lifecycle buttons: adr_propose, adr_approve, adr_object, adr_deprecate
-ADR_LIFECYCLE_PATTERN = re.compile(r"^adr_(propose|approve|object|deprecate)$")
+# Pattern for ADR pinned message lifecycle buttons: adr_propose, adr_approve, adr_object, adr_deprecate, adr_discard
+ADR_LIFECYCLE_PATTERN = re.compile(r"^adr_(propose|approve|object|deprecate|discard)$")
 
 # Pattern for work item draft preview buttons: propose_draft, edit_draft, cancel_draft
 DRAFT_ACTION_PATTERN = re.compile(r"^(propose|edit|cancel)_draft$")
+
+# Pattern for batch work item preview: wi_propose_0, wi_delete_1
+WORK_ITEM_PREVIEW_PATTERN = re.compile(r"^wi_(propose|delete)_(\d+)$")
+
+# Pattern for batch work item global actions: propose_all_work_items, cancel_all_work_items
+WORK_ITEM_BATCH_PATTERN = re.compile(r"^(propose_all|cancel_all)_work_items$")
+
+# Pattern for MODIFY mode apply/cancel buttons
+MODIFY_ACTION_PATTERN = re.compile(r"^(apply|cancel)_modify$")
 
 # Pattern for Jira duplicate selection buttons: select_duplicate_{jira_key}
 JIRA_DUPLICATE_PATTERN = re.compile(r"^select_duplicate_.+$")
@@ -97,6 +106,182 @@ async def _post_and_pin_adr(client, channel_id: str, decision: dict, user_id: st
         return adr_ts
     except Exception as e:
         logger.warning(f"Failed to post ADR message in {channel_id}: {e}")
+        return None
+
+
+def _build_work_item_pinned_blocks(
+    entity_id: str,
+    content,
+    user_id: str,
+    status: str = "proposed",
+    approved_by: str | None = None,
+    jira_key: str | None = None,
+) -> list[dict]:
+    """Build blocks for work item pinned message based on lifecycle status.
+
+    Args:
+        entity_id: Entity ID for action buttons
+        content: WorkItemContent with title, issue_type, description, acceptance_criteria
+        user_id: User who proposed the item
+        status: Lifecycle status (proposed, approved, committed)
+        approved_by: User who approved (if status is approved or committed)
+        jira_key: Jira issue key (if committed)
+
+    Returns list of Slack blocks.
+    """
+    # Status badges
+    STATUS_BADGES = {
+        "proposed": ":mega: Proposed",
+        "approved": ":white_check_mark: Approved",
+        "committed": ":jira: In Jira",
+    }
+    badge = STATUS_BADGES.get(status, STATUS_BADGES["proposed"])
+
+    ac_text = ""
+    if hasattr(content, "acceptance_criteria") and content.acceptance_criteria:
+        ac_items = "\n".join(f"  - {ac}" for ac in content.acceptance_criteria)
+        ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
+
+    issue_type = content.issue_type.value.title() if hasattr(content, "issue_type") else "Story"
+
+    # Build header text
+    title = getattr(content, "title", "Untitled")
+    if jira_key:
+        header = f"{badge}: *{jira_key} - {title}*"
+    else:
+        header = f"{badge}: *{title}*"
+
+    # Build footer
+    footer_parts = [f"_Proposed by <@{user_id}>_"]
+    if approved_by and status in ("approved", "committed"):
+        footer_parts.append(f"_Approved by <@{approved_by}>_")
+
+    description = getattr(content, "description", "")[:500]
+
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{header}\n"
+                    f"*Type:* {issue_type}\n"
+                    f"{description}"
+                    f"{ac_text}\n\n"
+                    + " | ".join(footer_parts)
+                ),
+            },
+        },
+    ]
+
+    # Add lifecycle buttons based on status
+    if status == "proposed":
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Approve"},
+                    "style": "primary",
+                    "action_id": f"approve_{entity_id}",
+                    "value": str(entity_id),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Object"},
+                    "style": "danger",
+                    "action_id": f"object_{entity_id}",
+                    "value": str(entity_id),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Discuss"},
+                    "action_id": f"discuss_{entity_id}",
+                    "value": str(entity_id),
+                },
+            ],
+        })
+    elif status == "approved":
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Commit to Jira"},
+                    "style": "primary",
+                    "action_id": "commit_to_jira",
+                    "value": str(entity_id),
+                },
+            ],
+        })
+    # For committed status, no buttons needed
+
+    return blocks
+
+
+async def _update_work_item_pinned_message(
+    client, channel_id: str, message_ts: str, entity_id: str, content,
+    user_id: str, status: str, approved_by: str | None = None, jira_key: str | None = None,
+) -> None:
+    """Update a work item's pinned message to reflect current lifecycle state."""
+    blocks = _build_work_item_pinned_blocks(
+        entity_id=entity_id,
+        content=content,
+        user_id=user_id,
+        status=status,
+        approved_by=approved_by,
+        jira_key=jira_key,
+    )
+
+    title = getattr(content, "title", "Untitled")
+    try:
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            blocks=blocks,
+            text=f"{status.title()}: {title}",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update work item pinned message: {e}")
+
+
+async def _post_and_pin_work_item(
+    client, channel_id: str, entity_id: str, content, user_id: str,
+) -> str | None:
+    """Post a formatted work item proposal to the channel and pin it.
+
+    Args:
+        client: Slack client
+        channel_id: Channel to post in
+        entity_id: Entity ID for action buttons
+        content: WorkItemContent with title, issue_type, description, acceptance_criteria
+        user_id: User who proposed the item
+
+    Returns the message timestamp on success, or None on failure.
+    """
+    proposal_blocks = _build_work_item_pinned_blocks(
+        entity_id=entity_id,
+        content=content,
+        user_id=user_id,
+        status="proposed",
+    )
+
+    try:
+        result = await client.chat_postMessage(
+            channel=channel_id,
+            blocks=proposal_blocks,
+            text=f"Proposed: {getattr(content, 'title', 'Untitled')}",
+        )
+        wi_ts = result.get("ts")
+        if wi_ts:
+            get_tracker().record_bot_response(channel_id, wi_ts)
+            try:
+                await client.pins_add(channel=channel_id, timestamp=wi_ts)
+            except Exception as e:
+                logger.warning(f"Failed to pin work item in {channel_id}: {e}")
+        return wi_ts
+    except Exception as e:
+        logger.warning(f"Failed to post work item in {channel_id}: {e}")
         return None
 
 
@@ -523,6 +708,141 @@ async def _open_edit_modal(
     await client.views_open(trigger_id=trigger_id, view=modal)
 
 
+async def _propose_single_work_item(
+    client, say, channel_id: str, message_ts: str, thread_ts: str | None,
+    user_id: str, blocks: list[dict], item_index: int, content_data: dict,
+) -> None:
+    """Propose a single work item from a batch preview."""
+    from src.domain.content import IssueType, WorkItemContent
+
+    try:
+        aggregate = await load_aggregate(channel_id)
+
+        content = WorkItemContent(
+            issue_type=IssueType(content_data.get("issue_type", "story").lower()),
+            title=content_data["title"],
+            description=content_data.get("description", ""),
+            acceptance_criteria=content_data.get("acceptance_criteria", []),
+            constraints=content_data.get("constraints", []),
+        )
+
+        draft = aggregate.draft_work_item(
+            actor_id=UserId(user_id),
+            thread_ts=ThreadTs(thread_ts or ""),
+            content=content,
+        )
+
+        proposed = aggregate.propose_work_item(
+            entity_id=draft.id,
+            actor_id=UserId(user_id),
+            canonical_message_ts=message_ts or "",
+        )
+        await save_events(aggregate)
+
+        logger.info(f"Proposed work item '{content.title}' from batch in {channel_id} by {user_id}")
+        if thread_ts:
+            get_tracker().record_bot_response(channel_id, thread_ts)
+
+        # Post pinned proposal message to the channel
+        await _post_and_pin_work_item(client, channel_id, str(draft.id), content, user_id)
+
+        # Replace the item's blocks with confirmation
+        target_text = f"*{item_index + 1}. "
+        for i, block in enumerate(blocks):
+            if block.get("type") == "section":
+                text = block.get("text", {}).get("text", "")
+                if text.startswith(target_text):
+                    confirmation = {
+                        "type": "context",
+                        "elements": [{"type": "mrkdwn", "text": f":white_check_mark: *{content.title}* proposed by <@{user_id}>"}],
+                    }
+                    blocks = _replace_adr_blocks(blocks, i, confirmation)
+                    break
+
+        try:
+            await client.chat_update(
+                channel=channel_id, ts=message_ts,
+                blocks=blocks, text=f"Work item '{content.title}' proposed",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update preview message: {e}")
+
+        await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+    except Exception as e:
+        logger.error(f"Error proposing work item from batch: {e}", exc_info=True)
+        await say(text=f":x: Failed to propose work item: {e}", thread_ts=thread_ts)
+
+
+async def _propose_all_work_items(
+    client, say, channel_id: str, message_ts: str, thread_ts: str | None,
+    user_id: str, original_blocks: list[dict], work_items: list[dict],
+) -> None:
+    """Propose all work items from a batch preview."""
+    from src.domain.content import IssueType, WorkItemContent
+
+    try:
+        aggregate = await load_aggregate(channel_id)
+
+        created = []
+        for w in work_items:
+            content = WorkItemContent(
+                issue_type=IssueType(w.get("issue_type", "story").lower()),
+                title=w["title"],
+                description=w.get("description", ""),
+                acceptance_criteria=w.get("acceptance_criteria", []),
+                constraints=w.get("constraints", []),
+            )
+
+            draft = aggregate.draft_work_item(
+                actor_id=UserId(user_id),
+                thread_ts=ThreadTs(thread_ts or ""),
+                content=content,
+            )
+
+            aggregate.propose_work_item(
+                entity_id=draft.id,
+                actor_id=UserId(user_id),
+                canonical_message_ts=message_ts or "",
+            )
+            created.append((str(draft.id), content))
+
+        await save_events(aggregate)
+
+        logger.info(f"Proposed {len(created)} work items from batch in {channel_id} by {user_id}")
+        if thread_ts:
+            get_tracker().record_bot_response(channel_id, thread_ts)
+
+        # Post pinned proposal messages to the channel for each work item
+        for entity_id, content in created:
+            await _post_and_pin_work_item(client, channel_id, entity_id, content, user_id)
+
+        # Replace all buttons with confirmation
+        updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]
+        updated_blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f":white_check_mark: *{len(created)} work items proposed* by <@{user_id}>",
+            },
+        })
+
+        await client.chat_update(
+            channel=channel_id, ts=message_ts,
+            blocks=updated_blocks,
+            text=f"{len(created)} work items proposed",
+        )
+
+        await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+    except Exception as e:
+        logger.error(f"Error proposing batch work items: {e}", exc_info=True)
+        await say(
+            text=f":x: Failed to propose work items: {e}",
+            thread_ts=thread_ts,
+        )
+
+
 def register_action_handlers(app: AsyncApp) -> None:
     """Register all action handlers on the Bolt app."""
 
@@ -549,7 +869,9 @@ def register_action_handlers(app: AsyncApp) -> None:
 
         user_id = body.get("user", {}).get("id")
         channel_id = body.get("channel", {}).get("id")
-        thread_ts = body.get("message", {}).get("thread_ts")
+        message_ts = body.get("message", {}).get("ts")
+        # Use thread_ts if in a thread, otherwise use message_ts to reply under the pinned message
+        thread_ts = body.get("message", {}).get("thread_ts") or message_ts
 
         logger.info(f"Action {action_type} on entity {entity_id} by {user_id}")
 
@@ -623,8 +945,23 @@ def register_action_handlers(app: AsyncApp) -> None:
                 if thread_ts:
                     get_tracker().record_bot_response(channel_id, thread_ts)
 
-                # Update pinned ADR message if this is a decision
-                if not is_work_item:
+                # Update pinned message based on entity type
+                if is_work_item:
+                    # Update work item pinned message to show "Commit to Jira" button
+                    if isinstance(result, ApprovedEntity):
+                        proposed_by = getattr(result.attribution, "proposed_by", None)
+                        await _update_work_item_pinned_message(
+                            client=client,
+                            channel_id=channel_id,
+                            message_ts=message_ts,  # The pinned message we clicked on
+                            entity_id=entity_id,
+                            content=result.content,
+                            user_id=str(proposed_by) if proposed_by else user_id,
+                            status="approved",
+                            approved_by=user_id,
+                        )
+                else:
+                    # Update pinned ADR message
                     updated_entity = aggregate.get_entity(EntityId(entity_id))
                     if updated_entity:
                         await _update_adr_pinned_message(client, channel_id, updated_entity, aggregate)
@@ -695,25 +1032,75 @@ def register_action_handlers(app: AsyncApp) -> None:
             f"Question answer by {user_id}: Q='{question[:50]}' A='{answer[:50]}'"
         )
 
-        # Update original message to show selection (replace buttons with Q/A text)
+        # Update original message: replace only the answered question's blocks,
+        # preserve other unanswered questions' blocks.
         if message_ts and channel_id:
             try:
-                # Get original message text to preserve it
-                original_text = body.get("message", {}).get("text", "")
                 original_blocks = body.get("message", {}).get("blocks", [])
+                action_id = action.get("action_id", "")
 
-                # Keep non-actions blocks, replace actions with Q/A summary
-                updated_blocks = [
-                    block for block in original_blocks
-                    if block.get("type") != "actions"
-                ]
-                updated_blocks.append({
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*Q:* {question}\n*A:* {answer if answer != '__freeform__' else '(typing...)'}"
-                    },
-                })
+                # Find the actions block that contains the clicked button
+                answered_actions_idx = None
+                for i, block in enumerate(original_blocks):
+                    if block.get("type") != "actions":
+                        continue
+                    for elem in block.get("elements", []):
+                        if elem.get("action_id") == action_id:
+                            answered_actions_idx = i
+                            break
+                    if answered_actions_idx is not None:
+                        break
+
+                if answered_actions_idx is not None:
+                    # Question blocks are a triplet: section (question text),
+                    # actions (buttons), context (hint). Replace all three with
+                    # a Q/A summary.
+                    qa_summary = {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Q:* {question}\n*A:* {answer}",
+                        },
+                    }
+
+                    # Determine the triplet range around the actions block
+                    remove_start = answered_actions_idx
+                    remove_end = answered_actions_idx + 1  # exclusive
+
+                    # Check if preceding block is the question section
+                    if remove_start > 0 and original_blocks[remove_start - 1].get("type") == "section":
+                        text = original_blocks[remove_start - 1].get("text", {}).get("text", "")
+                        # Question sections are bold: "*question text*"
+                        if text.startswith("*") and text.endswith("*"):
+                            remove_start -= 1
+
+                    # Check if following block is the hint context
+                    if remove_end < len(original_blocks) and original_blocks[remove_end].get("type") == "context":
+                        ctx_text = ""
+                        elems = original_blocks[remove_end].get("elements", [])
+                        if elems:
+                            ctx_text = elems[0].get("text", "")
+                        if "Type your answer" in ctx_text:
+                            remove_end += 1
+
+                    updated_blocks = (
+                        original_blocks[:remove_start]
+                        + [qa_summary]
+                        + original_blocks[remove_end:]
+                    )
+                else:
+                    # Fallback: couldn't find the specific actions block
+                    updated_blocks = [
+                        block for block in original_blocks
+                        if block.get("type") != "actions"
+                    ]
+                    updated_blocks.append({
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Q:* {question}\n*A:* {answer}",
+                        },
+                    })
 
                 await client.chat_update(
                     channel=channel_id,
@@ -723,16 +1110,6 @@ def register_action_handlers(app: AsyncApp) -> None:
                 )
             except Exception as e:
                 logger.warning(f"Failed to update message with answer: {e}")
-
-        # If "Something else" was clicked, prompt for free-form input
-        if answer == "__freeform__":
-            await say(
-                text=f"<@{user_id}> Go ahead, type your answer:",
-                thread_ts=thread_ts,
-            )
-            if thread_ts:
-                get_tracker().record_bot_response(channel_id, thread_ts)
-            return
 
         # Post the answer as a visible thread message (for conversation record)
         await say(
@@ -1336,20 +1713,22 @@ def register_action_handlers(app: AsyncApp) -> None:
         channel_id = body.get("channel", {}).get("id")
         message_ts = body.get("message", {}).get("ts")
         user_id = body.get("user", {}).get("id")
+        # Use message_ts as thread_ts to reply under the pinned ADR message
+        thread_ts = message_ts
 
         try:
             aggregate = await load_aggregate(channel_id)
             entity = aggregate.get_entity(EntityId(entity_id_str))
 
             if entity is None:
-                await say(text=f":x: Decision `{entity_id_str[:8]}` not found.")
+                await say(text=f":x: Decision `{entity_id_str[:8]}` not found.", thread_ts=thread_ts)
                 return
 
             title = getattr(entity.content, "title", entity_id_str[:8])
 
             if lifecycle_action == "propose":
                 if not isinstance(entity, DraftEntity):
-                    await say(text=f":x: Decision must be in draft state to propose. Current: {type(entity).__name__}")
+                    await say(text=f":x: Decision must be in draft state to propose. Current: {type(entity).__name__}", thread_ts=thread_ts)
                     return
 
                 proposed = aggregate.propose_decision(
@@ -1361,12 +1740,12 @@ def register_action_handlers(app: AsyncApp) -> None:
 
                 logger.info(f"ADR lifecycle: proposed '{title}' in {channel_id} by {user_id}")
                 await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
-                await say(text=f":hourglass: *{title}* proposed for approval by <@{user_id}>.")
+                await say(text=f":hourglass: *{title}* proposed for approval by <@{user_id}>.", thread_ts=thread_ts)
                 await _update_dashboard_after_decision(client, channel_id, aggregate)
 
             elif lifecycle_action == "approve":
                 if not isinstance(entity, ProposedEntity):
-                    await say(text=f":x: Decision must be in proposed state to approve. Current: {type(entity).__name__}")
+                    await say(text=f":x: Decision must be in proposed state to approve. Current: {type(entity).__name__}", thread_ts=thread_ts)
                     return
 
                 result = aggregate.approve_decision(
@@ -1377,16 +1756,16 @@ def register_action_handlers(app: AsyncApp) -> None:
 
                 if isinstance(result, ApprovedEntity):
                     logger.info(f"ADR lifecycle: approved '{title}' in {channel_id} by {user_id}")
-                    await say(text=f":white_check_mark: *{title}* approved by <@{user_id}>.")
+                    await say(text=f":white_check_mark: *{title}* approved by <@{user_id}>.", thread_ts=thread_ts)
                 else:
-                    await say(text=f":thumbsup: <@{user_id}> approved *{title}*. Waiting for more approvals.")
+                    await say(text=f":thumbsup: <@{user_id}> approved *{title}*. Waiting for more approvals.", thread_ts=thread_ts)
 
                 await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
                 await _update_dashboard_after_decision(client, channel_id, aggregate)
 
             elif lifecycle_action == "object":
                 if not isinstance(entity, ProposedEntity):
-                    await say(text=f":x: Decision must be in proposed state to object. Current: {type(entity).__name__}")
+                    await say(text=f":x: Decision must be in proposed state to object. Current: {type(entity).__name__}", thread_ts=thread_ts)
                     return
 
                 aggregate.raise_entity_objection(
@@ -1397,14 +1776,14 @@ def register_action_handlers(app: AsyncApp) -> None:
                 await save_events(aggregate)
 
                 logger.info(f"ADR lifecycle: objection on '{title}' in {channel_id} by {user_id}")
-                await say(text=f":no_entry_sign: <@{user_id}> raised an objection to *{title}*. Please discuss in thread.")
+                await say(text=f":no_entry_sign: <@{user_id}> raised an objection to *{title}*. Please discuss in thread.", thread_ts=thread_ts)
                 await _update_dashboard_after_decision(client, channel_id, aggregate)
 
             elif lifecycle_action == "deprecate":
                 if not isinstance(entity, CommittedEntity):
                     # For approved decisions, show a message suggesting to commit first
                     state_name = type(entity).__name__.replace("Entity", "")
-                    await say(text=f":x: Only committed decisions can be deprecated. Current state: *{state_name}*.")
+                    await say(text=f":x: Only committed decisions can be deprecated. Current state: *{state_name}*.", thread_ts=thread_ts)
                     return
 
                 deprecated = aggregate.deprecate_decision(
@@ -1416,14 +1795,60 @@ def register_action_handlers(app: AsyncApp) -> None:
 
                 logger.info(f"ADR lifecycle: deprecated '{title}' in {channel_id} by {user_id}")
                 await _update_adr_pinned_message(client, channel_id, aggregate.get_entity(EntityId(entity_id_str)), aggregate)
-                await say(text=f":no_entry_sign: *{title}* deprecated by <@{user_id}>.")
+                await say(text=f":no_entry_sign: *{title}* deprecated by <@{user_id}>.", thread_ts=thread_ts)
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            elif lifecycle_action == "discard":
+                if not isinstance(entity, (DraftEntity, ProposedEntity)):
+                    state_name = type(entity).__name__.replace("Entity", "")
+                    await say(text=f":x: Only Draft or Proposed decisions can be discarded. Current state: *{state_name}*.", thread_ts=thread_ts)
+                    return
+
+                adr_ts = getattr(entity, 'adr_message_ts', None)
+
+                aggregate.discard_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    reason="Discarded via ADR pinned message",
+                )
+                await save_events(aggregate)
+
+                logger.info(f"ADR lifecycle: discarded '{title}' in {channel_id} by {user_id}")
+
+                # Update pinned ADR message to show discarded state with no buttons
+                if adr_ts:
+                    from src.slack.blocks.decisions import build_adr_post_blocks, STATUS_BADGES
+                    discarded_blocks = build_adr_post_blocks(
+                        title=title,
+                        decision_type=getattr(entity.content, "decision_type", None),
+                        decision=getattr(entity.content, "description", ""),
+                        rationale=getattr(entity.content, "rationale", ""),
+                        status="discarded",
+                        entity_id=None,  # No buttons
+                    )
+                    try:
+                        await client.chat_update(
+                            channel=channel_id, ts=adr_ts,
+                            blocks=discarded_blocks,
+                            text=f"ADR: {title} (discarded)",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update discarded ADR message: {e}")
+
+                    # Unpin the message
+                    try:
+                        await client.pins_remove(channel=channel_id, timestamp=adr_ts)
+                    except Exception as e:
+                        logger.warning(f"Failed to unpin discarded ADR message: {e}")
+
+                await say(text=f":x: *{title}* discarded by <@{user_id}>.", thread_ts=thread_ts)
                 await _update_dashboard_after_decision(client, channel_id, aggregate)
 
         except TransitionError as e:
-            await say(text=f":x: Action failed: {e}")
+            await say(text=f":x: Action failed: {e}", thread_ts=thread_ts)
         except Exception as e:
             logger.error(f"Error handling ADR lifecycle action: {e}", exc_info=True)
-            await say(text=":x: An error occurred processing your action. Please try again.")
+            await say(text=":x: An error occurred processing your action. Please try again.", thread_ts=thread_ts)
 
     @app.action(DRAFT_ACTION_PATTERN)
     async def handle_draft_action(ack, body: dict, action: dict, client, say) -> None:
@@ -1593,6 +2018,357 @@ def register_action_handlers(app: AsyncApp) -> None:
         except Exception as e:
             logger.error(f"Error proposing draft: {e}", exc_info=True)
             await say(text=f":x: Failed to propose work item: {e}", thread_ts=thread_ts)
+
+    @app.action(MODIFY_ACTION_PATTERN)
+    async def handle_modify_action(ack, body: dict, action: dict, client, say) -> None:
+        """Handle Apply Changes / Cancel buttons from MODIFY mode preview.
+
+        Apply reads entity_id + modifications from button value JSON,
+        loads the aggregate, and applies changes via amend_decision or
+        WorkItemUpdated depending on entity type.
+        """
+        await ack()
+
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if action_id == "cancel_modify":
+            updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+            updated_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": "_Modification cancelled_"}],
+            })
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks, text="Modification cancelled",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled modify message: {e}")
+            return
+
+        # apply_modify
+        try:
+            value_data = json.loads(action.get("value", "{}"))
+            entity_id_str = value_data.get("entity_id")
+            modifications = value_data.get("modifications", [])
+        except (json.JSONDecodeError, TypeError):
+            await say(text=":x: Could not read modification data.", thread_ts=thread_ts)
+            return
+
+        if not entity_id_str or not modifications:
+            await say(text=":x: Missing modification data.", thread_ts=thread_ts)
+            return
+
+        try:
+            aggregate = await load_aggregate(channel_id)
+            entity = aggregate.get_entity(EntityId(entity_id_str))
+
+            if entity is None:
+                await say(text=f":x: Entity `{entity_id_str[:8]}` not found.", thread_ts=thread_ts)
+                return
+
+            if not isinstance(entity, (DraftEntity, ProposedEntity)):
+                state_name = type(entity).__name__.replace("Entity", "")
+                await say(
+                    text=f":x: Cannot modify entity in *{state_name}* state.",
+                    thread_ts=thread_ts,
+                )
+                return
+
+            title = getattr(entity.content, "title", entity_id_str[:8])
+            is_decision = entity.entity_type.value == "decision"
+
+            if is_decision:
+                # Build new content by applying modifications to current content
+                content_dict = entity.content.model_dump()
+                for mod in modifications:
+                    field = mod.get("field", "")
+                    new_value = mod.get("new_value", "")
+                    if field == "acceptance_criteria" or field == "constraints":
+                        content_dict[field] = [v.strip() for v in new_value.split(",") if v.strip()]
+                    elif field == "alternatives_considered":
+                        content_dict[field] = [v.strip() for v in new_value.split(",") if v.strip()]
+                    elif field in content_dict:
+                        content_dict[field] = new_value
+
+                new_content = DecisionContent(**content_dict)
+                aggregate.amend_decision(
+                    entity_id=EntityId(entity_id_str),
+                    actor_id=UserId(user_id),
+                    new_content=new_content,
+                    reason="Modified via Slack",
+                )
+            else:
+                # Work item — use WorkItemUpdated
+                changes = {}
+                for mod in modifications:
+                    field = mod.get("field", "")
+                    new_value = mod.get("new_value", "")
+                    if field == "acceptance_criteria" or field == "constraints":
+                        changes[field] = [v.strip() for v in new_value.split(",") if v.strip()]
+                    elif field:
+                        changes[field] = new_value
+
+                from src.domain.events import WorkItemUpdated
+                aggregate._emit(
+                    WorkItemUpdated(
+                        aggregate_id=aggregate.channel_id,
+                        actor_id=user_id,
+                        version=aggregate.next_version,
+                        entity_id=entity_id_str,
+                        changes=changes,
+                        reason="Modified via Slack",
+                    )
+                )
+
+            await save_events(aggregate)
+
+            logger.info(f"Applied modifications to '{title}' in {channel_id} by {user_id}")
+
+            # Update preview message
+            updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+            change_summary = ", ".join(m.get("field", "") for m in modifications)
+            updated_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f":white_check_mark: Changes applied to *{title}* ({change_summary}) by <@{user_id}>"}],
+            })
+
+            await client.chat_update(
+                channel=channel_id, ts=message_ts,
+                blocks=updated_blocks,
+                text=f"Changes applied to {title}",
+            )
+
+            # Update pinned ADR message if decision
+            if is_decision:
+                updated_entity = aggregate.get_entity(EntityId(entity_id_str))
+                if updated_entity:
+                    await _update_adr_pinned_message(client, channel_id, updated_entity, aggregate)
+
+            await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+        except Exception as e:
+            logger.error(f"Error applying modifications: {e}", exc_info=True)
+            await say(text=f":x: Failed to apply modifications: {e}", thread_ts=thread_ts)
+
+    @app.action(WORK_ITEM_PREVIEW_PATTERN)
+    async def handle_work_item_preview_action(ack, body: dict, action: dict, client, say) -> None:
+        """Handle per-work-item Propose / Delete buttons on batch preview."""
+        await ack()
+
+        action_id = action.get("action_id", "")
+        match = WORK_ITEM_PREVIEW_PATTERN.match(action_id)
+        if not match:
+            return
+
+        action_type = match.group(1)
+        item_index = int(match.group(2))
+
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if action_type == "delete":
+            # Replace the item's section+actions+divider with removal notice
+            target_text = f"*{item_index + 1}. "
+            for i, block in enumerate(blocks):
+                if block.get("type") == "section":
+                    text = block.get("text", {}).get("text", "")
+                    if text.startswith(target_text):
+                        removal = {
+                            "type": "context",
+                            "elements": [{"type": "mrkdwn", "text": f":wastebasket: Item #{item_index + 1} removed by <@{user_id}>"}],
+                        }
+                        blocks = _replace_adr_blocks(blocks, i, removal)
+                        break
+
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=blocks, text="Work item removed",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update after work item delete: {e}")
+            return
+
+        # action_type == "propose" — propose single work item
+        try:
+            content_data = json.loads(action.get("value", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            await say(text=":x: Could not read work item data.", thread_ts=thread_ts)
+            return
+
+        await _propose_single_work_item(
+            client, say, channel_id, message_ts, thread_ts,
+            user_id, blocks, item_index, content_data,
+        )
+
+    @app.action(WORK_ITEM_BATCH_PATTERN)
+    async def handle_work_item_batch_action(ack, body: dict, action: dict, client, say) -> None:
+        """Handle Propose All / Cancel All buttons on batch work item previews."""
+        await ack()
+
+        action_id = action.get("action_id", "")
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+        user_id = body.get("user", {}).get("id")
+        thread_ts = body.get("message", {}).get("thread_ts")
+        blocks = body.get("message", {}).get("blocks", [])
+
+        if "cancel_all" in action_id:
+            updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+            updated_blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": "_Cancelled_"}],
+            })
+            try:
+                await client.chat_update(
+                    channel=channel_id, ts=message_ts,
+                    blocks=updated_blocks, text="Work items cancelled",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled work items message: {e}")
+            return
+
+        # propose_all — extract work item data from individual per-item
+        # propose buttons in the message blocks (avoids Slack 2000 char value limit)
+        work_items = []
+        for block in blocks:
+            if block.get("type") != "actions":
+                continue
+            for elem in block.get("elements", []):
+                aid = elem.get("action_id", "")
+                if aid.startswith("wi_propose_"):
+                    try:
+                        item_data = json.loads(elem.get("value", "{}"))
+                        if item_data.get("title"):
+                            work_items.append(item_data)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+        if not work_items:
+            await say(text=":x: No work items to propose.", thread_ts=thread_ts)
+            return
+
+        await _propose_all_work_items(
+            client, say, channel_id, message_ts, thread_ts,
+            user_id, blocks, work_items,
+        )
+
+    @app.action("dashboard_show_all")
+    async def handle_dashboard_show_all(ack, body: dict, action: dict, client, say) -> None:
+        """Handle 'Show all items' button on the channel dashboard.
+
+        Posts the full (untruncated) list of entities as a thread reply
+        on the dashboard message.
+        """
+        await ack()
+
+        channel_id = body.get("channel", {}).get("id") or action.get("value", "")
+        message_ts = body.get("message", {}).get("ts")
+
+        if not channel_id:
+            return
+
+        try:
+            aggregate = await load_aggregate(channel_id)
+
+            sections: list[str] = []
+
+            # Decisions
+            decisions = [
+                e for e in aggregate.entities.values()
+                if e.entity_type.value == "decision"
+            ]
+            if decisions:
+                active = [e for e in decisions if get_lifecycle(e).value != "deprecated"]
+                deprecated = [e for e in decisions if get_lifecycle(e).value == "deprecated"]
+
+                if active:
+                    lines = ["*Active Decisions*"]
+                    for e in active:
+                        title = getattr(e.content, "title", str(e.id)[:8])
+                        status = get_lifecycle(e).value
+                        adr_ts = getattr(e, 'adr_message_ts', None)
+                        if status == "proposed":
+                            display = f":hourglass: {title}"
+                        elif status in ("approved", "committed"):
+                            display = f":white_check_mark: {title}"
+                        else:
+                            display = f":pencil2: {title}"
+                        if adr_ts:
+                            link = _build_slack_permalink(channel_id, adr_ts)
+                            lines.append(f"  \u2022 <{link}|{display}> ({status})")
+                        else:
+                            lines.append(f"  \u2022 {display} ({status})")
+                    sections.append("\n".join(lines))
+
+                if deprecated:
+                    lines = ["*Deprecated Decisions*"]
+                    for e in deprecated:
+                        title = getattr(e.content, "title", str(e.id)[:8])
+                        lines.append(f"  \u2022 ~{title}~")
+                    sections.append("\n".join(lines))
+
+            # Work items
+            work_items = [
+                e for e in aggregate.entities.values()
+                if e.entity_type.value == "work_item"
+            ]
+            if work_items:
+                pending = [e for e in work_items if get_lifecycle(e).value in ("draft", "proposed")]
+                committed = [e for e in work_items if get_lifecycle(e).value == "committed"]
+                approved = [e for e in work_items if get_lifecycle(e).value == "approved"]
+
+                if pending:
+                    lines = ["*Pending Approval*"]
+                    for e in pending:
+                        title = getattr(e.content, "title", str(e.id)[:8])
+                        lines.append(f"  \u2022 {title}")
+                    sections.append("\n".join(lines))
+
+                if approved:
+                    lines = ["*Approved (not yet in Jira)*"]
+                    for e in approved:
+                        title = getattr(e.content, "title", str(e.id)[:8])
+                        lines.append(f"  \u2022 {title}")
+                    sections.append("\n".join(lines))
+
+                if committed:
+                    lines = ["*In Jira*"]
+                    for e in committed:
+                        title = getattr(e.content, "title", str(e.id)[:8])
+                        jira_key = ""
+                        if hasattr(e, "jira_link") and e.jira_link:
+                            jira_key = f"[{e.jira_link.jira_key}] "
+                        lines.append(f"  \u2022 {jira_key}{title}")
+                    sections.append("\n".join(lines))
+
+            if not sections:
+                full_text = "_No items in this channel._"
+            else:
+                full_text = "\n\n".join(sections)
+
+            # Post as thread reply on dashboard message
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=message_ts,
+                text=full_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": full_text[:3000]},
+                }],
+            )
+
+        except Exception as e:
+            logger.error(f"Error handling dashboard show all: {e}", exc_info=True)
 
     # Jira commit flow handlers
     app.action("commit_to_jira")(handle_commit_to_jira)
