@@ -75,6 +75,10 @@ class DecisionContent(BaseModel):
     rationale: str = ""
     alternatives_considered: list[str] = Field(default_factory=list)
 
+    # Architecture metadata (optional, populated by ARCHITECT mode)
+    patterns_referenced: list[str] = Field(default_factory=list)
+    tradeoffs: list[str] = Field(default_factory=list)
+
     # Links to affected entities
     affects_entities: list[EntityId] = Field(default_factory=list)
 
