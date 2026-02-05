@@ -12,8 +12,10 @@ from src.domain.types import ChannelId, EntityId
 from src.intent.schemas import IntentClassification, SafetyCheckResult, SuperMode
 from src.intent.safety import ActionContext, evaluate_safety
 from src.modes.base import ModeContext, ModeHandler, ModeResult
+from src.modes.architect import ArchitectModeHandler
 from src.modes.converse import ConverseModeHandler
 from src.modes.create import CreateModeHandler
+from src.modes.jira_mode import JiraModeHandler
 from src.modes.modify import ModifyModeHandler
 from src.modes.record import RecordModeHandler
 
@@ -29,6 +31,8 @@ class ModeDispatcher:
             SuperMode.MODIFY: ModifyModeHandler(),
             SuperMode.RECORD: RecordModeHandler(),
             SuperMode.CONVERSE: ConverseModeHandler(),
+            SuperMode.JIRA: JiraModeHandler(),
+            SuperMode.ARCHITECT: ArchitectModeHandler(),
         }
 
     def get_handler(self, mode: SuperMode) -> ModeHandler:
