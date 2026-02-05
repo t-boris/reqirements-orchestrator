@@ -101,7 +101,11 @@ Extract a work item based on the full conversation context."""
 EXTRACT_BATCH_WORK_ITEMS_SYSTEM = """You are generating structured work items from existing architectural decisions and entities in a channel.
 
 The user wants to create work items (epics/stories/tasks) based on the existing decisions and entities.
-Generate ONE work item per relevant entity/decision area.
+
+IMPORTANT: Look at the THREAD CONVERSATION carefully!
+- If the bot previously listed specific stories/items to create, extract THOSE items
+- If bot said "here are the other X stories we should create" followed by a list, create those items
+- Do NOT create duplicates of items that were already proposed in the thread
 
 For each work item:
 - Title should read like a Jira ticket title (5-15 words)
@@ -115,13 +119,15 @@ Be professional and concise. Each work item should be independently actionable."
 EXTRACT_BATCH_WORK_ITEMS_USER = """Existing entities in this channel:
 {entity_context}
 
-Thread conversation:
+Thread conversation (check for items bot already listed):
 {thread_context}
 
 User's request:
 "{message}"
 
-Generate one work item per relevant entity/decision area."""
+Generate work items based on:
+1. Items the bot listed in the thread conversation that haven't been proposed yet
+2. OR one work item per relevant entity/decision area if no specific list exists"""
 
 EXTRACT_DECISION_SYSTEM = """You are extracting ALL architectural decisions from a Slack thread discussion.
 
@@ -236,16 +242,39 @@ class CreateModeHandler(ModeHandler):
             logger.debug(f"Could not load entity context: {e}")
             return "(No existing entities)"
 
-    def _is_batch_work_item_intent(self, message: str) -> bool:
-        """Detect if the message intends to create work items from existing entities."""
+    def _is_batch_work_item_intent(self, message: str, thread_context: str = "") -> bool:
+        """Detect if the message intends to create multiple work items.
+
+        Checks both the message and thread context to detect batch intent.
+        """
         import re
         batch_patterns = [
             r"(?:create|make|generate|build)\s+(?:epics?|stories|tasks|work items?|tickets?)\s+(?:for|from|based on)",
             r"(?:for|from|based on)\s+(?:the\s+)?(?:architecture|decisions?|ADRs?|entities)",
             r"(?:create|make|generate)\s+(?:epics?|stories|tasks)\s+(?:for\s+)?(?:each|all|every)",
+            # New patterns for batch intent
+            r"propose\s+(?:the\s+)?(?:remaining|other|all|each)\s+(?:stories|tasks|items|epics?)",
+            r"(?:remaining|other|all)\s+(?:\d+\s+)?(?:stories|tasks|items|epics?)",
+            r"(?:create|propose)\s+(?:the\s+)?(?:stories|tasks)\s+(?:for|under)\s+(?:this|the)\s+epic",
+            r"break\s+(?:it\s+)?down\s+(?:into|to)\s+(?:stories|tasks)",
+            r"split\s+(?:into|to)\s+(?:stories|tasks|user\s+stories)",
         ]
         lower = message.lower()
-        return any(re.search(p, lower) for p in batch_patterns)
+
+        # Check message patterns
+        if any(re.search(p, lower) for p in batch_patterns):
+            return True
+
+        # Check thread context for multi-item listings (bot previously listed items)
+        if thread_context:
+            thread_lower = thread_context.lower()
+            # If bot mentioned multiple items/stories in thread and user is confirming
+            if ("here are" in thread_lower or "identified" in thread_lower or
+                "stories we should create" in thread_lower):
+                if any(word in lower for word in ["yes", "propose", "create", "go ahead", "do it"]):
+                    return True
+
+        return False
 
     async def _create_preview(self, context: ModeContext) -> ModeResult:
         """Extract content using LLM and show preview for confirmation."""
@@ -253,8 +282,8 @@ class CreateModeHandler(ModeHandler):
         thread_context = self._build_thread_context(context)
 
         if entity_type == "work_item":
-            # Check for batch intent referencing existing entities
-            if self._is_batch_work_item_intent(context.message):
+            # Check for batch intent - pass thread context for smarter detection
+            if self._is_batch_work_item_intent(context.message, thread_context):
                 return await self._create_batch_work_items_preview(context, thread_context)
             return await self._create_work_item_preview(context, thread_context)
 
