@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MARO 2.0",
     description="Multi-Agent Requirements Orchestrator - Slack bot for transforming conversations into work items",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 

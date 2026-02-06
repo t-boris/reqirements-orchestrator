@@ -19,7 +19,7 @@ from src.infrastructure.aggregate_loader import load_aggregate
 logger = logging.getLogger(__name__)
 
 # Version from pyproject.toml
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 AVAILABLE_COMMANDS = {
     "help": "Show available commands",
