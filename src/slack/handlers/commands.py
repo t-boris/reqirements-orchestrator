@@ -25,10 +25,10 @@ AVAILABLE_COMMANDS = {
     "help": "Show available commands",
     "version": "Show MARO version",
     "status": "Show channel status",
-    "sync": "Check Jira sync status",
+    "sync": "Check Jira sync status (`sync fix` to recreate missing)",
     "decisions": "List active decisions",
     "entities": "List all entities",
-    "config": "Show channel configuration",
+    "config": "Show/set channel configuration",
     "inspect": "Debug intent classifications",
 }
 
@@ -65,7 +65,7 @@ def register_command_handlers(app: AsyncApp) -> None:
             case "status":
                 await _handle_status(respond, channel_id)
             case "sync":
-                await _handle_sync(respond, client, channel_id, user_id)
+                await _handle_sync(respond, client, channel_id, user_id, args)
             case "decisions":
                 await _handle_decisions(respond, channel_id)
             case "entities":
@@ -199,21 +199,141 @@ async def _handle_status(respond, channel_id: str) -> None:
         )
 
 
-async def _handle_sync(respond, client, channel_id: str, user_id: str) -> None:
-    """Delegate to sync command handler."""
+async def _handle_sync(respond, client, channel_id: str, user_id: str, args: list[str]) -> None:
+    """Handle sync command with subcommands.
+
+    Subcommands:
+    - /maro sync: Check Jira sync status
+    - /maro sync fix: Recreate missing Jira issues
+    """
     from src.slack.commands.sync import handle_sync_command
 
-    # Build a body dict compatible with the sync handler
+    if args and args[0].lower() == "fix":
+        await _handle_sync_fix(respond, client, channel_id, user_id)
+        return
+
+    # Default: check sync status
     await handle_sync_command(
         ack=_noop_ack,
         body={"channel_id": channel_id, "user_id": user_id},
         client=client,
     )
-    # The sync handler posts its own response
     await respond(
         text=":hourglass: Sync check initiated. Results will appear shortly.",
         response_type="ephemeral",
     )
+
+
+async def _handle_sync_fix(respond, client, channel_id: str, user_id: str) -> None:
+    """Recreate missing Jira issues for committed entities.
+
+    Finds committed entities where Jira access fails (issue deleted/missing)
+    and creates new Jira issues for them.
+    """
+    from src.config import get_settings
+    from src.domain.entities import CommittedEntity
+    from src.domain.types import EntityId, UserId, JiraKey
+    from src.infrastructure.aggregate_loader import load_aggregate, save_events
+    from src.infrastructure.channel_config import get_jira_project
+    from src.jira.factory import get_sync_service, get_reconciliation_service
+
+    await respond(
+        text=":hourglass: Checking for missing Jira issues...",
+        response_type="ephemeral",
+    )
+
+    try:
+        settings = get_settings()
+        aggregate = await load_aggregate(channel_id)
+
+        # Get channel-specific Jira project
+        channel_project = await get_jira_project(channel_id)
+        project_key = channel_project or settings.jira_default_project
+
+        committed_entities = [
+            e for e in aggregate.entities.values()
+            if isinstance(e, CommittedEntity) and e.jira_link
+        ]
+
+        if not committed_entities:
+            await respond(
+                text=":information_source: No committed entities found in this channel.",
+                response_type="ephemeral",
+            )
+            return
+
+        # Check which Jira issues are missing
+        recon_service = get_reconciliation_service()
+        sync_service = get_sync_service()
+        missing_entities = []
+
+        for entity in committed_entities:
+            try:
+                # Try to access the Jira issue
+                await sync_service.jira.get_issue(entity.jira_link.jira_key)
+            except Exception as e:
+                if "does not exist" in str(e).lower() or "permission" in str(e).lower():
+                    missing_entities.append(entity)
+                    logger.info(f"Entity {entity.id} has missing Jira issue: {entity.jira_link.jira_key}")
+
+        if not missing_entities:
+            await respond(
+                text=":white_check_mark: All Jira issues are accessible. Nothing to fix.",
+                response_type="ephemeral",
+            )
+            return
+
+        # Recreate missing issues
+        recreated = []
+        failed = []
+
+        for entity in missing_entities:
+            try:
+                old_key = entity.jira_link.jira_key
+                title = getattr(entity.content, "title", str(entity.id)[:8])
+                description = getattr(entity.content, "description", "")
+                issue_type = getattr(entity.content, "issue_type", "Task")
+                issue_type_str = issue_type.value if hasattr(issue_type, "value") else str(issue_type)
+
+                # Create new Jira issue
+                new_key = await sync_service.jira.create_issue(
+                    project_key=project_key,
+                    summary=title,
+                    issue_type=sync_service._map_issue_type(issue_type_str),
+                    description=description,
+                )
+
+                # Update entity with new Jira key (need to emit event)
+                # For now, just report - updating committed entities requires new event type
+                recreated.append(f"• *{title}*: {old_key} → <{settings.jira_url}/browse/{new_key}|{new_key}>")
+                logger.info(f"Recreated Jira issue for {entity.id}: {old_key} -> {new_key}")
+
+            except Exception as e:
+                title = getattr(entity.content, "title", str(entity.id)[:8])
+                failed.append(f"• {title}: {e}")
+                logger.error(f"Failed to recreate Jira issue for {entity.id}: {e}")
+
+        # Build response
+        response_parts = []
+        if recreated:
+            response_parts.append(f"*Recreated {len(recreated)} Jira issue(s):*\n" + "\n".join(recreated))
+        if failed:
+            response_parts.append(f"*Failed to recreate {len(failed)} issue(s):*\n" + "\n".join(failed))
+
+        if recreated:
+            response_parts.append("\n:warning: _Note: Internal entity records still reference old Jira keys. Dashboard will show new issues on next refresh._")
+
+        await respond(
+            text="\n\n".join(response_parts) if response_parts else "No changes made.",
+            response_type="ephemeral",
+        )
+
+    except Exception as e:
+        logger.error(f"Sync fix failed: {e}", exc_info=True)
+        await respond(
+            text=f":x: Failed to fix sync issues: {e}",
+            response_type="ephemeral",
+        )
 
 
 async def _noop_ack():
