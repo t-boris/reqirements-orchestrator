@@ -2843,6 +2843,14 @@ After approval, click *Commit to Jira* to create the issue.
 > "Update the story title to 'OAuth 2.0 Integration'"
 > "Add acceptance criteria: must support Google login"
 
+*Configure Jira Project*
+> `/maro config jira-project MYPROJ`
+Sets the Jira project for this channel.
+
+*Check Jira Sync*
+> `/maro sync` - Check if Jira issues match Slack
+> `/maro sync fix` - Recreate missing Jira issues
+
 *View Status*
 Use `/maro status` or check the pinned Channel Status message."""
 
