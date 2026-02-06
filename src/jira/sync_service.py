@@ -53,6 +53,7 @@ class JiraSyncService:
         self,
         entity: ApprovedEntity,
         project_key: str,
+        epic_key: str | None = None,
     ) -> str:
         """Commit approved work item to Jira.
 
@@ -61,6 +62,7 @@ class JiraSyncService:
         Args:
             entity: Approved work item entity
             project_key: Jira project key
+            epic_key: Optional Epic issue key to link to (e.g., "PROJ-10")
 
         Returns:
             Created Jira issue key
@@ -95,15 +97,17 @@ class JiraSyncService:
             ac_text = "\n".join(f"- [ ] {ac}" for ac in content.acceptance_criteria)
             description += f"\n\n## Acceptance Criteria\n{ac_text}"
 
-        # Create issue
+        # Create issue with optional Epic Link
         jira_key = await self.jira.create_issue(
             project_key=project_key,
             summary=content.title,
             issue_type=issue_type,
             description=description,
+            epic_key=epic_key,
         )
 
-        logger.info(f"Committed work item {entity.id} as {jira_key}")
+        logger.info(f"Committed work item {entity.id} as {jira_key}" +
+                    (f" (linked to Epic {epic_key})" if epic_key else ""))
         return jira_key
 
     async def project_decision(

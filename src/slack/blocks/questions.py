@@ -66,6 +66,10 @@ def build_question_blocks(
                 "type": "actions",
                 "elements": elements,
             })
+            blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": "_Type your answer if none of the options fit_"}],
+            })
 
     return blocks
 
@@ -86,15 +90,19 @@ def _build_option_buttons(
     elements: list[dict[str, Any]] = []
     uid = uuid4().hex[:8]
 
-    # Reserve 1 slot for "Something else" button
-    max_option_buttons = MAX_ELEMENTS_PER_ACTIONS_BLOCK - 1
-
-    for idx, option in enumerate(question.options[:max_option_buttons]):
+    for idx, option in enumerate(question.options[:MAX_ELEMENTS_PER_ACTIONS_BLOCK]):
         label = option.label[:MAX_BUTTON_TEXT_LENGTH]
+
+        # Extract action plan fields if present
+        action = getattr(option, 'action', None)
+        entity_ids = getattr(option, 'entity_ids', [])
+
         value_payload = _build_button_value(
             question_text=question.question_text,
             answer=option.label,
             thread_ts=thread_ts,
+            action=action,
+            entity_ids=entity_ids if action else [],  # Only include if action is set
         )
 
         elements.append({
@@ -104,19 +112,6 @@ def _build_option_buttons(
             "value": value_payload,
         })
 
-    # Always add "Something else" escape hatch as last button
-    freeform_value = _build_button_value(
-        question_text=question.question_text,
-        answer="__freeform__",
-        thread_ts=thread_ts,
-    )
-    elements.append({
-        "type": "button",
-        "text": {"type": "plain_text", "text": "Something else"},
-        "action_id": f"answer_q_{uid}_other",
-        "value": freeform_value,
-    })
-
     return elements
 
 
@@ -124,6 +119,8 @@ def _build_button_value(
     question_text: str,
     answer: str,
     thread_ts: str,
+    action: str | None = None,
+    entity_ids: list[str] | None = None,
 ) -> str:
     """Build JSON value payload for a button, respecting 255 char limit.
 
@@ -131,24 +128,41 @@ def _build_button_value(
         question_text: The question being answered.
         answer: The selected answer text.
         thread_ts: Thread timestamp for conversation continuity.
+        action: Optional action to execute (approve, commit, etc.)
+        entity_ids: Optional list of entity IDs to act on.
 
     Returns:
         JSON string within Slack's 255 char limit.
     """
-    payload = {
-        "question_text": question_text,
+    payload: dict[str, Any] = {
         "answer": answer,
         "thread_ts": thread_ts,
     }
+
+    # Include action plan if present
+    if action:
+        payload["action"] = action
+        if entity_ids:
+            payload["entity_ids"] = entity_ids
+
+    # Add question_text (may be truncated)
+    payload["question_text"] = question_text
 
     value = json.dumps(payload)
 
     # Truncate question_text if payload exceeds limit
     if len(value) > MAX_BUTTON_VALUE_LENGTH:
-        # Calculate how much to truncate
+        # Calculate how much to truncate - prioritize keeping action/entity_ids
         overflow = len(value) - MAX_BUTTON_VALUE_LENGTH
         max_q_len = max(10, len(question_text) - overflow - 3)  # -3 for "..."
         payload["question_text"] = question_text[:max_q_len] + "..."
         value = json.dumps(payload)
+
+    # If still too long (many entity_ids), truncate entity_ids
+    if len(value) > MAX_BUTTON_VALUE_LENGTH and entity_ids:
+        # Keep first few entity IDs that fit
+        while len(value) > MAX_BUTTON_VALUE_LENGTH and payload.get("entity_ids"):
+            payload["entity_ids"] = payload["entity_ids"][:-1]
+            value = json.dumps(payload)
 
     return value

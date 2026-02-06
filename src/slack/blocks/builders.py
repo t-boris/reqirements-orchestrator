@@ -159,7 +159,13 @@ def build_dashboard_blocks(
             for item in pending_items[:5]:
                 title = item.get('title', 'Untitled')
                 link = item.get('link')
-                text = f"* <{link}|{title}>" if link else f"* {title}"
+                parent_title = item.get('parent_title')
+                # Show hierarchy with arrow prefix for child items
+                if parent_title:
+                    prefix = f"↳ _{parent_title}_ → "
+                else:
+                    prefix = "* "
+                text = f"{prefix}<{link}|{title}>" if link else f"{prefix}{title}"
                 blocks.append({
                     "type": "context",
                     "elements": [{"type": "mrkdwn", "text": text}],
@@ -175,7 +181,13 @@ def build_dashboard_blocks(
             for item in approved_items[:5]:
                 title = item.get('title', 'Untitled')
                 link = item.get('link')
-                text = f"* <{link}|:white_check_mark: {title}>" if link else f"* :white_check_mark: {title}"
+                parent_title = item.get('parent_title')
+                # Show hierarchy with arrow prefix for child items
+                if parent_title:
+                    prefix = f"↳ _{parent_title}_ → :white_check_mark: "
+                else:
+                    prefix = "* :white_check_mark: "
+                text = f"{prefix}<{link}|{title}>" if link else f"{prefix}{title}"
                 blocks.append({
                     "type": "context",
                     "elements": [{"type": "mrkdwn", "text": text}],
@@ -191,12 +203,25 @@ def build_dashboard_blocks(
             for item in committed_items[:5]:
                 jira_key = item.get("jira_key", "draft")
                 title = item.get("title", "Untitled")
+                link = item.get("link")
+                parent_title = item.get("parent_title")
+                parent_jira_key = item.get("parent_jira_key")
+                # Build prefix showing hierarchy
+                if parent_title:
+                    if parent_jira_key:
+                        prefix = f"↳ _{parent_jira_key}_ → "
+                    else:
+                        prefix = f"↳ _{parent_title}_ → "
+                else:
+                    prefix = "* "
+                # Link title to Slack message if available
+                title_display = f"<{link}|{title}>" if link else title
                 # Link to Jira if we have URL
                 if jira_url and jira_key != "draft":
                     jira_link = f"<{jira_url}/browse/{jira_key}|{jira_key}>"
-                    text = f"* [{jira_link}] {title}"
+                    text = f"{prefix}[{jira_link}] {title_display}"
                 else:
-                    text = f"* [{jira_key}] {title}"
+                    text = f"{prefix}[{jira_key}] {title_display}"
                 blocks.append({
                     "type": "context",
                     "elements": [{"type": "mrkdwn", "text": text}],

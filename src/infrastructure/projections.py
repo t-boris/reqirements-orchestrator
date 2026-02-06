@@ -13,6 +13,7 @@ Key patterns:
 - Side-effect projections (Jira) are fault-tolerant (log and continue on failure)
 """
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -26,6 +27,7 @@ from src.domain.events import (
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
+    DecisionDiscarded,
     DecisionProposed,
     DecisionRecorded,
     DomainEvent,
@@ -34,6 +36,7 @@ from src.domain.events import (
     ObjectionWithdrawn,
     WorkItemApproved,
     WorkItemCommitted,
+    WorkItemDiscarded,
     WorkItemDrafted,
     WorkItemProposed,
     WorkItemUpdated,
@@ -103,6 +106,7 @@ class EntityProjection(Projection):
             "DecisionCommitted",
             "DecisionAmended",
             "DecisionDeprecated",
+            "DecisionDiscarded",
             # Approval/Objection events
             "ApprovalAdded",
             "ObjectionRaised",
@@ -135,6 +139,8 @@ class EntityProjection(Projection):
                 await self._commit_entity(event)
             case WorkItemUpdated():
                 await self._update_content(event)
+            case WorkItemDiscarded():
+                await self._delete_entity(event.entity_id)
             case DecisionRecorded():
                 await self._create_entity(event, EntityLifecycle.DRAFT, "decision")
             case DecisionProposed():
@@ -153,6 +159,8 @@ class EntityProjection(Projection):
                 await self._commit_decision(event)
             case DecisionDeprecated():
                 await self._deprecate_entity(event)
+            case DecisionDiscarded():
+                await self._delete_entity(event.entity_id)
             case DecisionAmended():
                 await self._amend_decision_content(event)
             case ApprovalAdded():
@@ -206,11 +214,11 @@ class EntityProjection(Projection):
                 lifecycle.value,
                 event.aggregate_id,
                 event.thread_ts,
-                self._serialize_content(event.content),
-                {
+                json.dumps(self._serialize_content(event.content)),
+                json.dumps({
                     "proposed_by": event.actor_id,
                     "proposed_at": event.timestamp.isoformat(),
-                },
+                }),
                 event.version,
                 adr_ts,
             )
@@ -266,7 +274,7 @@ class EntityProjection(Projection):
                     updated_at = NOW()
                 WHERE id = $2
                 """,
-                [approval],  # Wrap in list for JSONB array append
+                json.dumps([approval]),  # Wrap in list for JSONB array append
                 str(entity_id),
             )
 
@@ -284,7 +292,7 @@ class EntityProjection(Projection):
                 WHERE id = $3
                 """,
                 EntityLifecycle.COMMITTED.value,
-                jira_link,
+                json.dumps(jira_link),
                 str(event.entity_id),
             )
 
@@ -303,7 +311,7 @@ class EntityProjection(Projection):
                 WHERE id = $3
                 """,
                 EntityLifecycle.COMMITTED.value,
-                jira_link,
+                json.dumps(jira_link),
                 str(event.entity_id),
             )
 
@@ -313,13 +321,14 @@ class EntityProjection(Projection):
         Merges changes into existing content using JSONB concatenation.
         """
         async with self.pool.acquire() as conn:
+            changes = event.changes if isinstance(event.changes, str) else json.dumps(event.changes)
             await conn.execute(
                 """
                 UPDATE entities_view
                 SET content = content || $1::jsonb, updated_at = NOW()
                 WHERE id = $2
                 """,
-                event.changes,
+                changes,
                 str(event.entity_id),
             )
 
@@ -330,7 +339,7 @@ class EntityProjection(Projection):
         Also updates adr_message_ts if a new ADR message was posted.
         """
         async with self.pool.acquire() as conn:
-            content = self._serialize_content(event.new_content)
+            content = json.dumps(self._serialize_content(event.new_content))
             adr_ts = getattr(event, "new_adr_message_ts", None)
             await conn.execute(
                 """
@@ -360,6 +369,14 @@ class EntityProjection(Projection):
                 str(event.entity_id),
             )
 
+    async def _delete_entity(self, entity_id: str) -> None:
+        """Delete entity from read model (used for discarded decisions)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM entities_view WHERE id = $1",
+                str(entity_id),
+            )
+
     async def _add_objection(
         self,
         entity_id: str,
@@ -381,7 +398,7 @@ class EntityProjection(Projection):
                     updated_at = NOW()
                 WHERE id = $2
                 """,
-                [objection],
+                json.dumps([objection]),
                 str(entity_id),
             )
 

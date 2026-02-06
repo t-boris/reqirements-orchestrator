@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from src.domain.channel import ChannelAggregate
 from src.domain.content import Attribution, IssueType, WorkItemContent
-from src.domain.entities import DraftEntity, get_lifecycle
+from src.domain.entities import DraftEntity, Entity, get_lifecycle
 from src.domain.types import ChannelId, EntityId, EntityType, ThreadTs, UserId, Version
 from src.infrastructure.aggregate_loader import load_aggregate
 from src.llm.client import structured_completion
@@ -170,6 +170,40 @@ class CreateModeHandler(ModeHandler):
     def mode_name(self) -> str:
         return "CREATE"
 
+    def _detect_parent_entity(self, context: ModeContext) -> Entity | None:
+        """Detect parent entity (Epic/Feature) from thread context.
+
+        When creating work items in a thread, checks if the thread belongs
+        to an existing Epic or Feature entity. If so, returns that entity
+        as the parent for hierarchy linking.
+
+        Args:
+            context: Mode context with thread_ts and channel_aggregate
+
+        Returns:
+            Parent entity if found, None otherwise
+        """
+        if not context.thread_ts or not context.channel_aggregate:
+            return None
+
+        # Get entities in this thread
+        thread_entities = context.channel_aggregate.get_entities_in_thread(
+            ThreadTs(context.thread_ts)
+        )
+
+        # Find Epic or Feature that owns this thread
+        # These are the valid parent types for hierarchy
+        for entity in thread_entities:
+            content = entity.content
+            if hasattr(content, "issue_type"):
+                issue_type = content.issue_type
+                # Handle both enum and string
+                type_str = issue_type.value if hasattr(issue_type, "value") else str(issue_type)
+                if type_str.lower() in ("epic", "feature"):
+                    return entity
+
+        return None
+
     async def handle(self, context: ModeContext) -> ModeResult:
         """Handle CREATE mode - extract and create draft entity.
 
@@ -293,6 +327,13 @@ class CreateModeHandler(ModeHandler):
         self, context: ModeContext, thread_context: str
     ) -> ModeResult:
         """Extract and preview a work item using LLM."""
+        # Detect parent entity from thread context
+        parent_entity = self._detect_parent_entity(context)
+        parent_id = str(parent_entity.id) if parent_entity else None
+        parent_title = None
+        if parent_entity and hasattr(parent_entity.content, "title"):
+            parent_title = parent_entity.content.title
+
         try:
             extracted = await structured_completion(
                 response_model=ExtractedWorkItem,
@@ -322,15 +363,25 @@ class CreateModeHandler(ModeHandler):
                 "constraints": [],
             }
 
+        # Add parent_id if detected
+        if parent_id:
+            preview_content["parent_id"] = parent_id
+
         ac_text = ""
         if preview_content["acceptance_criteria"]:
             ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
             ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
 
+        # Show parent info in preview
+        parent_text = ""
+        if parent_title:
+            parent_text = f"\n*Parent:* {parent_title}"
+
         preview_text = (
             f"*Draft Work Item*\n\n"
             f"*Type:* {preview_content['issue_type'].title()}\n"
-            f"*Title:* {preview_content['title']}\n"
+            f"*Title:* {preview_content['title']}"
+            f"{parent_text}\n"
             f"*Description:* {preview_content['description']}"
             f"{ac_text}\n\n"
             "_Click 'Propose' to submit for team approval_"
@@ -343,7 +394,7 @@ class CreateModeHandler(ModeHandler):
                 "action": "create_work_item",
                 "content": preview_content,
             },
-            response_blocks=self._build_preview_blocks(preview_content),
+            response_blocks=self._build_preview_blocks(preview_content, parent_title),
         )
 
     async def _create_batch_from_plan_context(self, context: ModeContext) -> ModeResult:
@@ -355,6 +406,13 @@ class CreateModeHandler(ModeHandler):
         analysis_context = context.plan_step_context or ""
         entity_context = await self._build_entity_context(context.channel_id)
         thread_context = self._build_thread_context(context)
+
+        # Detect parent entity from thread context
+        parent_entity = self._detect_parent_entity(context)
+        parent_id = str(parent_entity.id) if parent_entity else None
+        parent_title = None
+        if parent_entity and hasattr(parent_entity.content, "title"):
+            parent_title = parent_entity.content.title
 
         # Enhanced prompt that uses the analysis from the previous step
         system_prompt = """You are generating structured work items based on an architectural analysis.
@@ -403,14 +461,24 @@ Generate work items based on the architectural analysis above."""
         if not work_items:
             return await self._create_batch_work_items_preview(context, thread_context)
 
+        # Add parent_id to each work item if detected
+        if parent_id:
+            for w in work_items:
+                w["parent_id"] = parent_id
+
+        # Build response text with parent info
+        response_text = f"*Draft Work Items* ({len(work_items)} generated from analysis)"
+        if parent_title:
+            response_text += f"\n*Parent:* {parent_title}"
+
         return ModeResult(
-            response_text=f"*Draft Work Items* ({len(work_items)} generated from analysis)",
+            response_text=response_text,
             requires_confirmation=True,
             confirmation_data={
                 "action": "create_batch_work_items",
-                "content": {"work_items": work_items},
+                "content": {"work_items": work_items, "parent_id": parent_id},
             },
-            response_blocks=self._build_work_items_preview_blocks(work_items),
+            response_blocks=self._build_work_items_preview_blocks(work_items, parent_title),
         )
 
     async def _create_batch_work_items_preview(
@@ -422,6 +490,13 @@ Generate work items based on the architectural analysis above."""
         if entity_context == "(No existing entities)":
             # Fall back to single work item mode
             return await self._create_work_item_preview(context, thread_context)
+
+        # Detect parent entity from thread context
+        parent_entity = self._detect_parent_entity(context)
+        parent_id = str(parent_entity.id) if parent_entity else None
+        parent_title = None
+        if parent_entity and hasattr(parent_entity.content, "title"):
+            parent_title = parent_entity.content.title
 
         try:
             extracted = await structured_completion(
@@ -444,14 +519,24 @@ Generate work items based on the architectural analysis above."""
         if not work_items:
             return await self._create_work_item_preview(context, thread_context)
 
+        # Add parent_id to each work item if detected
+        if parent_id:
+            for w in work_items:
+                w["parent_id"] = parent_id
+
+        # Build response text with parent info
+        response_text = f"*Draft Work Items* ({len(work_items)} generated from entities)"
+        if parent_title:
+            response_text += f"\n*Parent:* {parent_title}"
+
         return ModeResult(
-            response_text=f"*Draft Work Items* ({len(work_items)} generated from entities)",
+            response_text=response_text,
             requires_confirmation=True,
             confirmation_data={
                 "action": "create_batch_work_items",
-                "content": {"work_items": work_items},
+                "content": {"work_items": work_items, "parent_id": parent_id},
             },
-            response_blocks=self._build_work_items_preview_blocks(work_items),
+            response_blocks=self._build_work_items_preview_blocks(work_items, parent_title),
         )
 
     async def _create_decision_preview(
@@ -529,6 +614,10 @@ Generate work items based on the architectural analysis above."""
         content_data = confirmation.get("content", {})
 
         if action == "create_work_item":
+            # Get parent_id from content if present
+            parent_id_str = content_data.get("parent_id")
+            parent_id = EntityId(parent_id_str) if parent_id_str else None
+
             content = WorkItemContent(
                 issue_type=IssueType(content_data.get("issue_type", "story")),
                 title=content_data.get("title", "Untitled"),
@@ -541,6 +630,7 @@ Generate work items based on the architectural analysis above."""
                 actor_id=UserId(context.user_id),
                 thread_ts=ThreadTs(context.thread_ts or ""),
                 content=content,
+                parent_id=parent_id,
             )
 
             events = aggregate.clear_pending_events()
@@ -600,19 +690,24 @@ Generate work items based on the architectural analysis above."""
             response_text="Unknown creation action.",
         )
 
-    def _build_preview_blocks(self, content: dict) -> list[dict]:
+    def _build_preview_blocks(self, content: dict, parent_title: str | None = None) -> list[dict]:
         """Build Slack blocks for work item preview."""
         import json
 
         # Store content as JSON in button values (same pattern as RECORD mode)
         content_json = json.dumps(content)
 
+        # Build header with optional parent info
+        header_text = f"*Draft Work Item*\n\n*Type:* {content['issue_type'].title()}\n*Title:* {content['title']}"
+        if parent_title:
+            header_text += f"\n*Parent:* {parent_title}"
+
         return [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Draft Work Item*\n\n*Type:* {content['issue_type'].title()}\n*Title:* {content['title']}",
+                    "text": header_text,
                 },
             },
             {
@@ -725,19 +820,30 @@ Generate work items based on the architectural analysis above."""
 
         return blocks
 
-    def _build_work_items_preview_blocks(self, work_items: list[dict]) -> list[dict]:
+    def _build_work_items_preview_blocks(
+        self, work_items: list[dict], parent_title: str | None = None
+    ) -> list[dict]:
         """Build Slack blocks for multiple work item previews with per-item buttons."""
         import json
 
+        # Build header with optional parent info
+        header_text = f"Draft Work Items ({len(work_items)} generated)"
         blocks = [
             {
                 "type": "header",
                 "text": {
                     "type": "plain_text",
-                    "text": f"Draft Work Items ({len(work_items)} generated)",
+                    "text": header_text,
                 },
             },
         ]
+
+        # Add parent context if present
+        if parent_title:
+            blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"*Parent:* {parent_title}"}],
+            })
 
         for i, w in enumerate(work_items):
             ac_text = ""
@@ -758,6 +864,7 @@ Generate work items based on the architectural analysis above."""
                 },
             })
             # Truncate button value to stay within Slack's 2000 char limit
+            # Include parent_id in compact_item if present
             compact_item = {
                 "title": w["title"][:200],
                 "issue_type": w.get("issue_type", "story"),
@@ -765,6 +872,9 @@ Generate work items based on the architectural analysis above."""
                 "acceptance_criteria": [ac[:100] for ac in w.get("acceptance_criteria", [])[:5]],
                 "constraints": [c[:100] for c in w.get("constraints", [])[:3]],
             }
+            if w.get("parent_id"):
+                compact_item["parent_id"] = w["parent_id"]
+
             content_json = json.dumps(compact_item)
             # Final safety: if still over limit, strip description further
             if len(content_json) > 1900:

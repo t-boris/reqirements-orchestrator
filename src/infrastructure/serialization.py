@@ -16,13 +16,21 @@ from src.domain.events import (
     WorkItemProposed,
     WorkItemApproved,
     WorkItemCommitted,
+    WorkItemDiscarded,
     WorkItemUpdated,
     # Decision Events
     DecisionRecorded,
     DecisionProposed,
     DecisionApproved,
     DecisionCommitted,
+    DecisionAmended,
     DecisionDeprecated,
+    DecisionDiscarded,
+    # Approval/Objection Events
+    ApprovalAdded,
+    ObjectionRaised,
+    ObjectionResolved,
+    ObjectionWithdrawn,
     # Conflict Events
     ConflictDetected,
     ConflictResolved,
@@ -45,13 +53,21 @@ EVENT_REGISTRY: dict[str, type[DomainEvent]] = {
     "WorkItemProposed": WorkItemProposed,
     "WorkItemApproved": WorkItemApproved,
     "WorkItemCommitted": WorkItemCommitted,
+    "WorkItemDiscarded": WorkItemDiscarded,
     "WorkItemUpdated": WorkItemUpdated,
     # Decision Events
     "DecisionRecorded": DecisionRecorded,
     "DecisionProposed": DecisionProposed,
     "DecisionApproved": DecisionApproved,
     "DecisionCommitted": DecisionCommitted,
+    "DecisionAmended": DecisionAmended,
     "DecisionDeprecated": DecisionDeprecated,
+    "DecisionDiscarded": DecisionDiscarded,
+    # Approval/Objection Events
+    "ApprovalAdded": ApprovalAdded,
+    "ObjectionRaised": ObjectionRaised,
+    "ObjectionResolved": ObjectionResolved,
+    "ObjectionWithdrawn": ObjectionWithdrawn,
     # Conflict Events
     "ConflictDetected": ConflictDetected,
     "ConflictResolved": ConflictResolved,

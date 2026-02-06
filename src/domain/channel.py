@@ -27,6 +27,7 @@ from .events import (
     DecisionApproved,
     DecisionCommitted,
     DecisionDeprecated,
+    DecisionDiscarded,
     DecisionProposed,
     DecisionRecorded,
     DomainEvent,
@@ -35,6 +36,7 @@ from .events import (
     ObjectionWithdrawn,
     WorkItemApproved,
     WorkItemCommitted,
+    WorkItemDiscarded,
     WorkItemDrafted,
     WorkItemProposed,
     WorkItemUpdated,
@@ -120,6 +122,7 @@ class ChannelAggregate:
         thread_ts: ThreadTs,
         content: WorkItemContent,
         entity_id: EntityId | None = None,
+        parent_id: EntityId | None = None,
     ) -> DraftEntity:
         """Create a draft work item.
 
@@ -128,6 +131,7 @@ class ChannelAggregate:
             thread_ts: Thread where draft was created
             content: Work item content
             entity_id: Optional entity ID (generated if not provided)
+            parent_id: Optional parent entity ID (Epic/Feature) to link to
 
         Returns:
             The created draft entity
@@ -135,6 +139,18 @@ class ChannelAggregate:
         from .content import Attribution
 
         entity_id = entity_id or EntityId.generate()
+
+        # If parent_id provided, set it in content
+        if parent_id:
+            content = WorkItemContent(
+                issue_type=content.issue_type,
+                title=content.title,
+                description=content.description,
+                acceptance_criteria=content.acceptance_criteria,
+                constraints=content.constraints,
+                parent_id=parent_id,
+                children_ids=content.children_ids,
+            )
 
         # Create draft entity
         draft = DraftEntity(
@@ -164,7 +180,95 @@ class ChannelAggregate:
 
         # Update state
         self.entities[entity_id] = draft
+
+        # Update parent's children_ids if parent exists
+        if parent_id:
+            self._link_child_to_parent(entity_id, parent_id)
+
         return draft
+
+    def _link_child_to_parent(self, child_id: EntityId, parent_id: EntityId) -> None:
+        """Link a child entity to its parent by updating parent's children_ids.
+
+        This is an internal helper that updates the parent entity's content
+        to include the new child in its children_ids list.
+        """
+        parent = self.entities.get(parent_id)
+        if not parent:
+            return
+
+        parent_content = parent.content
+        if not isinstance(parent_content, WorkItemContent):
+            return
+
+        # Add child to parent's children_ids if not already present
+        if child_id not in parent_content.children_ids:
+            new_children = list(parent_content.children_ids) + [child_id]
+            new_parent_content = WorkItemContent(
+                issue_type=parent_content.issue_type,
+                title=parent_content.title,
+                description=parent_content.description,
+                acceptance_criteria=parent_content.acceptance_criteria,
+                constraints=parent_content.constraints,
+                parent_id=parent_content.parent_id,
+                children_ids=new_children,
+            )
+
+            # Create updated parent entity with same type
+            if isinstance(parent, DraftEntity):
+                updated_parent = DraftEntity(
+                    id=parent.id,
+                    entity_type=parent.entity_type,
+                    channel_id=parent.channel_id,
+                    thread_ts=parent.thread_ts,
+                    content=new_parent_content,
+                    attribution=parent.attribution,
+                    version=Version(parent.version + 1),
+                    adr_message_ts=parent.adr_message_ts,
+                )
+            elif isinstance(parent, ProposedEntity):
+                updated_parent = ProposedEntity(
+                    id=parent.id,
+                    entity_type=parent.entity_type,
+                    channel_id=parent.channel_id,
+                    thread_ts=parent.thread_ts,
+                    content=new_parent_content,
+                    attribution=parent.attribution,
+                    version=Version(parent.version + 1),
+                    canonical_message_ts=parent.canonical_message_ts,
+                    adr_message_ts=parent.adr_message_ts,
+                    approvals=parent.approvals,
+                    objections=parent.objections,
+                )
+            elif isinstance(parent, ApprovedEntity):
+                updated_parent = ApprovedEntity(
+                    id=parent.id,
+                    entity_type=parent.entity_type,
+                    channel_id=parent.channel_id,
+                    thread_ts=parent.thread_ts,
+                    content=new_parent_content,
+                    attribution=parent.attribution,
+                    version=Version(parent.version + 1),
+                    canonical_message_ts=parent.canonical_message_ts,
+                    adr_message_ts=parent.adr_message_ts,
+                )
+            elif isinstance(parent, CommittedEntity):
+                updated_parent = CommittedEntity(
+                    id=parent.id,
+                    entity_type=parent.entity_type,
+                    channel_id=parent.channel_id,
+                    thread_ts=parent.thread_ts,
+                    content=new_parent_content,
+                    attribution=parent.attribution,
+                    version=Version(parent.version + 1),
+                    canonical_message_ts=parent.canonical_message_ts,
+                    adr_message_ts=parent.adr_message_ts,
+                    jira_link=parent.jira_link,
+                )
+            else:
+                return  # Don't update deprecated entities
+
+            self.entities[parent_id] = updated_parent
 
     def propose_work_item(
         self,
@@ -210,6 +314,51 @@ class ChannelAggregate:
         # Update state
         self.entities[entity_id] = proposed
         return proposed
+
+    def discard_work_item(
+        self,
+        entity_id: EntityId,
+        actor_id: UserId,
+        reason: str = "Pinned message removed",
+    ) -> None:
+        """Discard a work item (draft, proposed, or approved).
+
+        Removes the entity from the aggregate. Called when the pinned message
+        is removed from Slack (Slack is source of truth).
+
+        Cannot discard committed work items (they exist in Jira).
+
+        Args:
+            entity_id: ID of the work item to discard
+            actor_id: User discarding (or SYSTEM if auto-detected)
+            reason: Reason for discarding
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+            InvalidStateError: If entity is committed (in Jira)
+        """
+        entity = self.entities.get(entity_id)
+        if not entity:
+            raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+        if isinstance(entity, CommittedEntity):
+            raise InvalidStateError(
+                "Cannot discard committed work items (they exist in Jira)"
+            )
+
+        # Emit discard event
+        self._emit(
+            WorkItemDiscarded(
+                aggregate_id=self.channel_id,
+                actor_id=actor_id,
+                version=self.next_version,
+                entity_id=entity_id,
+                reason=reason,
+            )
+        )
+
+        # Remove from entities
+        del self.entities[entity_id]
 
     def approve_work_item(
         self,
@@ -597,6 +746,49 @@ class ChannelAggregate:
         self.entities[entity_id] = deprecated
         return deprecated
 
+    def discard_decision(
+        self,
+        entity_id: EntityId,
+        actor_id: UserId,
+        reason: str = "User discarded",
+    ) -> None:
+        """Discard a Draft or Proposed decision.
+
+        Removes the entity from the aggregate entirely. Only valid for
+        decisions in Draft or Proposed state (before commit).
+
+        Args:
+            entity_id: ID of the decision to discard
+            actor_id: User discarding the decision
+            reason: Reason for discarding
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+            InvalidStateError: If entity is not Draft or Proposed
+        """
+        entity = self.entities.get(entity_id)
+        if not entity:
+            raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+        if not isinstance(entity, (DraftEntity, ProposedEntity)):
+            state_name = type(entity).__name__.replace("Entity", "")
+            raise InvalidStateError(
+                f"Only Draft or Proposed decisions can be discarded. "
+                f"Current state: {state_name}"
+            )
+
+        self._emit(
+            DecisionDiscarded(
+                aggregate_id=self.channel_id,
+                actor_id=actor_id,
+                version=self.next_version,
+                entity_id=entity_id,
+                reason=reason,
+            )
+        )
+
+        del self.entities[entity_id]
+
     # =========================================================================
     # Objection Operations (work on any proposed entity)
     # =========================================================================
@@ -790,6 +982,11 @@ class ChannelAggregate:
                 if isinstance(entity, ApprovedEntity):
                     self.entities[EntityId(event.entity_id)] = commit(entity, JiraKey(event.jira_key))
 
+            case WorkItemDiscarded():
+                entity_id = EntityId(event.entity_id)
+                if entity_id in self.entities:
+                    del self.entities[entity_id]
+
             case DecisionRecorded():
                 self.entities[event.entity_id] = DraftEntity(
                     id=EntityId(event.entity_id),
@@ -856,6 +1053,9 @@ class ChannelAggregate:
                 if isinstance(entity, CommittedEntity):
                     superseded = EntityId(event.superseded_by) if event.superseded_by else None
                     self.entities[EntityId(event.entity_id)] = deprecate(entity, superseded)
+
+            case DecisionDiscarded():
+                self.entities.pop(EntityId(event.entity_id), None)
 
             case ObjectionRaised():
                 entity = self.entities[EntityId(event.entity_id)]

@@ -31,7 +31,8 @@ async def handle_commit_to_jira(
     entity_id = action.get("value", "")
     channel_id = body["channel"]["id"]
     user_id = body["user"]["id"]
-    thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get("ts")
+    message_ts = body.get("message", {}).get("ts")
+    thread_ts = body.get("message", {}).get("thread_ts") or message_ts
 
     logger.info(f"Commit to Jira requested for entity {entity_id} by {user_id}")
 
@@ -65,7 +66,15 @@ async def handle_commit_to_jira(
         project_key = settings.jira_default_project
         sync_service = get_sync_service()
 
-        jira_key = await sync_service.commit_work_item(entity, project_key)
+        # Check if entity has a parent and if that parent has a Jira key
+        epic_key = None
+        if hasattr(entity.content, "parent_id") and entity.content.parent_id:
+            parent = aggregate.get_entity(entity.content.parent_id)
+            if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                epic_key = parent.jira_link.jira_key
+                logger.info(f"Entity {entity_id} has parent with Jira key {epic_key}")
+
+        jira_key = await sync_service.commit_work_item(entity, project_key, epic_key=epic_key)
 
         committed = aggregate.commit_work_item(
             entity_id=EntityId(entity_id),
@@ -74,11 +83,42 @@ async def handle_commit_to_jira(
         )
         await save_events(aggregate)
 
-        await client.chat_postMessage(
+        jira_url = f"{settings.jira_url}/browse/{jira_key}"
+        title = entity.content.title
+
+        # Update the approval message: replace "Commit to Jira" button with Jira link
+        if message_ts:
+            original_blocks = body.get("message", {}).get("blocks", [])
+            updated_blocks = [
+                block for block in original_blocks
+                if block.get("type") != "actions"
+            ]
+            updated_blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":link: Committed to Jira: <{jira_url}|{jira_key}>",
+                },
+            })
+            await client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                blocks=updated_blocks,
+                text=f"{title} committed to Jira: {jira_key}",
+            )
+
+        # Post committed message to main channel and pin it
+        committed_msg = await client.chat_postMessage(
             channel=channel_id,
-            thread_ts=thread_ts,
-            text=f":white_check_mark: Created Jira issue *{jira_key}* for _{entity.content.title}_",
+            text=f":rocket: *{title}* — <{jira_url}|{jira_key}>\nCommitted by <@{user_id}>",
         )
+        try:
+            await client.pins_add(
+                channel=channel_id,
+                timestamp=committed_msg["ts"],
+            )
+        except Exception as pin_err:
+            logger.warning(f"Failed to pin committed message: {pin_err}")
 
     except DuplicateDetectedError as e:
         blocks = build_duplicate_selection_blocks(
@@ -202,6 +242,13 @@ async def handle_create_anyway(
         settings = get_settings()
         sync_service = get_sync_service()
 
+        # Check if entity has a parent with Jira key
+        epic_key = None
+        if hasattr(entity.content, "parent_id") and entity.content.parent_id:
+            parent = aggregate.get_entity(entity.content.parent_id)
+            if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                epic_key = parent.jira_link.jira_key
+
         jira_key = await sync_service.jira.create_issue(
             project_key=settings.jira_default_project,
             summary=entity.content.title,
@@ -209,6 +256,7 @@ async def handle_create_anyway(
                 getattr(entity.content, "issue_type", "Task")
             ),
             description=getattr(entity.content, "description", ""),
+            epic_key=epic_key,
         )
 
         committed = aggregate.commit_work_item(

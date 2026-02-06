@@ -76,6 +76,227 @@ def _build_slack_permalink(channel_id: str, message_ts: str) -> str:
     return f"https://slack.com/archives/{channel_id}/p{ts_no_dot}"
 
 
+async def _execute_action_plan(
+    action: str,
+    entity_ids: list[str],
+    channel_id: str,
+    user_id: str,
+    thread_ts: str | None,
+    client,
+    say,
+) -> None:
+    """Execute an action plan directly on specified entities.
+
+    Supports: approve, commit, propose, delete actions.
+    This bypasses intent re-classification for deterministic execution.
+    """
+    logger.info(f"Executing action plan: {action} on {len(entity_ids)} entities")
+
+    try:
+        aggregate = await load_aggregate(channel_id)
+
+        if action == "approve":
+            approved_count = 0
+            failed = []
+            for eid in entity_ids:
+                try:
+                    entity = aggregate.get_entity(EntityId(eid))
+                    if entity is None:
+                        failed.append(f"{eid[:8]} (not found)")
+                        continue
+                    if not isinstance(entity, ProposedEntity):
+                        failed.append(f"{eid[:8]} (not in proposed state)")
+                        continue
+                    aggregate.approve_entity(
+                        entity_id=EntityId(eid),
+                        actor_id=UserId(user_id),
+                    )
+                    approved_count += 1
+                except TransitionError as e:
+                    failed.append(f"{eid[:8]} ({e})")
+                except Exception as e:
+                    failed.append(f"{eid[:8]} (error: {e})")
+
+            if approved_count > 0:
+                await save_events(aggregate)
+                # Refresh dashboard
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            # Report results
+            if approved_count > 0 and not failed:
+                await say(
+                    text=f":white_check_mark: Approved {approved_count} item(s).",
+                    thread_ts=thread_ts,
+                )
+            elif approved_count > 0 and failed:
+                await say(
+                    text=f":white_check_mark: Approved {approved_count} item(s). Failed: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+            else:
+                await say(
+                    text=f":x: Could not approve any items. Issues: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+
+        elif action == "commit":
+            # For commit, we need to trigger the Jira commit flow for each entity
+            from src.config import get_settings
+            from src.jira.factory import get_sync_service
+            from src.domain.types import JiraKey
+
+            settings = get_settings()
+            sync_service = get_sync_service()
+            committed_count = 0
+            failed = []
+
+            for eid in entity_ids:
+                try:
+                    entity = aggregate.get_entity(EntityId(eid))
+                    if entity is None:
+                        failed.append(f"{eid[:8]} (not found)")
+                        continue
+                    if not isinstance(entity, ApprovedEntity):
+                        failed.append(f"{eid[:8]} (not approved)")
+                        continue
+
+                    # Check for parent epic key
+                    epic_key = None
+                    if hasattr(entity.content, "parent_id") and entity.content.parent_id:
+                        parent = aggregate.get_entity(entity.content.parent_id)
+                        if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                            epic_key = parent.jira_link.jira_key
+
+                    jira_key = await sync_service.commit_work_item(
+                        entity, settings.jira_default_project, epic_key=epic_key
+                    )
+                    aggregate.commit_work_item(
+                        entity_id=EntityId(eid),
+                        actor_id=UserId(user_id),
+                        jira_key=JiraKey(jira_key),
+                    )
+                    committed_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to commit {eid}: {e}")
+                    failed.append(f"{eid[:8]} ({e})")
+
+            if committed_count > 0:
+                await save_events(aggregate)
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            if committed_count > 0 and not failed:
+                await say(
+                    text=f":rocket: Committed {committed_count} item(s) to Jira.",
+                    thread_ts=thread_ts,
+                )
+            elif committed_count > 0 and failed:
+                await say(
+                    text=f":rocket: Committed {committed_count} item(s). Failed: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+            else:
+                await say(
+                    text=f":x: Could not commit any items. Issues: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+
+        elif action == "propose":
+            proposed_count = 0
+            failed = []
+            for eid in entity_ids:
+                try:
+                    entity = aggregate.get_entity(EntityId(eid))
+                    if entity is None:
+                        failed.append(f"{eid[:8]} (not found)")
+                        continue
+                    if not isinstance(entity, DraftEntity):
+                        failed.append(f"{eid[:8]} (not in draft state)")
+                        continue
+                    aggregate.propose_entity(
+                        entity_id=EntityId(eid),
+                        actor_id=UserId(user_id),
+                    )
+                    proposed_count += 1
+                except TransitionError as e:
+                    failed.append(f"{eid[:8]} ({e})")
+                except Exception as e:
+                    failed.append(f"{eid[:8]} (error: {e})")
+
+            if proposed_count > 0:
+                await save_events(aggregate)
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            if proposed_count > 0 and not failed:
+                await say(
+                    text=f":ballot_box_with_ballot: Proposed {proposed_count} item(s) for approval.",
+                    thread_ts=thread_ts,
+                )
+            elif proposed_count > 0 and failed:
+                await say(
+                    text=f":ballot_box_with_ballot: Proposed {proposed_count} item(s). Failed: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+            else:
+                await say(
+                    text=f":x: Could not propose any items. Issues: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+
+        elif action == "delete":
+            deleted_count = 0
+            failed = []
+            for eid in entity_ids:
+                try:
+                    entity = aggregate.get_entity(EntityId(eid))
+                    if entity is None:
+                        failed.append(f"{eid[:8]} (not found)")
+                        continue
+                    # Only draft entities can be deleted
+                    if not isinstance(entity, DraftEntity):
+                        failed.append(f"{eid[:8]} (can only delete drafts)")
+                        continue
+                    aggregate.discard_entity(
+                        entity_id=EntityId(eid),
+                        actor_id=UserId(user_id),
+                    )
+                    deleted_count += 1
+                except Exception as e:
+                    failed.append(f"{eid[:8]} (error: {e})")
+
+            if deleted_count > 0:
+                await save_events(aggregate)
+                await _update_dashboard_after_decision(client, channel_id, aggregate)
+
+            if deleted_count > 0 and not failed:
+                await say(
+                    text=f":wastebasket: Deleted {deleted_count} draft item(s).",
+                    thread_ts=thread_ts,
+                )
+            elif deleted_count > 0 and failed:
+                await say(
+                    text=f":wastebasket: Deleted {deleted_count} draft(s). Failed: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+            else:
+                await say(
+                    text=f":x: Could not delete any items. Issues: {', '.join(failed)}",
+                    thread_ts=thread_ts,
+                )
+
+        else:
+            await say(
+                text=f":warning: Unknown action type: {action}",
+                thread_ts=thread_ts,
+            )
+
+    except Exception as e:
+        logger.error(f"Error executing action plan: {e}", exc_info=True)
+        await say(
+            text=f":x: Failed to execute action: {e}",
+            thread_ts=thread_ts,
+        )
+
+
 async def _post_and_pin_adr(client, channel_id: str, decision: dict, user_id: str) -> str | None:
     """Post a formatted ADR message to the channel and pin it.
 
@@ -116,6 +337,8 @@ def _build_work_item_pinned_blocks(
     status: str = "proposed",
     approved_by: str | None = None,
     jira_key: str | None = None,
+    parent_title: str | None = None,
+    parent_jira_key: str | None = None,
 ) -> list[dict]:
     """Build blocks for work item pinned message based on lifecycle status.
 
@@ -126,6 +349,8 @@ def _build_work_item_pinned_blocks(
         status: Lifecycle status (proposed, approved, committed)
         approved_by: User who approved (if status is approved or committed)
         jira_key: Jira issue key (if committed)
+        parent_title: Title of parent entity (Epic/Feature) if linked
+        parent_jira_key: Jira key of parent entity if committed
 
     Returns list of Slack blocks.
     """
@@ -151,6 +376,14 @@ def _build_work_item_pinned_blocks(
     else:
         header = f"{badge}: *{title}*"
 
+    # Build parent context line
+    parent_text = ""
+    if parent_title:
+        if parent_jira_key:
+            parent_text = f"\n*Parent:* {parent_jira_key} - {parent_title}"
+        else:
+            parent_text = f"\n*Parent:* {parent_title}"
+
     # Build footer
     footer_parts = [f"_Proposed by <@{user_id}>_"]
     if approved_by and status in ("approved", "committed"):
@@ -165,7 +398,8 @@ def _build_work_item_pinned_blocks(
                 "type": "mrkdwn",
                 "text": (
                     f"{header}\n"
-                    f"*Type:* {issue_type}\n"
+                    f"*Type:* {issue_type}"
+                    f"{parent_text}\n"
                     f"{description}"
                     f"{ac_text}\n\n"
                     + " | ".join(footer_parts)
@@ -222,6 +456,7 @@ def _build_work_item_pinned_blocks(
 async def _update_work_item_pinned_message(
     client, channel_id: str, message_ts: str, entity_id: str, content,
     user_id: str, status: str, approved_by: str | None = None, jira_key: str | None = None,
+    parent_title: str | None = None, parent_jira_key: str | None = None,
 ) -> None:
     """Update a work item's pinned message to reflect current lifecycle state."""
     blocks = _build_work_item_pinned_blocks(
@@ -231,6 +466,8 @@ async def _update_work_item_pinned_message(
         status=status,
         approved_by=approved_by,
         jira_key=jira_key,
+        parent_title=parent_title,
+        parent_jira_key=parent_jira_key,
     )
 
     title = getattr(content, "title", "Untitled")
@@ -247,6 +484,7 @@ async def _update_work_item_pinned_message(
 
 async def _post_and_pin_work_item(
     client, channel_id: str, entity_id: str, content, user_id: str,
+    parent_title: str | None = None, parent_jira_key: str | None = None,
 ) -> str | None:
     """Post a formatted work item proposal to the channel and pin it.
 
@@ -256,6 +494,8 @@ async def _post_and_pin_work_item(
         entity_id: Entity ID for action buttons
         content: WorkItemContent with title, issue_type, description, acceptance_criteria
         user_id: User who proposed the item
+        parent_title: Title of parent entity (Epic/Feature) if linked
+        parent_jira_key: Jira key of parent entity if committed
 
     Returns the message timestamp on success, or None on failure.
     """
@@ -264,6 +504,8 @@ async def _post_and_pin_work_item(
         content=content,
         user_id=user_id,
         status="proposed",
+        parent_title=parent_title,
+        parent_jira_key=parent_jira_key,
     )
 
     try:
@@ -492,11 +734,30 @@ def _replace_adr_blocks(blocks: list[dict], section_idx: int, replacement_block:
 async def _update_dashboard_after_decision(
     client, channel_id: str, aggregate,
 ) -> None:
-    """Update the channel dashboard after a decision/work item change."""
+    """Update the channel dashboard after a decision/work item change.
+
+    Slack is the source of truth: only items with actual pinned messages
+    are shown. If a pinned message is removed, the item won't appear.
+    """
     from src.config import get_settings
 
     try:
         settings = get_settings()
+
+        # Fetch actual pinned messages from Slack - this is the source of truth
+        pinned_messages = {}  # message_ts -> message data
+        try:
+            result = await client.pins_list(channel=channel_id)
+            for item in result.get("items", []):
+                message = item.get("message", {})
+                ts = message.get("ts")
+                if ts:
+                    pinned_messages[ts] = message
+            logger.debug(f"Found {len(pinned_messages)} pinned messages in {channel_id}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch pinned messages: {e}")
+            # Continue with empty - dashboard will show no items
+
         counts = {"pending": 0, "approved": 0, "committed": 0, "decisions": 0}
         pending_items = []
         approved_items = []
@@ -505,6 +766,12 @@ async def _update_dashboard_after_decision(
 
         for entity in aggregate.entities.values():
             if entity.entity_type.value == "decision":
+                # Check if ADR pinned message still exists
+                adr_ts = getattr(entity, 'adr_message_ts', None)
+                if not adr_ts or adr_ts not in pinned_messages:
+                    # Pinned message removed - skip this decision
+                    continue
+
                 counts["decisions"] += 1
                 entity_id = str(entity.id)
                 title = getattr(entity.content, "title", entity_id[:8])
@@ -513,42 +780,71 @@ async def _update_dashboard_after_decision(
                     "title": title,
                     "id": entity_id,
                     "status": lifecycle.value,
+                    "link": _build_slack_permalink(channel_id, adr_ts),
                 }
-                adr_ts = getattr(entity, 'adr_message_ts', None)
-                if adr_ts:
-                    item["link"] = _build_slack_permalink(channel_id, adr_ts)
                 if isinstance(entity, DeprecatedEntity) and entity.superseded_by:
                     item["superseded_by"] = str(entity.superseded_by)
                 decision_items.append(item)
             else:
-                # Work items
+                # Work items - check if pinned message exists
+                pinned_ts = getattr(entity, 'canonical_message_ts', None)
+                if not pinned_ts or pinned_ts not in pinned_messages:
+                    # No pinned message - skip this work item
+                    continue
+
                 lifecycle = get_lifecycle(entity)
                 lc = lifecycle.value
                 entity_id = str(entity.id)
                 title = getattr(entity.content, "title", entity_id[:8])
+                pinned_link = _build_slack_permalink(channel_id, pinned_ts)
+
+                # Look up parent info for hierarchy display
+                parent_title = None
+                parent_jira_key = None
+                parent_id = getattr(entity.content, "parent_id", None)
+                if parent_id:
+                    parent = aggregate.get_entity(parent_id)
+                    if parent and hasattr(parent.content, "title"):
+                        parent_title = parent.content.title
+                    if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                        parent_jira_key = parent.jira_link.jira_key
 
                 if lc in ("draft", "proposed"):
                     counts["pending"] += 1
-                    pending_items.append({
+                    item_data = {
                         "title": title,
                         "id": entity_id,
-                    })
+                        "link": pinned_link,
+                    }
+                    if parent_title:
+                        item_data["parent_title"] = parent_title
+                    pending_items.append(item_data)
                 elif lc == "approved":
                     counts["approved"] += 1
-                    approved_items.append({
+                    item_data = {
                         "title": title,
                         "id": entity_id,
-                    })
+                        "link": pinned_link,
+                    }
+                    if parent_title:
+                        item_data["parent_title"] = parent_title
+                    approved_items.append(item_data)
                 elif lc == "committed":
                     counts["committed"] += 1
                     jira_key = ""
                     if hasattr(entity, "jira_link") and entity.jira_link:
                         jira_key = entity.jira_link.jira_key
-                    committed_items.append({
+                    item_data = {
                         "title": title,
                         "id": entity_id,
                         "jira_key": jira_key,
-                    })
+                        "link": pinned_link,
+                    }
+                    if parent_title:
+                        item_data["parent_title"] = parent_title
+                    if parent_jira_key:
+                        item_data["parent_jira_key"] = parent_jira_key
+                    committed_items.append(item_data)
 
         slack_client = SlackClient(client)
         dashboard_mgr = DashboardManager(slack_client)
@@ -739,9 +1035,14 @@ async def _propose_single_work_item(
 ) -> None:
     """Propose a single work item from a batch preview."""
     from src.domain.content import IssueType, WorkItemContent
+    from src.domain.types import EntityId
 
     try:
         aggregate = await load_aggregate(channel_id)
+
+        # Get parent_id from content_data if present
+        parent_id_str = content_data.get("parent_id")
+        parent_id = EntityId(parent_id_str) if parent_id_str else None
 
         content = WorkItemContent(
             issue_type=IssueType(content_data.get("issue_type", "story").lower()),
@@ -755,6 +1056,7 @@ async def _propose_single_work_item(
             actor_id=UserId(user_id),
             thread_ts=ThreadTs(thread_ts or ""),
             content=content,
+            parent_id=parent_id,
         )
 
         proposed = aggregate.propose_work_item(
@@ -768,8 +1070,21 @@ async def _propose_single_work_item(
         if thread_ts:
             get_tracker().record_bot_response(channel_id, thread_ts)
 
+        # Look up parent info for display
+        parent_title = None
+        parent_jira_key = None
+        if parent_id:
+            parent = aggregate.get_entity(parent_id)
+            if parent and hasattr(parent.content, "title"):
+                parent_title = parent.content.title
+            if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                parent_jira_key = parent.jira_link.jira_key
+
         # Post pinned proposal message to the channel
-        await _post_and_pin_work_item(client, channel_id, str(draft.id), content, user_id)
+        await _post_and_pin_work_item(
+            client, channel_id, str(draft.id), content, user_id,
+            parent_title=parent_title, parent_jira_key=parent_jira_key,
+        )
 
         # Replace the item's blocks with confirmation
         target_text = f"*{item_index + 1}. "
@@ -805,12 +1120,17 @@ async def _propose_all_work_items(
 ) -> None:
     """Propose all work items from a batch preview."""
     from src.domain.content import IssueType, WorkItemContent
+    from src.domain.types import EntityId
 
     try:
         aggregate = await load_aggregate(channel_id)
 
         created = []
         for w in work_items:
+            # Get parent_id from work item data if present
+            parent_id_str = w.get("parent_id")
+            parent_id = EntityId(parent_id_str) if parent_id_str else None
+
             content = WorkItemContent(
                 issue_type=IssueType(w.get("issue_type", "story").lower()),
                 title=w["title"],
@@ -823,6 +1143,7 @@ async def _propose_all_work_items(
                 actor_id=UserId(user_id),
                 thread_ts=ThreadTs(thread_ts or ""),
                 content=content,
+                parent_id=parent_id,
             )
 
             aggregate.propose_work_item(
@@ -840,7 +1161,21 @@ async def _propose_all_work_items(
 
         # Post pinned proposal messages to the channel for each work item
         for entity_id, content in created:
-            await _post_and_pin_work_item(client, channel_id, entity_id, content, user_id)
+            # Look up parent info for display
+            parent_title = None
+            parent_jira_key = None
+            entity = aggregate.get_entity(EntityId(entity_id))
+            if entity and hasattr(entity.content, "parent_id") and entity.content.parent_id:
+                parent = aggregate.get_entity(entity.content.parent_id)
+                if parent and hasattr(parent.content, "title"):
+                    parent_title = parent.content.title
+                if parent and hasattr(parent, "jira_link") and parent.jira_link:
+                    parent_jira_key = parent.jira_link.jira_key
+
+            await _post_and_pin_work_item(
+                client, channel_id, entity_id, content, user_id,
+                parent_title=parent_title, parent_jira_key=parent_jira_key,
+            )
 
         # Replace all buttons with confirmation
         updated_blocks = [b for b in original_blocks if b.get("type") != "actions"]
@@ -1143,6 +1478,23 @@ def register_action_handlers(app: AsyncApp) -> None:
         )
         if thread_ts:
             get_tracker().record_bot_response(channel_id, thread_ts)
+
+        # Check for action plan - execute directly if present
+        action_type = value.get("action")
+        entity_ids = value.get("entity_ids", [])
+
+        if action_type and entity_ids:
+            # Execute action plan directly without re-classification
+            await _execute_action_plan(
+                action=action_type,
+                entity_ids=entity_ids,
+                channel_id=channel_id,
+                user_id=user_id,
+                thread_ts=thread_ts,
+                client=client,
+                say=say,
+            )
+            return
 
         # Directly invoke classification + dispatch pipeline.
         # The posted message above is a bot message and will be filtered by the

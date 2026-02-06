@@ -125,6 +125,17 @@ class WorkItemUpdated(DomainEvent):
     reason: str
 
 
+class WorkItemDiscarded(DomainEvent):
+    """Work item discarded/removed.
+
+    Emitted when a work item is discarded (e.g., pinned message removed).
+    Only valid for draft, proposed, or approved work items (not committed).
+    """
+
+    entity_id: EntityId
+    reason: str
+
+
 # =============================================================================
 # Decision Events (spec 4.2)
 # =============================================================================
@@ -202,6 +213,18 @@ class DecisionDeprecated(DomainEvent):
 
     entity_id: EntityId
     superseded_by: EntityId | None
+    reason: str
+
+
+class DecisionDiscarded(DomainEvent):
+    """Decision discarded before reaching committed state.
+
+    Emitted when a Draft or Proposed decision is discarded by a user.
+    The entity is removed from the aggregate (not deprecated — it never
+    reached committed state).
+    """
+
+    entity_id: EntityId
     reason: str
 
 
@@ -379,6 +402,7 @@ _CORE_EVENT_TYPES: list[type[DomainEvent]] = [
     DecisionCommitted,
     DecisionAmended,
     DecisionDeprecated,
+    DecisionDiscarded,
     # Approval/Objection Events
     ApprovalAdded,
     ObjectionRaised,

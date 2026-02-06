@@ -8,7 +8,14 @@ Ref: BOT_DESIGN.md - Two-Stage Intent Classification
 import logging
 from slack_bolt.async_app import AsyncApp
 
-from src.domain.entities import get_lifecycle
+from src.domain.entities import (
+    get_lifecycle,
+    ApprovedEntity,
+    CommittedEntity,
+    DraftEntity,
+    ProposedEntity,
+)
+from src.domain.types import EntityId, UserId
 from src.intent import (
     classify_intent,
     RouterContext,
@@ -18,6 +25,7 @@ from src.intent import (
 from src.modes import dispatch_mode
 from src.slack.client import SlackClient
 from src.slack.dashboard import DashboardManager
+from src.slack.response_gate import check_response_gate, GateResult, get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +102,37 @@ def register_event_handlers(app: AsyncApp) -> None:
             logger.debug("Skipping @mention in message handler (handled by app_mention)")
             return
 
-        logger.info(f"Message in {channel_id} from {user_id}: {text[:50]}...")
+        # Response gate — decide whether the bot should respond
+        gate = await check_response_gate(event, client)
+        if gate.result == GateResult.BLOCKED:
+            logger.debug(f"Gate blocked: {gate.reason}")
+            return
+
+        logger.info(f"Message in {channel_id} from {user_id} (gate={gate.result.value}): {text[:50]}...")
+
+        # Fetch thread context when in a thread
+        thread_messages = []
+        thread_summary = ""
+        if thread_ts:
+            try:
+                replies = await client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    limit=50,
+                )
+                thread_messages = [
+                    {"role": "assistant" if msg.get("bot_id") else "user",
+                     "content": msg.get("text", "")}
+                    for msg in replies.get("messages", [])
+                ]
+            except Exception as e:
+                logger.warning(f"Failed to fetch thread history: {e}")
+
+            if thread_messages:
+                thread_summary = "\n".join(
+                    f"{'Bot' if m['role'] == 'assistant' else 'User'}: {m['content'][:200]}"
+                    for m in thread_messages[-10:]
+                )
 
         # Populate router context from projections
         channel_name = await _resolve_channel_name(client, channel_id)
@@ -104,7 +142,7 @@ def register_event_handlers(app: AsyncApp) -> None:
             channel_id=channel_id,
             channel_name=channel_name,
             thread_ts=thread_ts,
-            thread_summary="",
+            thread_summary=thread_summary,
             entity_summaries=entity_summaries,
             active_process_threads=_active_process_threads,
         )
@@ -130,6 +168,7 @@ def register_event_handlers(app: AsyncApp) -> None:
                 channel_id=channel_id,
                 thread_ts=thread_ts,
                 intent=intent,
+                thread_messages=thread_messages,
             )
 
             # Send response
@@ -148,6 +187,10 @@ def register_event_handlers(app: AsyncApp) -> None:
                         text=result.response_text,
                         thread_ts=response_thread,
                     )
+
+                # Record bot participation for future gate checks
+                if response_thread:
+                    get_tracker().record_bot_response(channel_id, response_thread)
 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
@@ -244,6 +287,10 @@ def register_event_handlers(app: AsyncApp) -> None:
                         thread_ts=thread_ts,
                     )
 
+                # Record bot participation for future gate checks
+                if thread_ts:
+                    get_tracker().record_bot_response(channel_id, thread_ts)
+
         except Exception as e:
             logger.error(f"Error processing mention: {e}", exc_info=True)
             await say(
@@ -286,4 +333,129 @@ def register_event_handlers(app: AsyncApp) -> None:
         except Exception as e:
             logger.error(f"Failed to create dashboard in {channel_id}: {e}", exc_info=True)
 
+    @app.event("pin_removed")
+    async def handle_pin_removed(event: dict, client) -> None:
+        """Handle pin removal - sync internal state with Slack.
+
+        Slack is the source of truth. When a pinned message is removed,
+        discard the associated entity from the aggregate.
+        """
+        channel_id = event.get("channel_id", "")
+        item = event.get("item", {})
+        message = item.get("message", {})
+        message_ts = message.get("ts", "")
+        user_id = event.get("user", "")
+
+        if not channel_id or not message_ts:
+            return
+
+        logger.info(f"Pin removed in {channel_id}: message_ts={message_ts} by {user_id}")
+
+        try:
+            await _discard_entity_by_message_ts(channel_id, message_ts, user_id, client)
+        except Exception as e:
+            logger.error(f"Failed to handle pin removal: {e}", exc_info=True)
+
+    @app.event({"type": "message", "subtype": "message_deleted"})
+    async def handle_message_deleted(event: dict, client) -> None:
+        """Handle message deletion - sync internal state with Slack.
+
+        Slack is the source of truth. When a message is deleted,
+        discard the associated entity from the aggregate.
+        """
+        channel_id = event.get("channel", "")
+        deleted_ts = event.get("deleted_ts", "")
+        # message_deleted events don't have a user field for who deleted it
+
+        if not channel_id or not deleted_ts:
+            return
+
+        logger.info(f"Message deleted in {channel_id}: ts={deleted_ts}")
+
+        try:
+            # Use system user for deletions since we don't know who deleted
+            await _discard_entity_by_message_ts(channel_id, deleted_ts, "SYSTEM", client)
+        except Exception as e:
+            logger.error(f"Failed to handle message deletion: {e}", exc_info=True)
+
     logger.info("Event handlers registered with intent routing")
+
+
+async def _discard_entity_by_message_ts(
+    channel_id: str,
+    message_ts: str,
+    user_id: str,
+    client,
+) -> None:
+    """Find and discard entity associated with a message timestamp.
+
+    Slack is the source of truth. When a pinned message is removed,
+    the corresponding entity should be discarded from internal state.
+
+    Searches for entities by canonical_message_ts (work items) or
+    adr_message_ts (decisions) and discards them.
+    """
+    from src.infrastructure.aggregate_loader import load_aggregate, save_events
+
+    aggregate = await load_aggregate(channel_id)
+
+    # Find entity by message timestamp
+    entity_to_discard = None
+    for entity in aggregate.entities.values():
+        canonical_ts = getattr(entity, 'canonical_message_ts', None)
+        adr_ts = getattr(entity, 'adr_message_ts', None)
+
+        if canonical_ts == message_ts or adr_ts == message_ts:
+            entity_to_discard = entity
+            break
+
+    if not entity_to_discard:
+        logger.debug(f"No entity found for message_ts={message_ts}")
+        return
+
+    entity_id = entity_to_discard.id
+    title = getattr(entity_to_discard.content, "title", str(entity_id)[:8])
+    entity_type = entity_to_discard.entity_type.value
+
+    try:
+        if isinstance(entity_to_discard, CommittedEntity):
+            # Committed entities exist in Jira - cannot discard
+            # Dashboard will hide them since pinned message is gone
+            logger.info(
+                f"Committed {entity_type} '{title}' pinned message removed - "
+                f"keeping internal record (exists in Jira)"
+            )
+        elif entity_type == "decision":
+            # Use discard_decision for decisions
+            aggregate.discard_decision(
+                entity_id=EntityId(str(entity_id)),
+                actor_id=UserId(user_id),
+                reason="Pinned message removed from Slack",
+            )
+            await save_events(aggregate)
+            logger.info(f"Discarded decision '{title}' after pin/message removal")
+        else:
+            # Use discard_work_item for work items (draft, proposed, approved)
+            aggregate.discard_work_item(
+                entity_id=EntityId(str(entity_id)),
+                actor_id=UserId(user_id),
+                reason="Pinned message removed from Slack",
+            )
+            await save_events(aggregate)
+            logger.info(f"Discarded work item '{title}' after pin/message removal")
+    except Exception as e:
+        logger.warning(f"Failed to discard entity {entity_id}: {e}")
+
+    # Refresh dashboard to reflect the change
+    try:
+        # Reload aggregate to get current state
+        aggregate = await load_aggregate(channel_id)
+        await _refresh_dashboard(client, channel_id, aggregate)
+    except Exception as e:
+        logger.warning(f"Failed to refresh dashboard after pin removal: {e}")
+
+
+async def _refresh_dashboard(client, channel_id: str, aggregate) -> None:
+    """Refresh dashboard with current state."""
+    from src.slack.handlers.actions import _update_dashboard_after_decision
+    await _update_dashboard_after_decision(client, channel_id, aggregate)

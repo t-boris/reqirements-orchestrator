@@ -35,7 +35,7 @@ class JiraClient:
             email: User email for authentication
             token: API token (not password)
         """
-        self._jira = Jira(url=url, username=email, password=token)
+        self._jira = Jira(url=url, username=email, password=token, timeout=30)
         self._field_map: dict[str, str] | None = None
 
     async def _call_with_retry(self, func, *args, **kwargs) -> Any:
@@ -50,7 +50,13 @@ class JiraClient:
     async def _retry_impl(self, func, *args, **kwargs) -> Any:
         """Retry implementation with exponential backoff."""
         try:
-            return await asyncio.to_thread(func, *args, **kwargs)
+            return await asyncio.wait_for(
+                asyncio.to_thread(func, *args, **kwargs),
+                timeout=60,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Jira API call timed out: {func.__name__}")
+            raise TimeoutError(f"Jira API call timed out after 60s: {func.__name__}")
         except Exception as e:
             # Check for 429 in various ways atlassian-python-api might report it
             error_str = str(e).lower()
@@ -72,6 +78,7 @@ class JiraClient:
         summary: str,
         issue_type: str = "Task",
         description: str | None = None,
+        epic_key: str | None = None,
         **extra_fields,
     ) -> str:
         """Create Jira issue.
@@ -81,6 +88,7 @@ class JiraClient:
             summary: Issue summary/title
             issue_type: Issue type name (Task, Story, Bug, etc.)
             description: Issue description (optional)
+            epic_key: Epic issue key to link to (e.g., "PROJ-10")
             **extra_fields: Additional fields to set
 
         Returns:
@@ -95,6 +103,13 @@ class JiraClient:
         if description:
             fields["description"] = description
 
+        # Add Epic Link if provided
+        if epic_key:
+            epic_link_field = await self._resolve_epic_link_field()
+            if epic_link_field:
+                fields[epic_link_field] = epic_key
+                logger.info(f"Setting Epic Link field '{epic_link_field}' to {epic_key}")
+
         fields.update(extra_fields)
 
         result = await self._call_with_retry(
@@ -105,6 +120,26 @@ class JiraClient:
         key = result["key"]
         logger.info(f"Created Jira issue: {key}")
         return key
+
+    async def _resolve_epic_link_field(self) -> str | None:
+        """Resolve the Epic Link custom field ID.
+
+        Jira uses a custom field for Epic Link, typically named "Epic Link"
+        but the field ID varies by instance (e.g., customfield_10014).
+
+        Returns:
+            The field ID for Epic Link, or None if not found.
+        """
+        field_map = await self.get_field_map()
+
+        # Try common names for Epic Link field
+        for name in ["Epic Link", "Parent Link", "Parent"]:
+            if name in field_map:
+                return field_map[name]
+
+        # Log warning if not found
+        logger.warning("Could not find Epic Link field in Jira field map")
+        return None
 
     async def get_issue(self, key: str) -> dict[str, Any]:
         """Get issue by key.
@@ -160,6 +195,9 @@ class JiraClient:
     ) -> list[dict[str, Any]]:
         """Search issues with JQL.
 
+        Uses /rest/api/3/search/jql (the old /rest/api/2/search was removed
+        by Atlassian — see CHANGE-2046).
+
         Args:
             jql: JQL query string
             max_results: Maximum results to return
@@ -168,11 +206,15 @@ class JiraClient:
         Returns:
             List of matching issues
         """
+        params = {
+            "jql": jql,
+            "maxResults": max_results,
+            "fields": fields,
+        }
         result = await self._call_with_retry(
-            self._jira.jql,
-            jql,
-            limit=max_results,
-            fields=fields,
+            self._jira.get,
+            "rest/api/3/search/jql",
+            params=params,
         )
         return result.get("issues", [])
 
