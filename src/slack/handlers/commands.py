@@ -82,16 +82,56 @@ def register_command_handlers(app: AsyncApp) -> None:
 
 
 async def _handle_help(respond) -> None:
-    """Show help message with available commands."""
+    """Show help message with available commands and interactive buttons."""
     help_text = "*Available MARO commands:*\n\n"
     for cmd, desc in AVAILABLE_COMMANDS.items():
-        help_text += f"- `/maro {cmd}` - {desc}\n"
+        help_text += f"• `/maro {cmd}` - {desc}\n"
 
-    help_text += "\n_MARO 2.0 - Threads propose. Channels decide. Jira executes._"
+    blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": help_text},
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*Learn more:*"},
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "📋 My Rules"},
+                    "action_id": "help_my_rules",
+                    "value": "rules",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "❓ How to..."},
+                    "action_id": "help_how_to",
+                    "value": "howto",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🎯 Modes"},
+                    "action_id": "help_modes",
+                    "value": "modes",
+                },
+            ],
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"_MARO v{__version__} - Threads propose. Channels decide. Jira executes._"}],
+        },
+    ]
 
     await respond(
-        text=help_text,
-        response_type="ephemeral",
+        text="MARO Help",
+        blocks=blocks,
+        response_type="in_channel",
     )
 
 

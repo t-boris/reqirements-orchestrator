@@ -2760,6 +2760,135 @@ def register_action_handlers(app: AsyncApp) -> None:
     app.action(JIRA_DUPLICATE_PATTERN)(handle_select_duplicate)
     app.action("create_anyway")(handle_create_anyway)
 
+    # Help button handlers
+    @app.action("help_my_rules")
+    async def handle_help_my_rules(ack, body: dict, client) -> None:
+        """Show MARO rules in a thread."""
+        await ack()
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+
+        rules_text = """*📋 MARO Rules*
+
+*1. Slack is the Source of Truth*
+• Pinned messages represent active items
+• If a pinned message is removed, the item is discarded
+• Channel Status dashboard reflects actual pinned messages
+
+*2. Thread-Based Workflow*
+• Start discussions in threads
+• Work items are created and refined in threads
+• Channel-level messages are for approvals and decisions
+
+*3. Approval Flow*
+• Draft → Proposed → Approved → Committed (Jira)
+• Anyone can propose, channel members approve
+• One approval needed (no active objections)
+
+*4. Entity Types*
+• *Work Items*: Stories, Tasks, Bugs, Spikes, Epics
+• *Decisions*: Architecture decisions (ADRs)
+
+*5. Jira Integration*
+• Approved items can be committed to Jira
+• Epic linking preserved (stories under epics)
+• Duplicate detection before creation"""
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=message_ts,
+            text=rules_text,
+        )
+
+    @app.action("help_how_to")
+    async def handle_help_how_to(ack, body: dict, client) -> None:
+        """Show how-to guide in a thread."""
+        await ack()
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+
+        howto_text = """*❓ How to Use MARO*
+
+*Create a Work Item*
+Just describe what you need in a thread:
+> "Create a story for user authentication with OAuth"
+MARO will extract details and show a preview for approval.
+
+*Create Multiple Items*
+> "Create 3 stories for the checkout flow"
+MARO will generate multiple items you can propose individually or all at once.
+
+*Record a Decision*
+> "We decided to use PostgreSQL for the database"
+MARO will create an ADR (Architecture Decision Record).
+
+*Ask Questions*
+> "What decisions have we made about authentication?"
+MARO will search existing entities and answer.
+
+*Approve Items*
+Click the *Approve* button on proposed items, or say:
+> "Approve the authentication story"
+
+*Commit to Jira*
+After approval, click *Commit to Jira* to create the issue.
+
+*Modify Items*
+> "Update the story title to 'OAuth 2.0 Integration'"
+> "Add acceptance criteria: must support Google login"
+
+*View Status*
+Use `/maro status` or check the pinned Channel Status message."""
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=message_ts,
+            text=howto_text,
+        )
+
+    @app.action("help_modes")
+    async def handle_help_modes(ack, body: dict, client) -> None:
+        """Show modes explanation in a thread."""
+        await ack()
+        channel_id = body.get("channel", {}).get("id")
+        message_ts = body.get("message", {}).get("ts")
+
+        modes_text = """*🎯 MARO Modes*
+
+MARO automatically detects your intent and routes to the right mode:
+
+*CREATE Mode* :pencil:
+Triggered by: "Create a story...", "Add a task for...", "We need a spike to..."
+→ Extracts work item details, shows preview, proposes for approval
+
+*MODIFY Mode* :wrench:
+Triggered by: "Update the title...", "Change priority to...", "Add acceptance criteria..."
+→ Modifies existing entities (drafts or proposed items)
+
+*RECORD Mode* :memo:
+Triggered by: "We decided...", "The decision is...", "Record that we chose..."
+→ Creates Architecture Decision Records (ADRs)
+
+*CONVERSE Mode* :speech_balloon:
+Triggered by: Questions, discussions, brainstorming
+→ Answers questions, provides suggestions, no side effects
+
+*JIRA Mode* :link:
+Triggered by: "What's the status of PROJ-123?", "Show me open bugs in Jira"
+→ Queries Jira directly for issue information
+
+*ARCHITECT Mode* :building_construction:
+Triggered by: "How should we design...", "What pattern for...", "Best practice for..."
+→ Provides architectural guidance and recommendations
+
+_Mode is auto-detected with confidence scoring. Low-confidence messages default to CONVERSE._"""
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=message_ts,
+            text=modes_text,
+        )
+
     # Catch-all for any unhandled actions (MUST be registered last)
     @app.action(re.compile(".*"))
     async def handle_unknown_action(ack, action: dict, logger) -> None:
