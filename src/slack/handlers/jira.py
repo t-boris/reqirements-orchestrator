@@ -63,8 +63,12 @@ async def handle_commit_to_jira(
             return
 
         settings = get_settings()
-        project_key = settings.jira_default_project
         sync_service = get_sync_service()
+
+        # Get channel-specific Jira project or fall back to default
+        from src.infrastructure.channel_config import get_jira_project
+        channel_project = await get_jira_project(channel_id)
+        project_key = channel_project or settings.jira_default_project
 
         # Check if entity has a parent and if that parent has a Jira key
         epic_key = None
@@ -242,6 +246,11 @@ async def handle_create_anyway(
         settings = get_settings()
         sync_service = get_sync_service()
 
+        # Get channel-specific Jira project or fall back to default
+        from src.infrastructure.channel_config import get_jira_project
+        channel_project = await get_jira_project(channel_id)
+        project_key = channel_project or settings.jira_default_project
+
         # Check if entity has a parent with Jira key
         epic_key = None
         if hasattr(entity.content, "parent_id") and entity.content.parent_id:
@@ -250,7 +259,7 @@ async def handle_create_anyway(
                 epic_key = parent.jira_link.jira_key
 
         jira_key = await sync_service.jira.create_issue(
-            project_key=settings.jira_default_project,
+            project_key=project_key,
             summary=entity.content.title,
             issue_type=sync_service._map_issue_type(
                 getattr(entity.content, "issue_type", "Task")

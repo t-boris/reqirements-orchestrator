@@ -144,9 +144,15 @@ async def _execute_action_plan(
             from src.config import get_settings
             from src.jira.factory import get_sync_service
             from src.domain.types import JiraKey
+            from src.infrastructure.channel_config import get_jira_project
 
             settings = get_settings()
             sync_service = get_sync_service()
+
+            # Get channel-specific Jira project or fall back to default
+            channel_project = await get_jira_project(channel_id)
+            project_key = channel_project or settings.jira_default_project
+
             committed_count = 0
             failed = []
 
@@ -168,7 +174,7 @@ async def _execute_action_plan(
                             epic_key = parent.jira_link.jira_key
 
                     jira_key = await sync_service.commit_work_item(
-                        entity, settings.jira_default_project, epic_key=epic_key
+                        entity, project_key, epic_key=epic_key
                     )
                     aggregate.commit_work_item(
                         entity_id=EntityId(eid),

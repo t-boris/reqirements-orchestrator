@@ -71,7 +71,7 @@ def register_command_handlers(app: AsyncApp) -> None:
             case "entities":
                 await _handle_entities(respond, channel_id)
             case "config":
-                await _handle_config(respond, channel_id)
+                await _handle_config(respond, channel_id, args)
             case "inspect":
                 await _handle_inspect(respond, channel_id, args)
             case _:
@@ -339,20 +339,72 @@ async def _handle_entities(respond, channel_id: str) -> None:
         )
 
 
-async def _handle_config(respond, channel_id: str) -> None:
-    """Show channel configuration."""
+async def _handle_config(respond, channel_id: str, args: list[str]) -> None:
+    """Show or update channel configuration.
+
+    Subcommands:
+    - /maro config: Show current configuration
+    - /maro config jira-project <KEY>: Set Jira project for this channel
+    """
     from src.config import get_settings
+    from src.infrastructure.channel_config import get_channel_config, set_jira_project
 
     settings = get_settings()
+
+    # Handle subcommands
+    if args:
+        subcommand = args[0].lower()
+
+        if subcommand == "jira-project" and len(args) > 1:
+            project_key = args[1].upper()
+            try:
+                await set_jira_project(channel_id, project_key)
+                await respond(
+                    text=f":white_check_mark: Jira project set to *{project_key}* for this channel.",
+                    response_type="ephemeral",
+                )
+            except Exception as e:
+                logger.error(f"Failed to set Jira project: {e}", exc_info=True)
+                await respond(
+                    text=f":x: Failed to set Jira project: {e}",
+                    response_type="ephemeral",
+                )
+            return
+
+        elif subcommand == "jira-project":
+            await respond(
+                text="Usage: `/maro config jira-project <PROJECT_KEY>`\nExample: `/maro config jira-project SCRUM`",
+                response_type="ephemeral",
+            )
+            return
+
+        else:
+            await respond(
+                text=f"Unknown config option: `{subcommand}`\n\nAvailable options:\n• `jira-project <KEY>` - Set Jira project for this channel",
+                response_type="ephemeral",
+            )
+            return
+
+    # Show current configuration
+    try:
+        channel_config = await get_channel_config(channel_id)
+        jira_project = channel_config.jira_project or settings.jira_default_project
+        is_custom = channel_config.jira_project is not None
+    except Exception:
+        jira_project = settings.jira_default_project
+        is_custom = False
+
+    project_display = f"{jira_project}" + (" _(channel override)_" if is_custom else " _(default)_")
 
     config_text = (
         f"*Channel Configuration*\n\n"
         f"*Channel:* {channel_id}\n"
-        f"*Jira Project:* {settings.jira_default_project}\n"
+        f"*Jira Project:* {project_display}\n"
         f"*Jira URL:* {settings.jira_url or 'Not configured'}\n"
         f"*Jira Dry Run:* {settings.jira_dry_run}\n"
         f"*LLM Model:* {settings.llm_model_full}\n"
-        f"*Environment:* {settings.environment}\n"
+        f"*Environment:* {settings.environment}\n\n"
+        f"_To change Jira project: `/maro config jira-project <KEY>`_"
     )
 
     await respond(
