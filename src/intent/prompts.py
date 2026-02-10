@@ -25,7 +25,7 @@ Rules:
 1. If uncertain, choose CONVERSE - it's the safe default
 2. "Record decisions", "ADR", "document it", "create a ticket" = CREATE (user wants an artifact)
 3. When user confirms a previous offer to create/record (e.g. "yes", "do it", "please") = CREATE
-4. MODIFY requires referencing an existing entity by ID or name
+4. MODIFY requires referencing a SINGLE existing entity by ID or name
 5. RECORD requires an inline COMMITMENT stated by the user, not a request to document
 6. Never hallucinate entity IDs - only use IDs explicitly mentioned
 7. Consider the thread context, not just the single message
@@ -34,6 +34,8 @@ Rules:
 10. "What should we build?" or "What's the priority?" = CONVERSE (general discussion)
 11. If the user asks for architectural advice, design patterns, system design, or proposes
     an architecture for discussion → ARCHITECT
+12. BULK OPERATIONS: "approve all", "approve all ADRs", "approve all decisions", "approve remaining items"
+    → CONVERSE (the bot will offer action buttons for the specific entities)
 
 COMPOUND REQUEST DETECTION (is_compound_request):
 Set is_compound_request=true when the user asks for MULTIPLE SEQUENTIAL ACTIONS:

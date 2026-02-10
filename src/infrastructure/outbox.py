@@ -16,6 +16,7 @@ Key features:
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime
 
@@ -110,7 +111,10 @@ class OutboxProcessor:
 
                 if handlers:
                     try:
-                        event = deserialize_event(dict(row["payload"]))
+                        payload = row["payload"]
+                        if isinstance(payload, str):
+                            payload = json.loads(payload)
+                        event = deserialize_event(payload)
                         for projection in handlers:
                             await projection.apply(event)
                     except Exception as e:

@@ -25,7 +25,7 @@ class ExtractedWorkItem(BaseModel):
     title: str = Field(description="Clear, concise title for the work item (5-15 words)")
     issue_type: str = Field(
         default="story",
-        description="Issue type: story, task, bug, or spike"
+        description="Issue type: epic, story, task, bug, or spike"
     )
     description: str = Field(description="Detailed description of what needs to be done")
     acceptance_criteria: list[str] = Field(
@@ -35,6 +35,10 @@ class ExtractedWorkItem(BaseModel):
     constraints: list[str] = Field(
         default_factory=list,
         description="Technical constraints or requirements"
+    )
+    parent_title: str | None = Field(
+        default=None,
+        description="Title of parent Epic (required for story/task/bug/spike, null for epic)"
     )
 
 
@@ -78,56 +82,60 @@ class ExtractedDecisions(BaseModel):
     )
 
 
-EXTRACT_WORK_ITEM_SYSTEM = """You are extracting a structured work item from a Slack conversation.
+EXTRACT_WORK_ITEMS_SYSTEM = """You are extracting work items from a Slack conversation, using the full channel context.
 
-The user wants to create a work item (ticket/story/task). Extract:
-- A clear, concise TITLE (not the raw message - summarize the intent in 5-15 words)
-- The appropriate issue type (story for features, task for chores, bug for defects, spike for research)
-- A well-written description expanding on the user's intent
-- Acceptance criteria if inferable from the conversation
-- Technical constraints if mentioned
+Based on the user's request and the existing entities (ADRs, decisions, work items) in the channel,
+extract the appropriate work item(s).
 
-Use the FULL THREAD CONTEXT to understand what was discussed, not just the last message.
-Be professional and concise. The title should read like a Jira ticket title."""
+HIERARCHY STRUCTURE (CRITICAL):
+- Epic: Top-level, no parent needed. Large initiative covering multiple stories/tasks.
+- User Story: MUST have a parent Epic. Describes a user-facing feature.
+- Task: MUST have a parent (Epic or Story). Implementation work.
+- Bug: MUST have a parent (Epic or Story). Defect fix.
+- Spike: MUST have a parent Epic. Research/investigation.
 
-EXTRACT_WORK_ITEM_USER = """Thread conversation:
-{thread_context}
+When creating multiple items, establish the hierarchy:
+1. First create Epics (no parent)
+2. Then Stories/Tasks reference their parent Epic by title
 
-User's latest message requesting creation:
-"{message}"
+DECISION: Single vs Multiple Work Items
+- If user asks for a specific single item ("create a task for X") → return 1 work item
+- If user asks for multiple items ("create epics based on ADRs", "list of stories") → return multiple
+- If user references existing ADRs/decisions → analyze them and create concrete implementation items
 
-Extract a work item based on the full conversation context."""
+CRITICAL for batch/multiple items:
+- DO NOT create meta-tasks like "Identify epics based on ADRs" - YOU must do that analysis
+- Each ADR/decision represents a technical choice that needs implementation work
+- Extract CONCRETE work items from the decisions
 
-EXTRACT_BATCH_WORK_ITEMS_SYSTEM = """You are generating structured work items from existing architectural decisions and entities in a channel.
-
-The user wants to create work items (epics/stories/tasks) based on the existing decisions and entities.
-
-IMPORTANT: Look at the THREAD CONVERSATION carefully!
-- If the bot previously listed specific stories/items to create, extract THOSE items
-- If bot said "here are the other X stories we should create" followed by a list, create those items
-- Do NOT create duplicates of items that were already proposed in the thread
+Examples:
+- ADR "Use PostgreSQL for storage" → Epic: "Set up PostgreSQL Database Infrastructure"
+- ADR "Use Redis for caching" → Epic: "Implement Redis Caching Layer"
+- ADR "Event Sourcing pattern" → Epic: "Implement Event Sourcing Architecture"
 
 For each work item:
-- Title should read like a Jira ticket title (5-15 words)
-- Issue type: epic for large decision areas, story for specific features, task for implementation chores
-- Description should reference the related decision and explain what needs to be built
-- Include acceptance criteria derived from the decision's rationale and constraints
-- Include relevant technical constraints from the decision
+- Title: Clear Jira-style title (5-15 words)
+- Issue type: epic (large areas), story (features), task (chores), bug (defects), spike (research)
+- Description: What needs to be built, referencing related decisions
+- Acceptance criteria: Derived from decision rationale/constraints
+- Constraints: Technical constraints from decisions
 
-Be professional and concise. Each work item should be independently actionable."""
+IMPORTANT:
+- Use the FULL THREAD CONTEXT - check if bot already listed items to create
+- Do NOT duplicate items already proposed in the thread
+- Be professional and concise
+- Each work item should be independently actionable"""
 
-EXTRACT_BATCH_WORK_ITEMS_USER = """Existing entities in this channel:
+EXTRACT_WORK_ITEMS_USER = """Existing entities in this channel (ADRs, decisions, work items):
 {entity_context}
 
-Thread conversation (check for items bot already listed):
+Thread conversation:
 {thread_context}
 
 User's request:
 "{message}"
 
-Generate work items based on:
-1. Items the bot listed in the thread conversation that haven't been proposed yet
-2. OR one work item per relevant entity/decision area if no specific list exists"""
+Extract work item(s) based on the user's request and channel context."""
 
 EXTRACT_DECISION_SYSTEM = """You are extracting ALL architectural decisions from a Slack thread discussion.
 
@@ -242,6 +250,67 @@ class CreateModeHandler(ModeHandler):
             for m in context.thread_messages
         )
 
+    def _resolve_parent_hierarchy(
+        self,
+        work_items: list[dict],
+        thread_parent_id: str | None,
+        thread_parent_title: str | None,
+        channel_id: str,
+    ) -> list[dict]:
+        """Resolve parent_title references to establish hierarchy.
+
+        Hierarchy rules:
+        - Epic: no parent needed
+        - Story/Task/Bug/Spike: MUST have parent Epic
+
+        Resolution order:
+        1. If parent_title matches an Epic in the same batch → link via batch_parent_index
+        2. If thread is under an Epic → use thread_parent_id
+        3. If no parent found for non-epic → log warning (will need manual linking)
+        """
+        # Build map of epic titles to their index in the batch
+        epic_title_to_index: dict[str, int] = {}
+        for i, item in enumerate(work_items):
+            if item.get("issue_type", "").lower() == "epic":
+                epic_title_to_index[item["title"].lower()] = i
+
+        for i, item in enumerate(work_items):
+            issue_type = item.get("issue_type", "story").lower()
+
+            # Epics don't need parents
+            if issue_type == "epic":
+                item.pop("parent_title", None)  # Clean up
+                continue
+
+            # Non-epics need parents
+            parent_title_from_llm = item.pop("parent_title", None)
+
+            # Already has parent_id (e.g., from thread context)
+            if item.get("parent_id"):
+                continue
+
+            # Try to resolve parent_title to batch index
+            if parent_title_from_llm:
+                parent_lower = parent_title_from_llm.lower()
+                if parent_lower in epic_title_to_index:
+                    item["batch_parent_index"] = epic_title_to_index[parent_lower]
+                    item["parent_title_display"] = parent_title_from_llm
+                    continue
+
+            # Fall back to thread parent (if creating under an epic thread)
+            if thread_parent_id:
+                item["parent_id"] = thread_parent_id
+                item["parent_title_display"] = thread_parent_title
+                continue
+
+            # No parent found - log warning but continue
+            logger.warning(
+                f"Non-epic work item '{item.get('title')}' has no parent. "
+                "Will need manual linking in Jira."
+            )
+
+        return work_items
+
     async def _build_entity_context(self, channel_id: str) -> str:
         """Build entity summaries for LLM context (reuses ARCHITECT pattern)."""
         try:
@@ -276,125 +345,129 @@ class CreateModeHandler(ModeHandler):
             logger.debug(f"Could not load entity context: {e}")
             return "(No existing entities)"
 
-    def _is_batch_work_item_intent(self, message: str, thread_context: str = "") -> bool:
-        """Detect if the message intends to create multiple work items.
-
-        Checks both the message and thread context to detect batch intent.
-        """
-        import re
-        batch_patterns = [
-            r"(?:create|make|generate|build)\s+(?:epics?|stories|tasks|work items?|tickets?)\s+(?:for|from|based on)",
-            r"(?:for|from|based on)\s+(?:the\s+)?(?:architecture|decisions?|ADRs?|entities)",
-            r"(?:create|make|generate)\s+(?:epics?|stories|tasks)\s+(?:for\s+)?(?:each|all|every)",
-            # New patterns for batch intent
-            r"propose\s+(?:the\s+)?(?:remaining|other|all|each)\s+(?:stories|tasks|items|epics?)",
-            r"(?:remaining|other|all)\s+(?:\d+\s+)?(?:stories|tasks|items|epics?)",
-            r"(?:create|propose)\s+(?:the\s+)?(?:stories|tasks)\s+(?:for|under)\s+(?:this|the)\s+epic",
-            r"break\s+(?:it\s+)?down\s+(?:into|to)\s+(?:stories|tasks)",
-            r"split\s+(?:into|to)\s+(?:stories|tasks|user\s+stories)",
-        ]
-        lower = message.lower()
-
-        # Check message patterns
-        if any(re.search(p, lower) for p in batch_patterns):
-            return True
-
-        # Check thread context for multi-item listings (bot previously listed items)
-        if thread_context:
-            thread_lower = thread_context.lower()
-            # If bot mentioned multiple items/stories in thread and user is confirming
-            if ("here are" in thread_lower or "identified" in thread_lower or
-                "stories we should create" in thread_lower):
-                if any(word in lower for word in ["yes", "propose", "create", "go ahead", "do it"]):
-                    return True
-
-        return False
 
     async def _create_preview(self, context: ModeContext) -> ModeResult:
-        """Extract content using LLM and show preview for confirmation."""
+        """Extract content using LLM and show preview for confirmation.
+
+        Uses unified LLM call with full channel context (entities, thread).
+        LLM decides whether to return single or multiple work items.
+        """
         entity_type = context.intent.entity_type or "work_item"
         thread_context = self._build_thread_context(context)
 
         if entity_type == "work_item":
-            # Check for batch intent - pass thread context for smarter detection
-            if self._is_batch_work_item_intent(context.message, thread_context):
-                return await self._create_batch_work_items_preview(context, thread_context)
-            return await self._create_work_item_preview(context, thread_context)
+            return await self._create_work_items_preview(context, thread_context)
 
         return await self._create_decision_preview(context, thread_context)
 
-    async def _create_work_item_preview(
+    async def _create_work_items_preview(
         self, context: ModeContext, thread_context: str
     ) -> ModeResult:
-        """Extract and preview a work item using LLM."""
-        # Detect parent entity from thread context
-        parent_entity = self._detect_parent_entity(context)
-        parent_id = str(parent_entity.id) if parent_entity else None
-        parent_title = None
-        if parent_entity and hasattr(parent_entity.content, "title"):
-            parent_title = parent_entity.content.title
+        """Extract and preview work item(s) using LLM with full channel context.
+
+        LLM receives all existing entities (ADRs, decisions) and decides whether
+        to return single or multiple work items based on the user's request.
+        """
+        # Always load entity context - this is critical for understanding the channel
+        entity_context = await self._build_entity_context(context.channel_id)
+
+        # Detect parent entity from thread context (for items created under an epic thread)
+        thread_parent_entity = self._detect_parent_entity(context)
+        thread_parent_id = str(thread_parent_entity.id) if thread_parent_entity else None
+        thread_parent_title = None
+        if thread_parent_entity and hasattr(thread_parent_entity.content, "title"):
+            thread_parent_title = thread_parent_entity.content.title
 
         try:
             extracted = await structured_completion(
-                response_model=ExtractedWorkItem,
+                response_model=ExtractedWorkItems,
                 messages=[
-                    {"role": "system", "content": EXTRACT_WORK_ITEM_SYSTEM},
-                    {"role": "user", "content": EXTRACT_WORK_ITEM_USER.format(
+                    {"role": "system", "content": EXTRACT_WORK_ITEMS_SYSTEM},
+                    {"role": "user", "content": EXTRACT_WORK_ITEMS_USER.format(
+                        entity_context=entity_context,
                         thread_context=thread_context,
                         message=context.message,
                     )},
                 ],
             )
-
-            preview_content = {
-                "issue_type": extracted.issue_type,
-                "title": extracted.title,
-                "description": extracted.description,
-                "acceptance_criteria": extracted.acceptance_criteria,
-                "constraints": extracted.constraints,
-            }
+            work_items = [w.model_dump() for w in extracted.work_items]
         except Exception as e:
-            logger.warning(f"LLM extraction failed, using raw message: {e}")
-            preview_content = {
+            logger.warning(f"LLM work item extraction failed: {e}")
+            # Fallback: create single item from message
+            work_items = [{
                 "issue_type": "story",
-                "title": context.message,
+                "title": context.message[:100],
                 "description": context.message,
                 "acceptance_criteria": [],
                 "constraints": [],
-            }
+            }]
 
-        # Add parent_id if detected
-        if parent_id:
-            preview_content["parent_id"] = parent_id
+        if not work_items:
+            work_items = [{
+                "issue_type": "story",
+                "title": context.message[:100],
+                "description": context.message,
+                "acceptance_criteria": [],
+                "constraints": [],
+            }]
 
-        ac_text = ""
-        if preview_content["acceptance_criteria"]:
-            ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
-            ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
-
-        # Show parent info in preview
-        parent_text = ""
-        if parent_title:
-            parent_text = f"\n*Parent:* {parent_title}"
-
-        preview_text = (
-            f"*Draft Work Item*\n\n"
-            f"*Type:* {preview_content['issue_type'].title()}\n"
-            f"*Title:* {preview_content['title']}"
-            f"{parent_text}\n"
-            f"*Description:* {preview_content['description']}"
-            f"{ac_text}\n\n"
-            "_Click 'Propose' to submit for team approval_"
+        # Resolve parent relationships for hierarchy
+        work_items = self._resolve_parent_hierarchy(
+            work_items,
+            thread_parent_id=thread_parent_id,
+            thread_parent_title=thread_parent_title,
+            channel_id=context.channel_id,
         )
 
+        # Single item: use simple preview
+        if len(work_items) == 1:
+            preview_content = work_items[0]
+            ac_text = ""
+            if preview_content.get("acceptance_criteria"):
+                ac_items = "\n".join(f"  • {ac}" for ac in preview_content["acceptance_criteria"])
+                ac_text = f"\n*Acceptance Criteria:*\n{ac_items}"
+
+            # Get parent display title from resolved hierarchy
+            display_parent_title = preview_content.get("parent_title_display") or thread_parent_title
+            parent_text = ""
+            if display_parent_title:
+                parent_text = f"\n*Parent:* {display_parent_title}"
+            elif preview_content.get("issue_type", "story").lower() != "epic":
+                parent_text = "\n⚠️ _No parent epic_"
+
+            preview_text = (
+                f"*Draft Work Item*\n\n"
+                f"*Type:* {preview_content['issue_type'].title()}\n"
+                f"*Title:* {preview_content['title']}"
+                f"{parent_text}\n"
+                f"*Description:* {preview_content['description']}"
+                f"{ac_text}\n\n"
+                "_Click 'Propose' to submit for team approval_"
+            )
+
+            return ModeResult(
+                response_text=preview_text,
+                requires_confirmation=True,
+                confirmation_data={
+                    "action": "create_work_item",
+                    "content": preview_content,
+                },
+                response_blocks=self._build_preview_blocks(preview_content, display_parent_title),
+            )
+
+        # Multiple items: use batch preview
+        response_text = f"*Draft Work Items* ({len(work_items)} generated)"
+        if thread_parent_title:
+            response_text += f"\n*Parent:* {thread_parent_title}"
+
         return ModeResult(
-            response_text=preview_text,
+            response_text=response_text,
             requires_confirmation=True,
             confirmation_data={
-                "action": "create_work_item",
-                "content": preview_content,
+                "action": "create_batch_work_items",
+                "content": {"work_items": work_items, "parent_id": thread_parent_id},
             },
-            response_blocks=self._build_preview_blocks(preview_content, parent_title),
+            response_blocks=self._build_work_items_preview_blocks(work_items, thread_parent_title),
         )
 
     async def _create_batch_from_plan_context(self, context: ModeContext) -> ModeResult:
@@ -455,11 +528,11 @@ Generate work items based on the architectural analysis above."""
             work_items = [w.model_dump() for w in extracted.work_items]
         except Exception as e:
             logger.warning(f"LLM batch work item extraction from plan context failed: {e}")
-            # Fall back to regular batch mode
-            return await self._create_batch_work_items_preview(context, thread_context)
+            # Fall back to unified work items preview
+            return await self._create_work_items_preview(context, thread_context)
 
         if not work_items:
-            return await self._create_batch_work_items_preview(context, thread_context)
+            return await self._create_work_items_preview(context, thread_context)
 
         # Add parent_id to each work item if detected
         if parent_id:
@@ -481,63 +554,6 @@ Generate work items based on the architectural analysis above."""
             response_blocks=self._build_work_items_preview_blocks(work_items, parent_title),
         )
 
-    async def _create_batch_work_items_preview(
-        self, context: ModeContext, thread_context: str
-    ) -> ModeResult:
-        """Extract and preview multiple work items from existing entities using LLM."""
-        entity_context = await self._build_entity_context(context.channel_id)
-
-        if entity_context == "(No existing entities)":
-            # Fall back to single work item mode
-            return await self._create_work_item_preview(context, thread_context)
-
-        # Detect parent entity from thread context
-        parent_entity = self._detect_parent_entity(context)
-        parent_id = str(parent_entity.id) if parent_entity else None
-        parent_title = None
-        if parent_entity and hasattr(parent_entity.content, "title"):
-            parent_title = parent_entity.content.title
-
-        try:
-            extracted = await structured_completion(
-                response_model=ExtractedWorkItems,
-                messages=[
-                    {"role": "system", "content": EXTRACT_BATCH_WORK_ITEMS_SYSTEM},
-                    {"role": "user", "content": EXTRACT_BATCH_WORK_ITEMS_USER.format(
-                        entity_context=entity_context,
-                        thread_context=thread_context,
-                        message=context.message,
-                    )},
-                ],
-            )
-            work_items = [w.model_dump() for w in extracted.work_items]
-        except Exception as e:
-            logger.warning(f"LLM batch work item extraction failed: {e}")
-            # Fall back to single work item mode
-            return await self._create_work_item_preview(context, thread_context)
-
-        if not work_items:
-            return await self._create_work_item_preview(context, thread_context)
-
-        # Add parent_id to each work item if detected
-        if parent_id:
-            for w in work_items:
-                w["parent_id"] = parent_id
-
-        # Build response text with parent info
-        response_text = f"*Draft Work Items* ({len(work_items)} generated from entities)"
-        if parent_title:
-            response_text += f"\n*Parent:* {parent_title}"
-
-        return ModeResult(
-            response_text=response_text,
-            requires_confirmation=True,
-            confirmation_data={
-                "action": "create_batch_work_items",
-                "content": {"work_items": work_items, "parent_id": parent_id},
-            },
-            response_blocks=self._build_work_items_preview_blocks(work_items, parent_title),
-        )
 
     async def _create_decision_preview(
         self, context: ModeContext, thread_context: str
@@ -851,20 +867,36 @@ Generate work items based on the architectural analysis above."""
                 ac_items = "\n".join(f"  \u2022 {ac}" for ac in w["acceptance_criteria"])
                 ac_text = f"\n_Acceptance Criteria:_\n{ac_items}"
 
+            # Show parent info for this specific item
+            parent_info = ""
+            issue_type = w.get("issue_type", "story").lower()
+            if issue_type != "epic":
+                if w.get("parent_title_display"):
+                    parent_info = f"\n↳ _Parent: {w['parent_title_display']}_"
+                elif w.get("batch_parent_index") is not None:
+                    parent_idx = w["batch_parent_index"]
+                    parent_item = work_items[parent_idx]
+                    parent_info = f"\n↳ _Parent: {parent_item['title']}_"
+                elif w.get("parent_id"):
+                    parent_info = "\n↳ _Parent: (linked)_"
+                else:
+                    parent_info = "\n⚠️ _No parent epic (will need manual linking)_"
+
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": (
                         f"*{i + 1}. {w['title']}*\n"
-                        f"Type: {w.get('issue_type', 'story').title()}\n"
+                        f"Type: {w.get('issue_type', 'story').title()}"
+                        f"{parent_info}\n"
                         f"{w.get('description', '')[:500]}"
                         f"{ac_text}"
                     ),
                 },
             })
             # Truncate button value to stay within Slack's 2000 char limit
-            # Include parent_id in compact_item if present
+            # Include parent_id and batch_parent_index if present
             compact_item = {
                 "title": w["title"][:200],
                 "issue_type": w.get("issue_type", "story"),
@@ -874,6 +906,8 @@ Generate work items based on the architectural analysis above."""
             }
             if w.get("parent_id"):
                 compact_item["parent_id"] = w["parent_id"]
+            if w.get("batch_parent_index") is not None:
+                compact_item["batch_parent_index"] = w["batch_parent_index"]
 
             content_json = json.dumps(compact_item)
             # Final safety: if still over limit, strip description further

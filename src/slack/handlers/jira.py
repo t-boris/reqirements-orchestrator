@@ -90,8 +90,58 @@ async def handle_commit_to_jira(
         jira_url = f"{settings.jira_url}/browse/{jira_key}"
         title = entity.content.title
 
-        # Update the approval message: replace "Commit to Jira" button with Jira link
-        if message_ts:
+        # Get the entity's canonical (pinned) message timestamp
+        pinned_message_ts = getattr(entity, 'canonical_message_ts', None)
+
+        # Update the entity's pinned message with Jira link
+        if pinned_message_ts:
+            try:
+                # Fetch the current pinned message to update it
+                pinned_msg = await client.conversations_history(
+                    channel=channel_id,
+                    latest=pinned_message_ts,
+                    limit=1,
+                    inclusive=True,
+                )
+                if pinned_msg.get("messages"):
+                    original_blocks = pinned_msg["messages"][0].get("blocks", [])
+                    # Remove existing actions blocks and add Jira link
+                    updated_blocks = [
+                        block for block in original_blocks
+                        if block.get("type") != "actions"
+                    ]
+                    updated_blocks.append({
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f":link: *Jira:* <{jira_url}|{jira_key}>",
+                        },
+                    })
+                    await client.chat_update(
+                        channel=channel_id,
+                        ts=pinned_message_ts,
+                        blocks=updated_blocks,
+                        text=f"{title} — {jira_key}",
+                    )
+            except Exception as update_err:
+                logger.warning(f"Failed to update pinned message: {update_err}")
+
+            # Post commit notification as thread reply to pinned message
+            await client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=pinned_message_ts,
+                text=f":rocket: Committed to Jira by <@{user_id}> — <{jira_url}|{jira_key}>",
+            )
+        else:
+            # Fallback: post to channel if no pinned message (shouldn't happen)
+            logger.warning(f"Entity {entity_id} has no canonical_message_ts")
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=f":rocket: *{title}* committed to Jira: <{jira_url}|{jira_key}>",
+            )
+
+        # Also update the button-click message if different from pinned
+        if message_ts and message_ts != pinned_message_ts:
             original_blocks = body.get("message", {}).get("blocks", [])
             updated_blocks = [
                 block for block in original_blocks
@@ -101,7 +151,7 @@ async def handle_commit_to_jira(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f":link: Committed to Jira: <{jira_url}|{jira_key}>",
+                    "text": f":white_check_mark: Committed to Jira: <{jira_url}|{jira_key}>",
                 },
             })
             await client.chat_update(
@@ -110,19 +160,6 @@ async def handle_commit_to_jira(
                 blocks=updated_blocks,
                 text=f"{title} committed to Jira: {jira_key}",
             )
-
-        # Post committed message to main channel and pin it
-        committed_msg = await client.chat_postMessage(
-            channel=channel_id,
-            text=f":rocket: *{title}* — <{jira_url}|{jira_key}>\nCommitted by <@{user_id}>",
-        )
-        try:
-            await client.pins_add(
-                channel=channel_id,
-                timestamp=committed_msg["ts"],
-            )
-        except Exception as pin_err:
-            logger.warning(f"Failed to pin committed message: {pin_err}")
 
     except DuplicateDetectedError as e:
         blocks = build_duplicate_selection_blocks(

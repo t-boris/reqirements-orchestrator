@@ -34,6 +34,30 @@ OBJECTION_PATTERNS = [
     "reject",
 ]
 
+# Bulk operation indicators - when combined with approval/objection patterns,
+# skip pregate and let LLM handle (routes to CONVERSE for action plans)
+BULK_INDICATORS = [
+    "all",
+    "every",
+    "each",
+    "remaining",
+    "pending",
+    "all the",
+    "all of",
+]
+
+# Entity type keywords that indicate bulk operation when combined with BULK_INDICATORS
+ENTITY_TYPE_KEYWORDS = [
+    "adr", "adrs",
+    "decision", "decisions",
+    "work item", "work items",
+    "story", "stories",
+    "task", "tasks",
+    "epic", "epics",
+    "item", "items",
+    "ticket", "tickets",
+]
+
 
 def check_pregates(
     message: str,
@@ -104,7 +128,15 @@ def check_pregates(
     # Gate 5: Explicit approval keywords
     message_lower = message.lower().strip()
 
-    # Check approval patterns
+    # Check if this is a bulk operation - if so, skip pregate and let LLM handle
+    # Bulk operations like "approve all ADRs" should go to CONVERSE for action plans
+    is_bulk_operation = _is_bulk_operation(message_lower)
+
+    if is_bulk_operation:
+        logger.debug(f"PreGate: PASS_THROUGH (bulk operation detected)")
+        return PreGateOutput(result=PreGateResult.PASS_THROUGH)
+
+    # Check approval patterns (single entity approval only)
     for pattern in APPROVAL_PATTERNS:
         if _matches_pattern(message_lower, pattern):
             logger.debug(f"PreGate: APPROVAL (approve, pattern={pattern})")
@@ -151,3 +183,41 @@ def _matches_pattern(message: str, pattern: str) -> bool:
         return True
 
     return False
+
+
+def _is_bulk_operation(message: str) -> bool:
+    """Check if message indicates a bulk operation.
+
+    Bulk operations like "approve all ADRs" or "approve all pending decisions"
+    should bypass the APPROVAL pregate and go to CONVERSE mode for action plans.
+
+    Returns True if:
+    - Message contains a bulk indicator (all, every, remaining, pending)
+    - AND contains an entity type keyword (ADRs, decisions, work items, etc.)
+    - AND contains an approval/objection pattern
+    """
+    # Must contain at least one approval or objection pattern
+    has_approval_pattern = any(
+        re.search(rf"\b{re.escape(p)}\b", message)
+        for p in APPROVAL_PATTERNS + OBJECTION_PATTERNS
+    )
+    if not has_approval_pattern:
+        return False
+
+    # Must contain a bulk indicator
+    has_bulk_indicator = any(
+        re.search(rf"\b{re.escape(ind)}\b", message)
+        for ind in BULK_INDICATORS
+    )
+    if not has_bulk_indicator:
+        return False
+
+    # Must contain an entity type keyword
+    has_entity_type = any(
+        re.search(rf"\b{re.escape(kw)}\b", message)
+        for kw in ENTITY_TYPE_KEYWORDS
+    )
+    if not has_entity_type:
+        return False
+
+    return True

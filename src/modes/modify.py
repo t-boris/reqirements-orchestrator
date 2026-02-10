@@ -9,9 +9,10 @@ from pydantic import BaseModel, Field
 
 from src.domain.channel import ChannelAggregate, InvalidStateError
 from src.domain.content import WorkItemContent, DecisionContent
-from src.domain.entities import DraftEntity, ProposedEntity
+from src.domain.entities import DraftEntity, ProposedEntity, get_lifecycle
 from src.domain.transitions import can_modify
 from src.domain.types import ChannelId, EntityId, UserId
+from src.infrastructure.aggregate_loader import load_aggregate
 from src.llm.client import structured_completion
 from src.modes.base import ModeContext, ModeHandler, ModeResult
 
@@ -63,6 +64,32 @@ EXTRACT_MODIFICATIONS_USER = """User's modification request:
 Extract the modifications the user wants to make."""
 
 
+class EntityResolution(BaseModel):
+    """LLM-resolved entity from user's message."""
+
+    entity_id: str | None = Field(
+        default=None,
+        description="ID of the matched entity, or null if no clear match",
+    )
+    reasoning: str = Field(description="Brief explanation of the match")
+
+
+RESOLVE_ENTITY_SYSTEM = """You are identifying which entity the user is referring to.
+
+Existing entities in this channel:
+{entity_list}
+
+Based on the user's message, identify which single entity they want to modify, archive, or act on.
+- If the message clearly refers to one entity, return its exact ID from the list above
+- If the message refers to a category (e.g. "the core architecture decision"), match the most relevant entity
+- If it's genuinely ambiguous between multiple specific entities, return null
+- ONLY return IDs from the list above — NEVER invent IDs"""
+
+RESOLVE_ENTITY_USER = """User's message: "{message}"
+
+Which entity are they referring to?"""
+
+
 class ModifyModeHandler(ModeHandler):
     """Handler for MODIFY mode - modifies existing entities."""
 
@@ -70,12 +97,73 @@ class ModifyModeHandler(ModeHandler):
     def mode_name(self) -> str:
         return "MODIFY"
 
+    async def _resolve_entity_by_name(
+        self, message: str, channel_id: str
+    ) -> tuple[str | None, "ChannelAggregate"]:
+        """Try to resolve entity by name matching when target_entity_id is missing.
+
+        Uses LLM to match the user's message against existing entity titles.
+
+        Returns:
+            Tuple of (resolved_entity_id or None, loaded aggregate).
+        """
+        try:
+            aggregate = await load_aggregate(channel_id)
+        except Exception as e:
+            logger.error(f"Failed to load aggregate for name resolution: {e}", exc_info=True)
+            return None, ChannelAggregate(channel_id=ChannelId(channel_id))
+
+        if not aggregate.entities:
+            return None, aggregate
+
+        # Build entity list for LLM
+        entity_lines = []
+        for eid, entity in list(aggregate.entities.items())[:20]:
+            title = getattr(entity.content, "title", str(eid)[:8])
+            state = get_lifecycle(entity).value
+            etype = entity.entity_type.value
+            entity_lines.append(f"- {title} ({etype}, {state}) [id: {eid}]")
+
+        entity_list = "\n".join(entity_lines)
+
+        try:
+            resolution = await structured_completion(
+                response_model=EntityResolution,
+                messages=[
+                    {"role": "system", "content": RESOLVE_ENTITY_SYSTEM.format(
+                        entity_list=entity_list,
+                    )},
+                    {"role": "user", "content": RESOLVE_ENTITY_USER.format(
+                        message=message,
+                    )},
+                ],
+            )
+
+            if resolution.entity_id:
+                # Validate the resolved ID actually exists
+                resolved = aggregate.get_entity(EntityId(resolution.entity_id))
+                if resolved:
+                    logger.info(
+                        f"Entity resolved by name: {resolution.entity_id} "
+                        f"({resolution.reasoning})"
+                    )
+                    return resolution.entity_id, aggregate
+                else:
+                    logger.warning(
+                        f"LLM resolved non-existent entity: {resolution.entity_id}"
+                    )
+
+        except Exception as e:
+            logger.warning(f"Entity name resolution failed: {e}")
+
+        return None, aggregate
+
     async def handle(self, context: ModeContext) -> ModeResult:
         """Handle MODIFY mode - update an existing entity.
 
         Flow:
         1. Check safety (modification allowed?)
-        2. Find target entity
+        2. Find target entity (by ID or name resolution fallback)
         3. Validate entity state allows modification
         4. Extract changes using LLM
         5. Show preview with changes
@@ -86,17 +174,24 @@ class ModifyModeHandler(ModeHandler):
                 response_text=context.safety_check.reason or "Modification not allowed",
             )
 
-        # Get target entity
+        # Get target entity — try intent's target_entity_id first,
+        # then fall back to LLM-based name resolution
         target_entity_id = context.intent.target_entity_id
-        if not target_entity_id:
-            return ModeResult(
-                response_text="I couldn't identify which entity you want to modify. Please be more specific or mention the entity by name.",
-            )
+        aggregate = context.channel_aggregate
 
-        # Check if we have the aggregate
-        if not context.channel_aggregate:
-            # Load from event store
-            from src.infrastructure.aggregate_loader import load_aggregate
+        if not target_entity_id:
+            # Fallback: resolve entity by name matching against existing entities
+            target_entity_id, aggregate = await self._resolve_entity_by_name(
+                context.message, context.channel_id
+            )
+            if not target_entity_id:
+                return ModeResult(
+                    response_text="I couldn't identify which entity you want to modify. "
+                    "Please be more specific or mention the entity by name.",
+                )
+
+        # Load aggregate if not already loaded
+        if not aggregate:
             try:
                 aggregate = await load_aggregate(context.channel_id)
             except Exception as e:
@@ -104,8 +199,6 @@ class ModifyModeHandler(ModeHandler):
                 return ModeResult(
                     response_text="Failed to load channel data. Please try again.",
                 )
-        else:
-            aggregate = context.channel_aggregate
 
         entity = aggregate.get_entity(EntityId(target_entity_id))
 
@@ -201,9 +294,17 @@ class ModifyModeHandler(ModeHandler):
         self, entity_id: str, modifications: list[ExtractedModification]
     ) -> list[dict]:
         """Build Slack blocks for modification preview."""
+        import json
+
         changes_text = "\n".join(
             f"- *{m.field}*: {m.summary}" for m in modifications
         )
+
+        # Store entity_id + modifications in button value so handler can apply them
+        button_value = json.dumps({
+            "entity_id": entity_id,
+            "modifications": [m.model_dump() for m in modifications],
+        })
 
         return [
             {
@@ -220,13 +321,13 @@ class ModifyModeHandler(ModeHandler):
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Apply Changes"},
                         "style": "primary",
-                        "action_id": f"apply_modify_{entity_id}",
-                        "value": entity_id,
+                        "action_id": "apply_modify",
+                        "value": button_value,
                     },
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Cancel"},
-                        "action_id": f"cancel_modify_{entity_id}",
+                        "action_id": "cancel_modify",
                         "value": entity_id,
                     },
                 ],

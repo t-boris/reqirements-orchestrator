@@ -23,6 +23,7 @@ STATUS_BADGES: dict[str, str] = {
     "approved": ":white_check_mark: Approved",
     "committed": ":white_check_mark: Committed",
     "deprecated": ":no_entry_sign: Deprecated",
+    "discarded": ":x: Discarded",
 }
 
 
@@ -37,13 +38,22 @@ def _build_lifecycle_buttons(status: str, entity_id: str) -> list[dict[str, Any]
         List of button elements, or empty list for deprecated status.
     """
     if status == "draft":
-        return [{
-            "type": "button",
-            "text": {"type": "plain_text", "text": "Propose for Approval"},
-            "style": "primary",
-            "action_id": "adr_propose",
-            "value": entity_id,
-        }]
+        return [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Propose for Approval"},
+                "style": "primary",
+                "action_id": "adr_propose",
+                "value": entity_id,
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Discard"},
+                "style": "danger",
+                "action_id": "adr_discard",
+                "value": entity_id,
+            },
+        ]
     elif status == "proposed":
         return [
             {
@@ -59,8 +69,15 @@ def _build_lifecycle_buttons(status: str, entity_id: str) -> list[dict[str, Any]
                 "action_id": "adr_object",
                 "value": entity_id,
             },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Discard"},
+                "style": "danger",
+                "action_id": "adr_discard",
+                "value": entity_id,
+            },
         ]
-    elif status in ("approved", "committed"):
+    elif status == "committed":
         return [{
             "type": "button",
             "text": {"type": "plain_text", "text": "Deprecate"},
@@ -68,7 +85,7 @@ def _build_lifecycle_buttons(status: str, entity_id: str) -> list[dict[str, Any]
             "action_id": "adr_deprecate",
             "value": entity_id,
         }]
-    # deprecated or unknown: no buttons
+    # approved, deprecated, or unknown: no buttons
     return []
 
 

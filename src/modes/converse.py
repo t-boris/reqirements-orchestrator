@@ -74,6 +74,14 @@ Examples:
 - If offering to commit approved items to Jira:
   {"label": "Commit to Jira", "description": "Create Jira issues for approved items", "action": "commit", "entity_ids": ["abc123"]}
 
+BULK APPROVAL REQUESTS:
+When the user asks to "approve all ADRs", "approve all decisions", "approve all items", or similar bulk operations:
+1. Find all entities in the "proposed" state that match the requested type (decisions/ADRs or work items)
+2. List them clearly with their titles and IDs
+3. ALWAYS provide an action button with action="approve" and entity_ids containing ALL matching entity IDs
+4. Example response: "I found 3 proposed decisions that can be approved: [list them]. Would you like to approve them?"
+   With a button: {"label": "Approve All 3", "description": "Approve all proposed decisions", "action": "approve", "entity_ids": ["id1", "id2", "id3"]}
+
 NEVER set action/entity_ids for conversational options like "Tell me more" or "Show details".
 ALWAYS use exact entity IDs from the provided entity list - NEVER invent IDs."""
 

@@ -10,9 +10,12 @@ import logging
 from src.domain.channel import ChannelAggregate
 from src.domain.types import ChannelId
 from src.infrastructure.database import get_pool
-from src.infrastructure.event_store import EventStore
+from src.infrastructure.event_store import ConcurrencyError, EventStore
 
 logger = logging.getLogger(__name__)
+
+# Maximum retries for optimistic concurrency conflicts
+MAX_CONCURRENCY_RETRIES = 3
 
 
 async def load_aggregate(channel_id: str) -> ChannelAggregate:
@@ -43,6 +46,9 @@ async def save_events(aggregate: ChannelAggregate) -> list:
     read models and side effects (e.g., Jira notifications) are applied
     without requiring a separate background outbox worker.
 
+    Handles optimistic concurrency conflicts by rebasing events onto
+    the latest version and retrying (up to MAX_CONCURRENCY_RETRIES times).
+
     Args:
         aggregate: Aggregate with pending events
 
@@ -55,12 +61,50 @@ async def save_events(aggregate: ChannelAggregate) -> list:
 
     pool = await get_pool()
     store = EventStore(pool)
-    await store.append_batch(events)
-    logger.info(f"Persisted {len(events)} events for {aggregate.channel_id}")
 
-    # Process outbox inline — applies projections for newly persisted events
-    await _process_outbox(pool)
+    for attempt in range(MAX_CONCURRENCY_RETRIES):
+        try:
+            await store.append_batch(events)
+            logger.info(f"Persisted {len(events)} events for {aggregate.channel_id}")
 
+            # Process outbox inline — applies projections for newly persisted events
+            await _process_outbox(pool)
+            return events
+
+        except ConcurrencyError as e:
+            if attempt >= MAX_CONCURRENCY_RETRIES - 1:
+                logger.error(
+                    f"Concurrency conflict for {aggregate.channel_id} after "
+                    f"{MAX_CONCURRENCY_RETRIES} retries: {e}"
+                )
+                raise
+
+            # Rebase events onto new version
+            logger.warning(
+                f"Concurrency conflict for {aggregate.channel_id}, "
+                f"rebasing events (attempt {attempt + 1}/{MAX_CONCURRENCY_RETRIES})"
+            )
+            latest_version = await store.get_latest_version(str(aggregate.channel_id))
+            events = _rebase_events(events, latest_version)
+
+    return events
+
+
+def _rebase_events(events: list, new_base_version: int) -> list:
+    """Rebase event versions onto a new base version.
+
+    Used when optimistic concurrency fails - adjusts event versions
+    to continue from the current store version.
+
+    Args:
+        events: List of events with stale versions
+        new_base_version: Current version in the store
+
+    Returns:
+        Events with updated version numbers
+    """
+    for i, event in enumerate(events):
+        event.version = new_base_version + i + 1
     return events
 
 
